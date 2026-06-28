@@ -1,0 +1,697 @@
+Acid Blobs
+Acolytes Of The Cult
+Adepts Of The Cult
+Adult Goannas
+Afflicted Striders
+Amazons
+Ancient Scarabs
+Angry Sugar Fairies
+Animated Feathers
+Arachnophobicas
+Arctic Fauns
+Armadiles
+Assassins
+Azure Frogs
+Badgers
+Bandits
+Banshees
+Barbarian Bloodwalkers
+Barbarian Brutetamers
+Barbarian Headsplitters
+Barbarian Skullhunters
+Barkless Devotees
+Barkless Fanatics
+Bashmus
+Bats
+Bears
+Behemoths
+Betrayed Wraiths
+Biting Books
+Black Knights
+Black Sphinx Acolytes
+Blemished Spawns
+Blightwalkers
+Bloated Man-maggots
+Blood Beasts
+Blood Crabs
+Blood Hands
+Blood Priests
+Blue Djinns
+Bluebeaks
+Boar Men
+Boars
+Bog Frogs
+Bog Raiders
+Bonebeasts
+Bonelords
+Bony Sea Devils
+Boogies
+Brachiodemons
+Brain Squids
+Braindeaths
+Bramble Wyrmlings
+Branchy Crawlers
+Breach Broods
+Brimstone Bugs
+Brinebrute Inferniarches
+Broken Shapers
+Broodrider Inferniarches
+Bugs
+Bulltaur Alchemists
+Bulltaur Brutes
+Bulltaur Forgepriests
+Burning Books
+Burning Gladiators
+Burster Spectres
+Butterflies
+Calamaries
+Candy Floss Elementals
+Candy Horrors
+Capricious Phantoms
+Carniphilas
+Carnisylvan Saplings
+Carnivostriches
+Carrion Worms
+Cats
+Cave Chimeras
+Cave Devourers
+Cave Rats
+Centipedes
+Chakoya Toolshapers
+Chakoya Tribewardens
+Chakoya Windcallers
+Chasm Spawns
+Chickens
+Chocolate Blobs
+Choking Fears
+Cinder Wyrmlings
+Clay Guardians
+Cliff Striders
+Cloaks Of Terror
+Clomps
+Cobra Assassins
+Cobra Scouts
+Cobra Viziers
+Cobras
+Converters
+Corym Charlatans
+Corym Skirmishers
+Corym Vanguards
+Courage Leeches
+Crabs
+Crape Men
+Crawlers
+Crazed Beggars
+Crazed Summer Rearguards
+Crazed Summer Vanguards
+Crazed Winter Rearguards
+Crazed Winter Vanguards
+Cream Blobs
+Creepy Crawlers
+Crocodiles
+Crusaders
+Crustaceae Giganticae
+Crypt Constructs
+Crypt Defilers
+Crypt Fiends
+Crypt Mages
+Crypt Shamblers
+Crypt Wardens
+Crypt Warriors
+Crystal Spiders
+Crystalcrushers
+Cult Believers
+Cult Enforcers
+Cult Scholars
+Cunning Werepanthers
+Cursed Apes
+Cursed Books
+Cursed Prospectors
+Cyclopes
+Cyclopes Drone
+Cyclopes Smith
+Cyclursuses
+Dark Apprentices
+Dark Carnisylvans
+Dark Fauns
+Dark Magicians
+Dark Monks
+Dark Torturers
+Darklight Constructs
+Darklight Emitters
+Darklight Matters
+Darklight Sources
+Darklight Strikers
+Dawnfire Asuras
+Death Blobs
+Deathling Scouts
+Deathling Spellsingers
+Deepling Guards
+Deepling Scouts
+Deepling Spellsingers
+Deepling Warriors
+Deepling Workers
+Deepsea Blood Crabs
+Deepworms
+Deer
+Defilers
+Demon Outcasts
+Demon Skeletons
+Demons
+Destroyers
+Devourers
+Diabolic Imps
+Diamond Servant Replicas
+Diamond Servants
+Diremaws
+Distorted Phantoms
+Dogs
+Dragolisks
+Dragon Hatchlings
+Dragon Lord Hatchlings
+Dragon Lords
+Dragonlings
+Dragons
+Draken Abominations
+Draken Elites
+Draken Spellweavers
+Draken Warmasters
+Draptors
+Dread Intruders
+Drillworms
+Dromedaries
+Druid's Apparitions
+Dwarf Geomancers
+Dwarf Guards
+Dwarf Miners
+Dwarf Soldiers
+Dwarfs
+Dworc Fleshhunters
+Dworc Shadowstalkers
+Dworc Venomsnipers
+Dworc Voodoomasters
+Earth Elementals
+Efreet
+Elder Bonelords
+Elder Wyrms
+Elephants
+Elf Arcanists
+Elf Scouts
+Elves
+Emerald Damselflies
+Emerald Tortoises
+Energetic Books
+Energuardians Of Tales
+Energy Elementals
+Enfeebled Silencers
+Enlighteneds Of The Cult
+Enraged Crystal Golems
+Enslaved Dwarfs
+Eternal Guardians
+Evil Prospectors
+Execowtioners
+Exotic Bats
+Exotic Cave Spiders
+Eyeless Devourers
+Falcon Knights
+Falcon Paladins
+Fauns
+Feral Sphinxes
+Feral Werecrocodiles
+Feversleeps
+Filth Toads
+Fire Devils
+Fire Elementals
+Firestarters
+Fish
+Flamingos
+Flimsy Lost Souls
+Floating Savants
+Flying Books
+Foam Stalkers
+Forest Furies
+Foxes
+Frazzlemaws
+Freakish Lost Souls
+Frost Dragon Hatchlings
+Frost Dragons
+Frost Flower Asuras
+Frost Giantesses
+Frost Giants
+Frost Trolls
+Fruit Drops
+Furies
+Gang Members
+Gargoyles
+Gazer Spectres
+Gazers
+Ghastly Dragons
+Ghosts
+Ghouls
+Giant Spiders
+Gingerbread Men
+Girtablilu Warriors
+Gladiators
+Gloom Maws
+Gloom Wolves
+Glooth Anemones
+Glooth Bandits
+Glooth Blobs
+Glooth Brigands
+Glooth Golems
+Gnarlhounds
+Goblin Assassins
+Goblin Scavengers
+Goblins
+Goggle Cakes
+Golden Servant Replicas
+Golden Servants
+Gore Horns
+Gorerillas
+Gorger Inferniarches
+Gozzlers
+Grave Robbers
+Gravediggers
+Green Djinns
+Grim Reapers
+Grimeleeches
+Gryphons
+Guardians Of Tales
+Guzzlemaws
+Hands Of Cursed Fate
+Harpies
+Haunted Hunters
+Haunted Treelings
+Hawk Hoppers
+Headpeckers
+Headwalkers
+Hellfire Fighters
+Hellflayers
+Hellhounds
+Hellhunter Inferniarches
+Hellspawns
+Heroes
+Hideous Fungi
+High Voltage Elementals
+Honey Elementals
+Hulking Carnisylvans
+Hulking Prehemoths
+Humongous Fungi
+Hunters
+Huskies
+Hyaenas
+Hydras
+Ice Golems
+Ice Witches
+Icecold Books
+Iks Aucars
+Iks Chukas
+Iks Pututus
+Iks Yapunacs
+Imperials
+Infernal Demons
+Infernal Phantoms
+Infernalists
+Infernoid Blobs
+Infernoid Hounds
+Infernoid Souls
+Infernoid Spirituals
+Ink Blobs
+Insane Sirens
+Insect Swarms
+Insectoid Scouts
+Insectoid Workers
+Instable Breach Broods
+Instable Sparkions
+Iron Servant Replicas
+Iron Servants
+Ironblights
+Island Trolls
+Jellyfish
+Juggernauts
+Jungle Moas
+Juvenile Bashmus
+Killer Caimans
+Knight's Apparitions
+Knowledge Elementals
+Kollos
+Kongras
+Ladybugs
+Lamassus
+Lancer Beetles
+Larvas
+Lava Golems
+Lava Lurkers
+Lavafungi
+Lavaworms
+Leaf Golems
+Liches
+Liodiles
+Lion Hydras
+Lions
+Lizard Chosens
+Lizard Commanders
+Lizard Dragon Priests
+Lizard Executioners
+Lizard Henchmans
+Lizard High Guards
+Lizard Legionnaires
+Lizard Magicians
+Lizard Sentinels
+Lizard Snakecharmers
+Lizard Swordmasters
+Lizard Templars
+Lizard Zaoguns
+Lost Bashers
+Lost Berserkers
+Lost Hushers
+Lost Souls
+Lost Throwers
+Lumbering Carnivors
+Mad Scientists
+Magma Crawlers
+Makaras
+Mammoths
+Manta Rays
+Manticores
+Mantosauruses
+Many Faces
+Marid
+Marsh Stalkers
+Massive Earth Elementals
+Massive Energy Elementals
+Massive Fire Elementals
+Massive Water Elementals
+Mean Lost Souls
+Meandering Mushrooms
+Medusae
+Mega Dragons
+Menacing Carnivors
+Mercurial Menaces
+Mercury Blobs
+Merlkins
+Metal Gargoyles
+Midnight Asuras
+Midnight Panthers
+Minotaur Amazons
+Minotaur Archers
+Minotaur Cult Followers
+Minotaur Cult Prophets
+Minotaur Cult Zealots
+Minotaur Guards
+Minotaur Hunters
+Minotaur Mages
+Minotaurs
+Mirror Images
+Misguided Bullies
+Misguided Thieves
+Mitmah Scouts
+Mitmah Seers
+Monk's Apparitions
+Monks
+Monks Of The Order
+Mooh'tah Warriors
+Moohtants
+Mould Phantoms
+Mummies
+Mutated Bats
+Mutated Humans
+Mutated Rats
+Mutated Tigers
+Mycobiontic Beetles
+Naga Archers
+Naga Warriors
+Necromancers
+Nibblemaws
+Night Harpies
+Nightfiends
+Nighthunters
+Nightmare Scions
+Nightmares
+Nightstalkers
+Noble Lions
+Nomads
+Norcferatu Heartlesses
+Norcferatu Nightweavers
+Northern Pikes
+Novices Of The Cult
+Noxious Ripptors
+Nymphs
+Ogre Brutes
+Ogre Rowdies
+Ogre Ruffians
+Ogre Sages
+Ogre Savages
+Ogre Shamans
+Omnivoras
+Oozing Carcasses
+Oozing Corpuses
+Orc Berserkers
+Orc Cult Fanatics
+Orc Cult Inquisitors
+Orc Cult Minions
+Orc Cult Priests
+Orc Cultists
+Orc Leaders
+Orc Marauders
+Orc Riders
+Orc Shamans
+Orc Spearmen
+Orc Warlords
+Orc Warriors
+Orclops Bloodbreakers
+Orclops Doomhaulers
+Orclops Ravagers
+Orcs
+Orewalkers
+Paladin's Apparitions
+Pandas
+Parders
+Parrots
+Penguins
+Phantasms
+Pigeons
+Pigs
+Pirat Bombardiers
+Pirat Cutthroats
+Pirat Mates
+Pirat Scoundrels
+Pirate Buccaneers
+Pirate Cooks
+Pirate Corsairs
+Pirate Cutthroats
+Pirate Ghosts
+Pirate Gunners
+Pirate Marauders
+Pirate Navigators
+Pirate Quartermasters
+Pirate Skeletons
+Pixies
+Plaguesmiths
+Poachers
+Poison Spiders
+Poisonous Carnisylvans
+Polar Bears
+Pookas
+Priestesses
+Priestesses Of The Wild Sun
+Putrid Mummies
+Quara Constrictor Scouts
+Quara Constrictors
+Quara Hydromancer Scouts
+Quara Hydromancers
+Quara Looters
+Quara Mantassin Scouts
+Quara Mantassins
+Quara Pincher Scouts
+Quara Pinchers
+Quara Plunderers
+Quara Predator Scouts
+Quara Predators
+Quara Raiders
+Rabbits
+Rabid Wolves
+Rage Squids
+Ragged Rabid Wolves
+Rats
+Raubritter Chasteners
+Raubritter Marksmen
+Raubritter Skirmishers
+Ravenous Lava Lurkers
+Reality Reavers
+Redeemed Souls
+Renegade Knights
+Retching Horrors
+Rhindeer
+Ripper Spectres
+Roaming Dreads
+Roaring Lions
+Rootthing Amber Shapers
+Rootthing Bug Trackers
+Rootthing Nutshells
+Rorcs
+Rot Elementals
+Rotten Golems
+Rotten Man-maggots
+Rotworms
+Rustheap Golems
+Sabreteeth
+Salamanders
+Sandcrawlers
+Sandstone Scorpions
+Scarabs
+Scorpions
+Sea Captains
+Sea Serpents
+Seacrest Serpents
+Seagulls
+Serpent Spawns
+Shadow Pupils
+Shaper Matriarches
+Sharks
+Sheep
+Shell Drakes
+Shock Heads
+Shrieking Cry-stals
+Sibangs
+Sights Of Surrender
+Silencers
+Silver Rabbits
+Sineater Inferniarches
+Skeleton Elite Warriors
+Skeleton Warriors
+Skeletons
+Skunks
+Slimes
+Slugs
+Smugglers
+Snakes
+Sons Of Verminor
+Sopping Carcasses
+Sopping Corpuses
+Sorcerer's Apparitions
+Soul-broken Harbingers
+Souleaters
+Sparkions
+Spectres
+Spellreaper Inferniarches
+Sphinxes
+Spiders
+Spidris
+Spiky Carnivors
+Spit Nettles
+Spitters
+Squid Wardens
+Squirrels
+Stabilizing Dread Intruders
+Stabilizing Reality Reavers
+Stags
+Stalkers
+Stalking Stalks
+Stampors
+Stone Devourers
+Stone Golems
+Stone Rhinos
+Stonerefiners
+Streaked Devourers
+Sugar Cube Workers
+Sugar Cubes
+Sulphiders
+Sulphur Spouters
+Swamp Trolls
+Swamplings
+Swan Maidens
+Swarmers
+Tainted Souls
+Tarantulas
+Tarnished Spirits
+Terramites
+Terror Birds
+Terrorsleeps
+Thanatursuses
+Thornback Tortoises
+Tigers
+Toads
+Tortoises
+Tremendous Tyrants
+Troll Champions
+Trolls
+True Dawnfire Asuras
+True Frost Flower Asuras
+True Midnight Asuras
+Truffle Cooks
+Truffles
+Tunnel Tyrants
+Turbulent Elementals
+Twisted Pookas
+Twisted Shapers
+Two-headed Turtles
+Undead Cavebears
+Undead Dragons
+Undead Elite Gladiators
+Undead Gladiators
+Undertakers
+Usurper Archers
+Usurper Commanders
+Usurper Knights
+Usurper Warlocks
+Valkyries
+Vampire Brides
+Vampire Viscounts
+Vampires
+Vargs
+Varnished Diremaws
+Venerable Girtablilus
+Vexclaws
+Vibrant Phantoms
+Vicious Manbats
+Vicious Squires
+Vile Grandmasters
+Vulcongras
+Wailing Widows
+Walkers
+Walking Dreads
+Walking Pillars
+Wandering Pillars
+War Golems
+War Wolves
+Wardragons
+Warlocks
+Waspoids
+Wasps
+Water Buffalos
+Water Elementals
+Weakened Frazzlemaws
+Weepers
+Werebadgers
+Werebears
+Wereboars
+Werecrocodiles
+Werefoxes
+Werehyaena Shamans
+Werehyaenas
+Werelionesses
+Werelions
+Werepanthers
+Weretigers
+Werewolves
+White Deer
+White Lions
+White Shades
+White Tigers
+White Weretigers
+Wigglers
+Wild Warriors
+Wilting Leaf Golems
+Winter Wolves
+Wisps
+Witches
+Wolves
+Worker Golems
+Worm Priestesses
+Wyrms
+Wyverns
+Yielothax
+Young Goannas
+Young Sea Serpents
+Zombies
