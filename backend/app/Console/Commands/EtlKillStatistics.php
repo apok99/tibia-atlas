@@ -54,6 +54,7 @@ class EtlKillStatistics extends Command
 
         // 1) Worlds dimension ------------------------------------------------
         $worldNames = $this->syncWorlds();
+        $this->recordOnlineSnapshot();
         if ($filter = (string) $this->option('worlds')) {
             $wanted = array_map('trim', explode(',', $filter));
             $worldNames = array_values(array_intersect($worldNames, $wanted));
@@ -142,6 +143,36 @@ class EtlKillStatistics extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Record the current total players-online into the hourly history table.
+     * Upsert on the hour bucket so a re-run within the hour overwrites with the
+     * freshest reading (the worlds dimension was just refreshed by syncWorlds).
+     * Prunes anything older than 60 days.
+     */
+    private function recordOnlineSnapshot(): void
+    {
+        $online = (int) DB::table('tibia_worlds')->sum('players_online');
+        $worldsOnline = (int) DB::table('tibia_worlds')->where('players_online', '>', 0)->count();
+        $bucket = now()->startOfHour();
+        $now = now();
+
+        DB::table('online_snapshots')->upsert(
+            [[
+                'captured_at' => $bucket,
+                'players_online' => $online,
+                'worlds_online' => $worldsOnline,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]],
+            ['captured_at'],
+            ['players_online', 'worlds_online', 'updated_at'],
+        );
+
+        DB::table('online_snapshots')->where('captured_at', '<', now()->subDays(60))->delete();
+
+        $this->info("Online snapshot: {$online} players across {$worldsOnline} worlds.");
     }
 
     /** Fetch /v4/worlds, upsert the dimension, return online world names. */

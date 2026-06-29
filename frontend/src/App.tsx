@@ -10,9 +10,6 @@ import { KillStatsPage } from './pages/KillStatsPage'
 import { QuestsPage } from './pages/QuestsPage'
 import { TimelinePage } from './pages/TimelinePage'
 import { ItemsPage } from './pages/ItemsPage'
-import { AdminLayout } from './pages/admin/AdminLayout'
-import { AdminEntriesPage } from './pages/admin/AdminEntriesPage'
-import { AdminEntryEditor } from './pages/admin/AdminEntryEditor'
 
 export default function App() {
   return (
@@ -30,13 +27,6 @@ export default function App() {
           <Route path="killstats" element={<KillStatsPage />} />
           <Route path="soundtrack" element={<SoundtrackPage />} />
           <Route path="timeline" element={<TimelinePage />} />
-
-          <Route path="admin" element={<AdminLayout />}>
-            <Route index element={<AdminEntriesPage />} />
-            <Route path="entries" element={<AdminEntriesPage />} />
-            <Route path="entries/new" element={<AdminEntryEditor />} />
-            <Route path="entries/:id" element={<AdminEntryEditor />} />
-          </Route>
         </Route>
       </Routes>
     </BrowserRouter>

@@ -16,7 +16,7 @@ class StubFiller
 {
     private const API = 'https://tibia.fandom.com/api.php';
 
-    private const UA = 'TibiaAtlas/1.0 (lore research project; contact: admin@tibiaatlas.test)';
+    private const UA = 'TibiaAtlas/1.0 (lore research project; contact: contact@tibiaatlas.test)';
 
     private function http()
     {

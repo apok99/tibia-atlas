@@ -56,7 +56,7 @@ class ScrapeCreatures extends Command
         }
 
         $this->info("Done. Imported: {$imported}, skipped: {$skipped}, failed: {$failed}.");
-        $this->comment('All imports are drafts — review and publish from the admin panel.');
+        $this->comment('All imports are drafts — review and publish them when ready.');
 
         return self::SUCCESS;
     }

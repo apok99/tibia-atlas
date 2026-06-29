@@ -300,6 +300,113 @@ class KillStatsController extends Controller
     }
 
     /**
+     * Global overview for the dashboard hero: headline totals, a 14-day global
+     * activity series (for KPI sparklines + the centerpiece area chart), and a
+     * breakdown of the live world population by region and PvP type.
+     */
+    public function overview(): JsonResponse
+    {
+        $latest = DB::table('kill_daily')->max('snapshot_date');
+
+        $totals = DB::table('kill_daily')
+            ->where('snapshot_date', $latest)
+            ->selectRaw('
+                COALESCE(SUM(day_players_killed), 0) AS pk_24h,
+                COALESCE(SUM(day_killed), 0) AS k_24h,
+                COALESCE(SUM(week_players_killed), 0) AS pk_7d,
+                COALESCE(SUM(week_killed), 0) AS k_7d,
+                COUNT(DISTINCT CASE WHEN day_killed > 0 THEN race_id END) AS active_races
+            ')
+            ->first();
+
+        // XP handed out in the last 24h = Σ (per-kill exp × creatures killed).
+        $exp24h = (int) DB::table('kill_daily as kd')
+            ->join('tibia_races as r', 'r.id', '=', 'kd.race_id')
+            ->join('entries as e', 'e.id', '=', 'r.entry_id')
+            ->where('kd.snapshot_date', $latest)
+            ->whereRaw("(e.meta->>'experience') ~ '^[0-9]+$'")
+            ->selectRaw("COALESCE(SUM((e.meta->>'experience')::bigint * kd.day_killed), 0) AS exp")
+            ->value('exp');
+
+        // Global daily activity for the last ~14 snapshots.
+        $series = DB::table('kill_daily')
+            ->where('snapshot_date', '>', Carbon::parse($latest)->subDays(14)->toDateString())
+            ->groupBy('snapshot_date')
+            ->orderBy('snapshot_date')
+            ->select([
+                DB::raw('snapshot_date'),
+                DB::raw('SUM(day_players_killed) AS players_killed'),
+                DB::raw('SUM(day_killed) AS killed'),
+            ])
+            ->get()
+            ->map(fn ($r) => [
+                'period' => substr((string) $r->snapshot_date, 0, 10),
+                'players_killed' => (int) $r->players_killed,
+                'killed' => (int) $r->killed,
+            ]);
+
+        // Players-online history (hourly buckets we record ourselves), last ~3 days.
+        $onlineHistory = DB::table('online_snapshots')
+            ->where('captured_at', '>', Carbon::now()->subDays(3))
+            ->orderBy('captured_at')
+            ->get(['captured_at', 'players_online', 'worlds_online'])
+            ->map(fn ($r) => [
+                'time' => substr((string) $r->captured_at, 0, 16), // YYYY-MM-DD HH:MM
+                'players_online' => (int) $r->players_online,
+                'worlds_online' => (int) $r->worlds_online,
+            ]);
+        $onlinePeak = (int) DB::table('online_snapshots')->max('players_online');
+
+        $worlds = DB::table('tibia_worlds')->get(['name', 'location', 'pvp_type', 'players_online']);
+
+        $regions = $worlds
+            ->groupBy(fn ($w) => $w->location ?: 'Unknown')
+            ->map(fn ($g, $k) => [
+                'name' => $k,
+                'players_online' => (int) $g->sum('players_online'),
+                'worlds' => $g->count(),
+            ])
+            ->sortByDesc('players_online')
+            ->values();
+
+        $pvp = $worlds
+            ->groupBy(fn ($w) => $w->pvp_type ?: 'Unknown')
+            ->map(fn ($g, $k) => [
+                'name' => $k,
+                'players_online' => (int) $g->sum('players_online'),
+                'worlds' => $g->count(),
+            ])
+            ->sortByDesc('players_online')
+            ->values();
+
+        $topWorlds = $worlds
+            ->sortByDesc('players_online')
+            ->take(12)
+            ->map(fn ($w) => ['name' => $w->name, 'players_online' => (int) $w->players_online])
+            ->values();
+
+        return response()->json([
+            'latest' => $latest,
+            'totals' => [
+                'players_killed_24h' => (int) $totals->pk_24h,
+                'killed_24h' => (int) $totals->k_24h,
+                'players_killed_7d' => (int) $totals->pk_7d,
+                'killed_7d' => (int) $totals->k_7d,
+                'exp_24h' => $exp24h,
+                'active_races' => (int) $totals->active_races,
+                'players_online' => (int) $worlds->sum('players_online'),
+                'worlds' => $worlds->count(),
+            ],
+            'series' => $series,
+            'online_history' => $onlineHistory,
+            'online_peak' => $onlinePeak,
+            'regions' => $regions,
+            'pvp' => $pvp,
+            'top_worlds' => $topWorlds,
+        ]);
+    }
+
+    /**
      * Boss respawn tracker. For a boss creature, returns per-world recency of
      * kills and an estimate of when it tends to come back.
      *

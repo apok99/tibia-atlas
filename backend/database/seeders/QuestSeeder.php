@@ -7,7 +7,6 @@ use App\Enums\EntryType;
 use App\Enums\Locale;
 use App\Enums\SourceType;
 use App\Models\Entry;
-use App\Models\User;
 use App\Services\EntryService;
 use Illuminate\Database\Seeder;
 
@@ -31,7 +30,7 @@ class QuestSeeder extends Seeder
     public function run(): void
     {
         $service = app(EntryService::class);
-        $userId = User::where('email', 'admin@tibiaatlas.test')->value('id');
+        $userId = null;
 
         foreach ($this->quests() as $q) {
             // Resolve optional related entries by slug, keeping only those that exist.

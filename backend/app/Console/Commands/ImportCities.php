@@ -7,7 +7,6 @@ use App\Enums\EntryType;
 use App\Enums\Locale;
 use App\Enums\SourceType;
 use App\Models\Entry;
-use App\Models\User;
 use App\Services\EntryService;
 use App\Services\Import\BookTranslator;
 use App\Services\Import\StubFiller;
@@ -36,7 +35,7 @@ class ImportCities extends Command
 {
     private const API = 'https://tibia.fandom.com/api.php';
 
-    private const UA = 'TibiaAtlas/1.0 (lore research project; contact: admin@tibiaatlas.test)';
+    private const UA = 'TibiaAtlas/1.0 (lore research project; contact: contact@tibiaatlas.test)';
 
     /** Fallback list if the wiki "Cities" article can't be parsed. */
     private const FALLBACK = [
@@ -61,7 +60,7 @@ class ImportCities extends Command
         BookTranslator $translator,
         EntryService $entries,
     ): int {
-        $userId = User::where('email', 'admin@tibiaatlas.test')->value('id');
+        $userId = null;
 
         $names = (array) $this->option('names');
         $titles = $names

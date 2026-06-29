@@ -6,7 +6,6 @@ use App\Enums\EntryStatus;
 use App\Enums\EntryType;
 use App\Enums\Locale;
 use App\Enums\SourceType;
-use App\Models\User;
 use App\Services\EntryService;
 use Illuminate\Database\Seeder;
 
@@ -27,7 +26,7 @@ class LoreSeeder extends Seeder
     public function run(): void
     {
         $service = app(EntryService::class);
-        $userId = User::where('email', 'admin@tibiaatlas.test')->value('id');
+        $userId = null;
 
         $thais = $service->create([
             'slug' => 'thais',

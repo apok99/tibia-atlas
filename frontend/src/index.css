@@ -294,3 +294,386 @@
   width: 26px;
   height: 26px;
 }
+
+/* ---- Kill-stats dashboard "WOW" flourishes ---- */
+.ks-hero {
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(210, 61, 47, 0.22), transparent 55%),
+    radial-gradient(120% 140% at 100% 0%, rgba(216, 162, 58, 0.16), transparent 55%),
+    linear-gradient(180deg, #1c1e26 0%, #15161c 100%);
+}
+.ks-hero::after {
+  /* slow sweeping sheen */
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 30%, rgba(236, 106, 85, 0.06) 50%, transparent 70%);
+  background-size: 220% 100%;
+  animation: ks-sheen 9s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes ks-sheen {
+  0%, 100% { background-position: 120% 0; }
+  50% { background-position: -120% 0; }
+}
+
+.ks-kpi {
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+.ks-kpi::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 120% at 100% 0%, color-mix(in srgb, var(--glow) 16%, transparent), transparent 60%);
+  opacity: 0.7;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+.ks-kpi:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--glow) 55%, var(--color-line));
+  box-shadow: 0 10px 30px -12px color-mix(in srgb, var(--glow) 50%, transparent);
+}
+.ks-kpi:hover::before {
+  opacity: 1;
+}
+
+.ks-podium {
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--glow) 30%, transparent),
+    0 14px 36px -18px color-mix(in srgb, var(--glow) 70%, transparent);
+}
+.ks-podium:hover {
+  transform: translateY(-2px);
+}
+
+.ks-pulse {
+  animation: ks-pulse 1.8s ease-in-out infinite;
+}
+@keyframes ks-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(121, 177, 105, 0.55); }
+  50% { box-shadow: 0 0 0 5px rgba(121, 177, 105, 0); }
+}
+.ks-live {
+  animation: ks-blink 2s steps(2, start) infinite;
+}
+@keyframes ks-blink {
+  0%, 60% { opacity: 1; }
+  80%, 100% { opacity: 0.35; }
+}
+
+/* ---- Videowall dashboard ---- */
+.ks-panel {
+  @apply rounded-xl border border-line bg-surface p-4;
+}
+.ks-panel-wrap {
+  @apply rounded-xl border border-line bg-surface p-4;
+}
+.ks-panel-title {
+  @apply text-sm font-bold uppercase tracking-wider text-fg-dim;
+}
+.ks-skel {
+  @apply animate-pulse rounded-lg bg-bg-2;
+}
+.ks-wall {
+  overflow-y: auto;
+}
+
+/* animated horizontal bars (leaderboard / region breakdown) */
+.ks-bar-fill {
+  transform-origin: left center;
+  animation: ks-bar-grow 1s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes ks-bar-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.ks-rank-row {
+  animation: ks-rise 0.6s ease both;
+}
+@keyframes ks-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ks-collecting {
+  background: linear-gradient(90deg, rgba(121, 177, 105, 0.05), rgba(121, 177, 105, 0.16), rgba(121, 177, 105, 0.05));
+  background-size: 200% 100%;
+  animation: ks-shimmer 2.4s linear infinite;
+  border: 1px solid rgba(121, 177, 105, 0.2);
+}
+@keyframes ks-shimmer {
+  to { background-position: -200% 0; }
+}
+
+/* ---- Rotating creature orbit ---- */
+.ks-orbit {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  aspect-ratio: 1;
+  margin: 0 auto;
+}
+.ks-orbit-track {
+  position: absolute;
+  inset: 9%;
+  border-radius: 9999px;
+  border: 1px dashed rgba(170, 163, 148, 0.18);
+}
+.ks-orbit-track-2 {
+  inset: 24%;
+  border-style: solid;
+  border-color: rgba(210, 61, 47, 0.12);
+  box-shadow: inset 0 0 40px rgba(210, 61, 47, 0.08);
+}
+.ks-orbit-radar {
+  position: absolute;
+  inset: 6%;
+  border-radius: 9999px;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    rgba(210, 61, 47, 0.22) 36deg,
+    rgba(236, 106, 85, 0.04) 70deg,
+    transparent 92deg
+  );
+  animation: ks-spin 7s linear infinite;
+  pointer-events: none;
+}
+.ks-orbit-ring {
+  position: absolute;
+  inset: 0;
+  animation: ks-spin 54s linear infinite;
+}
+.ks-orbit-slot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+.ks-orbit-sprite {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  margin: -26px 0 0 -26px;
+  display: grid;
+  place-items: center;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 50% 35%, #23262e, #16171c);
+  border: 2px solid var(--color-line-2);
+  box-shadow: 0 4px 14px -4px rgba(0, 0, 0, 0.8), 0 0 14px -4px rgba(236, 106, 85, 0.5);
+  animation: ks-spin-rev 54s linear infinite;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.ks-orbit-slot:hover .ks-orbit-sprite {
+  transform: scale(1.18);
+  border-color: var(--color-accent);
+  z-index: 5;
+}
+.ks-orbit-sprite img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+.ks-orbit-skull {
+  font-size: 22px;
+}
+.ks-orbit-rank {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 9999px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  box-shadow: 0 0 8px rgba(210, 61, 47, 0.7);
+}
+.ks-orbit-count {
+  position: absolute;
+  bottom: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 6px;
+  border-radius: 9999px;
+  background: #16171c;
+  border: 1px solid var(--color-line-2);
+  color: var(--color-accent-2);
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.ks-orbit-core {
+  position: absolute;
+  inset: 32%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(27, 29, 36, 0.95) 60%, rgba(27, 29, 36, 0));
+}
+.ks-orbit-core-pulse {
+  position: absolute;
+  inset: -6%;
+  border-radius: 9999px;
+  border: 2px solid rgba(210, 61, 47, 0.4);
+  animation: ks-core-pulse 2.6s ease-out infinite;
+}
+@keyframes ks-core-pulse {
+  0% { transform: scale(0.85); opacity: 0.8; }
+  100% { transform: scale(1.25); opacity: 0; }
+}
+.ks-orbit-core-value {
+  font-size: clamp(18px, 4.5vw, 30px);
+  font-weight: 900;
+  line-height: 1;
+  color: var(--color-accent-2);
+  text-shadow: 0 0 18px rgba(236, 106, 85, 0.5);
+}
+.ks-orbit-core-label {
+  margin-top: 4px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-fg-mute);
+}
+.ks-orbit-core-sub {
+  font-size: 9px;
+  color: var(--color-fg-mute);
+  opacity: 0.7;
+}
+@keyframes ks-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes ks-spin-rev {
+  to { transform: rotate(-360deg); }
+}
+/* ---- Live kill ticker (marquee) ---- */
+.ks-ticker {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow: hidden;
+  border-radius: 9999px;
+  border: 1px solid var(--color-line);
+  background: linear-gradient(90deg, rgba(210, 61, 47, 0.08), var(--color-surface) 18%, var(--color-surface));
+}
+.ks-ticker-tag {
+  flex-shrink: 0;
+  padding: 0.5rem 0.9rem;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: #fff;
+  background: var(--color-accent);
+  border-radius: 9999px 0 0 9999px;
+  animation: ks-blink 2s steps(2, start) infinite;
+}
+.ks-ticker-mask {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent);
+}
+.ks-ticker-track {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  padding: 0.45rem 0;
+  animation: ks-marquee 48s linear infinite;
+}
+.ks-ticker:hover .ks-ticker-track {
+  animation-play-state: paused;
+}
+.ks-ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 0.85rem;
+  white-space: nowrap;
+}
+.ks-ticker-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: var(--color-accent);
+  box-shadow: 0 0 6px var(--color-accent);
+}
+.ks-ticker-item img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+.ks-ticker-skull { font-size: 14px; }
+.ks-ticker-name {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: capitalize;
+  color: var(--color-fg-dim);
+}
+.ks-ticker-count {
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--color-accent-2);
+}
+@keyframes ks-marquee {
+  to { transform: translateX(-50%); }
+}
+
+/* ---- Pulse of the worlds (server orbs) ---- */
+.ks-pulse-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 10px 4px;
+}
+.ks-orb {
+  position: relative;
+  border-radius: 9999px;
+  cursor: default;
+  animation: ks-twinkle 3.4s ease-in-out infinite;
+  transition: transform 0.2s ease;
+}
+.ks-orb:hover {
+  transform: scale(1.35);
+  z-index: 10;
+}
+.ks-orb-tip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #16171c;
+  border: 1px solid var(--color-line-2);
+  color: var(--color-fg);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  z-index: 11;
+}
+.ks-orb:hover .ks-orb-tip {
+  opacity: 1;
+}
+@keyframes ks-twinkle {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.12); filter: brightness(1.4); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ks-orbit-ring, .ks-orbit-sprite, .ks-orbit-core-pulse, .ks-orbit-radar,
+  .ks-hero::after, .ks-bar-fill, .ks-rank-row, .ks-ticker-track, .ks-orb { animation: none; }
+}

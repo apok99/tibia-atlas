@@ -73,7 +73,7 @@ class ScrapeRoster extends Command
         $bar->finish();
         $this->newLine(2);
         $this->info("Done. Imported/filled: {$imported}, skipped: {$skipped}, failed: {$failed}.");
-        $this->comment('All imports are drafts — publish from the admin panel when reviewed.');
+        $this->comment('All imports are drafts — publish them once reviewed.');
 
         return self::SUCCESS;
     }

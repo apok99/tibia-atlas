@@ -28,7 +28,14 @@ class EntryController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         $entries = Entry::query()
-            ->published()
+            // Free-text search also surfaces the item catalogue, which lives as
+            // draft entries (≈10k imported, never hand-published); every other
+            // listing stays published-only.
+            ->when(
+                $request->filled('q'),
+                fn ($q) => $q->where(fn ($w) => $w->where('status', 'published')->orWhere('type', 'item')),
+                fn ($q) => $q->published(),
+            )
             ->with('translations')
             ->when($request->filled('type'), fn ($q) => $q->ofType($request->string('type')))
             ->when($request->boolean('featured'), fn ($q) => $q->where('featured', true))
@@ -47,7 +54,9 @@ class EntryController extends Controller
                     ->where('name', 'ilike', $term)
                     ->orWhere('overview', 'ilike', $term));
             })
-            ->latest('published_at')
+            // Draft items have no published_at; keep them last, not first
+            // (Postgres sorts NULLs first on DESC by default).
+            ->orderByRaw('published_at desc nulls last')
             ->paginate($this->perPage($request, 24, 60))
             ->withQueryString();
 
@@ -58,6 +67,50 @@ class EntryController extends Controller
     private function perPage(Request $request, int $default, int $max): int
     {
         return min(max($request->integer('per_page', $default), 1), $max);
+    }
+
+    /**
+     * Global search for the home-page autocomplete. Spans every published entry
+     * PLUS the item catalogue (items are imported as drafts but must still be
+     * findable) and matches on both the name and the overview. Name matches rank
+     * above lore-text-only matches, with shorter names winning ties.
+     */
+    public function search(Request $request): JsonResponse
+    {
+        $term = trim((string) $request->string('q'));
+        if (mb_strlen($term) < 2) {
+            return response()->json(['data' => []]);
+        }
+
+        $limit = min(max($request->integer('limit', 8), 1), 25);
+        $locale = app()->getLocale();
+        $like = '%'.addcslashes($term, '%_\\').'%';
+
+        $rows = Entry::query()
+            ->join('entry_translations as et', 'et.entry_id', '=', 'entries.id')
+            ->where(fn ($w) => $w->where('entries.status', 'published')->orWhere('entries.type', 'item'))
+            ->where(fn ($w) => $w->where('et.name', 'ilike', $like)->orWhere('et.overview', 'ilike', $like))
+            ->groupBy('entries.id')
+            ->select('entries.*')
+            // Name hits rank above overview-only hits; shorter names win ties
+            // (so "Demon" beats "Demon Helmet" for the term "demon").
+            ->orderByRaw('max((et.name ilike ?)::int) desc', [$like])
+            ->orderByRaw('min(char_length(et.name)) asc')
+            ->limit($limit)
+            ->with('translations')
+            ->get();
+
+        $data = $rows
+            ->map(fn (Entry $e) => [
+                'slug' => $e->slug,
+                'type' => $e->type->value,
+                'name' => $e->translation($locale)?->name ?? $e->translation('en')?->name,
+                'image' => $e->primary_image,
+            ])
+            ->filter(fn ($i) => filled($i['name']))
+            ->values();
+
+        return response()->json(['data' => $data]);
     }
 
     /**

@@ -1,8 +1,5 @@
 <?php
 
-use App\Http\Controllers\Api\Admin\AuthController;
-use App\Http\Controllers\Api\Admin\EntryController as AdminEntryController;
-use App\Http\Controllers\Api\Admin\ImportController;
 use App\Http\Controllers\Api\BookController;
 use App\Http\Controllers\Api\EntryController;
 use App\Http\Controllers\Api\ItemController;
@@ -38,6 +35,8 @@ Route::middleware([SetLocale::class, 'throttle:public'])->group(function () {
     Route::middleware('cache.headers:public;max_age=30;s_maxage=120')->group(function () {
         Route::get('/entries', [EntryController::class, 'index']);
         Route::get('/entries/popular', [EntryController::class, 'popular']);
+        // Global autocomplete search (published lore + the item catalogue).
+        Route::get('/search', [EntryController::class, 'search']);
     });
 
     // Random/trending must stay fresh; show carries the view-count side effect.
@@ -54,39 +53,11 @@ Route::middleware([SetLocale::class, 'throttle:public'])->group(function () {
 */
 Route::prefix('killstats')->middleware(['throttle:public', 'cache.headers:public;max_age=60;s_maxage=300'])->group(function () {
     Route::get('/meta', [KillStatsController::class, 'meta']);
+    Route::get('/overview', [KillStatsController::class, 'overview']);
     Route::get('/worlds', [KillStatsController::class, 'worlds']);
     Route::get('/ranking', [KillStatsController::class, 'ranking']);
     Route::get('/series', [KillStatsController::class, 'series']);
     Route::get('/experience', [KillStatsController::class, 'experience']);
     Route::get('/entry/{slug}', [KillStatsController::class, 'entry']);
     Route::get('/boss/{slug}', [KillStatsController::class, 'boss']);
-});
-
-/*
-|--------------------------------------------------------------------------
-| Auth
-|--------------------------------------------------------------------------
-*/
-Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:login');
-
-/*
-|--------------------------------------------------------------------------
-| Admin API (Sanctum-protected editorial panel)
-|--------------------------------------------------------------------------
-*/
-Route::middleware(['auth:sanctum', SetLocale::class, 'throttle:admin'])->prefix('admin')->group(function () {
-    Route::get('/me', [AuthController::class, 'me']);
-    Route::post('/logout', [AuthController::class, 'logout']);
-
-    Route::post('/publish-drafts', [AdminEntryController::class, 'publishDrafts']);
-
-    // Admin resolves entries by numeric id (the public API binds Entry by slug).
-    Route::get('/entries', [AdminEntryController::class, 'index']);
-    Route::post('/entries', [AdminEntryController::class, 'store']);
-    Route::get('/entries/{entry:id}', [AdminEntryController::class, 'show']);
-    Route::match(['put', 'patch'], '/entries/{entry:id}', [AdminEntryController::class, 'update']);
-    Route::delete('/entries/{entry:id}', [AdminEntryController::class, 'destroy']);
-
-    Route::post('/import/tibiawiki', [ImportController::class, 'tibiawiki']);
-    Route::post('/scrape/creatures', [ImportController::class, 'scrapeCreatures']);
 });

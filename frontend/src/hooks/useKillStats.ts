@@ -42,6 +42,34 @@ export function useKillMeta() {
   })
 }
 
+export interface KillOverview {
+  latest: string | null
+  totals: {
+    players_killed_24h: number
+    killed_24h: number
+    players_killed_7d: number
+    killed_7d: number
+    exp_24h: number
+    active_races: number
+    players_online: number
+    worlds: number
+  }
+  series: SeriesPoint[]
+  online_history: { time: string; players_online: number; worlds_online: number }[]
+  online_peak: number
+  regions: { name: string; players_online: number; worlds: number }[]
+  pvp: { name: string; players_online: number; worlds: number }[]
+  top_worlds: { name: string; players_online: number }[]
+}
+
+export function useKillOverview() {
+  return useQuery({
+    queryKey: ['killstats', 'overview'],
+    queryFn: async () => (await api.get<KillOverview>('/killstats/overview')).data,
+    staleTime: 60 * 1000,
+  })
+}
+
 export function useKillWorlds() {
   return useQuery({
     queryKey: ['killstats', 'worlds'],

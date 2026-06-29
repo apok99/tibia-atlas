@@ -45,6 +45,14 @@ export interface EntryContent {
   research_gaps: string | null
 }
 
+/** A single hit from the global autocomplete search (entries + item catalogue). */
+export interface SearchResult {
+  slug: string
+  type: EntryType
+  name: string
+  image: string | null
+}
+
 export interface EntryListItem {
   id: number
   slug: string

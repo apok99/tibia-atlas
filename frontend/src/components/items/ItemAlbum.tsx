@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useItems, useItemFacets } from '../../hooks/useEntries'
 import { useDebounce } from '../../hooks/useDebounce'
@@ -20,11 +21,34 @@ export function ItemAlbum({
   const { t } = useTranslation()
   const { data: facets } = useItemFacets()
 
+  const [params, setParams] = useSearchParams()
   const [category, setCategory] = useState('')
   const [equippable, setEquippable] = useState(false)
   const [search, setSearch] = useState('')
   const [openSlug, setOpenSlug] = useState<string | null>(null)
   const [openCategory, setOpenCategory] = useState('')
+
+  // Deep link: ?open=<slug> (e.g. from the global search) opens that item's
+  // detail modal directly, even if it isn't on the current album page.
+  const openParam = params.get('open')
+  useEffect(() => {
+    if (openParam) {
+      setOpenSlug(openParam)
+      setOpenCategory('')
+    }
+  }, [openParam])
+
+  const closeModal = useCallback(() => {
+    setOpenSlug(null)
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('open')
+        return next
+      },
+      { replace: true },
+    )
+  }, [setParams])
 
   // Stable callbacks so the memoized ItemCards don't all re-render when one is
   // toggled or the modal opens (only the card whose `collected` flips re-renders).
@@ -150,7 +174,7 @@ export function ItemAlbum({
           slug={openSlug}
           collected={has(openSlug)}
           onToggle={() => toggle(openSlug, openCategory)}
-          onClose={() => setOpenSlug(null)}
+          onClose={closeModal}
         />
       )}
     </div>

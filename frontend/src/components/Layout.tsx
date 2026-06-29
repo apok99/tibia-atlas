@@ -61,12 +61,6 @@ export function Layout() {
 
           <div className="ml-auto flex items-center gap-3 lg:ml-2">
             <LanguageSwitcher />
-            <Link
-              to="/admin"
-              className="rounded-md border border-line px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-fg-mute transition hover:border-line-2 hover:text-fg"
-            >
-              {t('nav.admin')}
-            </Link>
           </div>
         </div>
       </header>

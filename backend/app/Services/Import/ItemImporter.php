@@ -25,7 +25,7 @@ class ItemImporter
 {
     private const API = 'https://tibia.fandom.com/api.php';
 
-    private const UA = 'TibiaAtlas/1.0 (lore research project; contact: admin@tibiaatlas.test)';
+    private const UA = 'TibiaAtlas/1.0 (lore research project; contact: contact@tibiaatlas.test)';
 
     /** Vocation roots we recognise in the `vocrequired` field. */
     private const VOCATIONS = ['knight', 'paladin', 'sorcerer', 'druid', 'monk'];
@@ -463,9 +463,11 @@ class ItemImporter
             return 'offhand';
         }
 
-        // Monk fist weapons hold the weapon slot. The wiki `slot` field is blank
-        // for them, so key off the category like shields/spellbooks above.
-        if (str_contains($cat, 'fist')) {
+        // All weapon kinds hold the weapon slot. The wiki `slot` field is blank or
+        // inconsistent for a large share of weapons (≈40% of swords/axes/clubs),
+        // so key off the category — that's what every weapon category reliably
+        // carries. Covers Sword/Axe/Club/Distance/Fist Fighting Weapons + Wands/Rods.
+        if (str_contains($cat, 'weapon') || str_contains($cat, 'wand') || str_contains($cat, 'rod')) {
             return 'weapon';
         }
 
@@ -483,6 +485,8 @@ class ItemImporter
             return 'neck';
         }
 
+        // Body-armour categories: trust the wiki `slot` field first, then fall
+        // back to the category so pieces with a blank slot still land correctly.
         return match (strtolower($slot)) {
             'head' => 'head',
             'body' => 'body',
@@ -492,7 +496,13 @@ class ItemImporter
             'necklace', 'amulet', 'necklace slot' => 'neck',
             'ring', 'ring slot' => 'finger',
             'extra slot', 'ammo', 'ammunition slot' => 'ammo',
-            default => null,
+            default => match (true) {
+                str_contains($cat, 'helmet') => 'head',
+                str_contains($cat, 'armor') => 'body',
+                str_contains($cat, 'legs') => 'legs',
+                str_contains($cat, 'boots') => 'feet',
+                default => null,
+            },
         };
     }
 
@@ -506,10 +516,18 @@ class ItemImporter
      */
     private function rankPower(string $slot, array $meta): int
     {
+        $cat = strtolower((string) ($meta['item_category'] ?? ''));
+        $twoHanded = str_contains(strtolower((string) ($meta['hands'] ?? '')), 'two');
+
         return match ($slot) {
             'head', 'body', 'legs', 'feet' => (int) ($meta['armor'] ?? 0),
             'offhand' => (int) ($meta['defense'] ?? $meta['armor'] ?? 0),
-            'weapon' => (int) ($meta['attack'] ?? $meta['damage_max'] ?? 0),
+            // Bows/crossbows (two-handed distance) carry no attack stat — the
+            // damage is the ammo's — so rank them by tier (level requirement).
+            // Melee, wands/rods and one-handed throwing weapons rank by attack.
+            'weapon' => (str_contains($cat, 'distance') && $twoHanded)
+                ? (int) ($meta['level'] ?? 0)
+                : (int) ($meta['attack'] ?? $meta['damage_max'] ?? 0),
             'ammo' => (int) ($meta['attack'] ?? 0),
             // Amulets/rings vary too much to rank by one stat; the required level
             // is the best available proxy for "tier".

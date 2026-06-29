@@ -7,7 +7,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
 /**
- * Runs a creature scrape in the background so the admin request returns
+ * Runs a creature scrape in the background so the triggering request returns
  * immediately and the (single-process) dev web server is never blocked by the
  * many slow TibiaWiki API calls.
  */

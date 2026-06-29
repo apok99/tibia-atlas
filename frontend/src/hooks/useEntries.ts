@@ -11,6 +11,7 @@ import type {
   LibraryIndex,
   Loadout,
   Paginated,
+  SearchResult,
 } from '../types'
 
 interface EntryFilters {
@@ -31,6 +32,25 @@ export function useEntries(filters: EntryFilters = {}) {
       const { data } = await api.get<Paginated<EntryListItem>>('/entries', { params: filters })
       return data
     },
+  })
+}
+
+/**
+ * Global autocomplete search across published lore + the whole item catalogue,
+ * ranked (name matches first). Disabled until the term is at least 2 chars.
+ */
+export function useSearch(q: string) {
+  const { i18n } = useTranslation()
+  const term = q.trim()
+  return useQuery({
+    queryKey: ['search', i18n.language, term],
+    enabled: term.length >= 2,
+    staleTime: 60 * 1000,
+    queryFn: async () => {
+      const { data } = await api.get<{ data: SearchResult[] }>('/search', { params: { q: term } })
+      return data.data
+    },
+    placeholderData: keepPreviousData,
   })
 }
 

@@ -67,23 +67,6 @@ GET  /api/entries?type=&q=&featured=&lang=     list published entries
 GET  /api/entries/{slug}?lang=                 full article
 ```
 
-**Auth**
-```
-POST /api/auth/login                           { email, password } → { token }
-```
-
-**Admin (Bearer token, Sanctum)**
-```
-GET    /api/admin/me
-POST   /api/admin/logout
-GET    /api/admin/entries
-POST   /api/admin/entries                      create (with translations + sources)
-GET    /api/admin/entries/{id}
-PUT    /api/admin/entries/{id}
-DELETE /api/admin/entries/{id}
-POST   /api/admin/import/tibiawiki             { title, type } → draft entry
-```
-
 ---
 
 ## Local development (Windows)
@@ -101,8 +84,6 @@ composer install            # first time
 php artisan migrate:fresh --seed
 php artisan serve            # http://127.0.0.1:8000
 ```
-
-Seeded admin: **admin@tibiaatlas.test** / **password**
 
 ### Frontend
 ```sh
@@ -122,7 +103,7 @@ editor to verify, split into Canon vs Interpretations, and translate.
 
 ## Conventions
 
-- Content is created/edited via the **admin panel** (`/admin`) or imported, then
+- Content is created/edited via the seeders or imported from the CLI, then
   reviewed before publishing.
 - The frontend UI strings live in `frontend/src/i18n.ts`; article content comes
   bilingual from the API.

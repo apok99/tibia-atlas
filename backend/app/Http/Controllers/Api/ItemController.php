@@ -66,16 +66,19 @@ class ItemController extends Controller
     ];
 
     /**
-     * An item counts as obtainable if a creature drops it or an NPC sells it.
-     * `marketable` alone is NOT enough: pure collector relics (Golden Helmet,
-     * Winged/Horned Helmet) are flagged marketable yet have no farmable source,
-     * so the configurator would otherwise crown a helmet no player can realistically
-     * get. Quest-/event-/store-only gear with neither a drop nor an NPC seller is
-     * left out of the build (it still shows in the album catalogue).
+     * What counts as real build gear (vs. un-farmable decoration). An item
+     * qualifies if it has a farm source (a creature drops it or an NPC sells it)
+     * OR it carries a level/vocation requirement — the mark of actual equipment.
+     * That requirement clause is what lets through the token-exchange end-game
+     * sets (Sanguine, the Soul tabards, the Soul* boots) which have no drop yet
+     * are the genuine best-in-slot, while still excluding pure collector relics
+     * (Golden/Winged/Horned Helmet) that have no source, no level and no vocation.
      */
     private const OBTAINABLE_SQL =
         "(jsonb_array_length(coalesce(meta->'dropped_by', '[]'::jsonb)) > 0".
-        " or jsonb_array_length(coalesce(meta->'npc_buy', '[]'::jsonb)) > 0)";
+        " or jsonb_array_length(coalesce(meta->'npc_buy', '[]'::jsonb)) > 0".
+        " or coalesce((meta->>'level')::int, 0) > 0".
+        " or coalesce(meta->'vocations', '[]'::jsonb) <> '[]'::jsonb)";
 
     /**
      * Paginated item list for the album, filterable by category / equip slot /

@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import './i18n'
 import './index.css'
 import App from './App.tsx'
-import { AuthProvider } from './context/AuthContext'
 import { PlayerProvider } from './context/PlayerContext'
 
 const queryClient = new QueryClient({
@@ -14,11 +13,9 @@ const queryClient = new QueryClient({
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <PlayerProvider>
-          <App />
-        </PlayerProvider>
-      </AuthProvider>
+      <PlayerProvider>
+        <App />
+      </PlayerProvider>
     </QueryClientProvider>
   </StrictMode>,
 )

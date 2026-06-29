@@ -6,9 +6,13 @@ import type { EntryListItem } from '../types'
 export function EntryCard({ entry }: { entry: EntryListItem }) {
   const { t } = useTranslation()
 
+  // Items are draft catalogue entries with no public lore page; open their
+  // album modal instead of a 404ing /entry route.
+  const to = entry.type === 'item' ? `/items?open=${entry.slug}` : `/entry/${entry.slug}`
+
   return (
     <Link
-      to={`/entry/${entry.slug}`}
+      to={to}
       className="panel group flex items-stretch overflow-hidden transition hover:border-line-2"
     >
       <div className="sprite-tile relative flex w-24 shrink-0 items-center justify-center border-r border-line">

@@ -1,47 +1,35 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { useGlossary } from '../hooks/useGlossary'
+import { useSearch } from '../hooks/useEntries'
+import { useDebounce } from '../hooks/useDebounce'
 import { TypeIcon } from './TypeIcon'
+import type { SearchResult } from '../types'
 
-/** Accent- and case-insensitive normalisation for matching (Paladín → paladin). */
-const normalize = (s: string) =>
-  s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
-
-const MAX_RESULTS = 8
+/** Where a search hit lives: items open their album modal, lore opens its page. */
+const hrefFor = (r: SearchResult) =>
+  r.type === 'item' ? `/items?open=${r.slug}` : `/entry/${r.slug}`
 
 /**
  * Hero search input with a live autocomplete dropdown. Suggestions come from the
- * cached glossary (all published entries); picking one jumps straight to its
- * page, while submitting runs a full search on the browse page.
+ * global `/search` endpoint, which spans every published entry AND the full item
+ * catalogue (matched by name and lore text). Picking one jumps straight to it;
+ * submitting runs the full search on the browse page.
  */
 export function SearchBox({ placeholder }: { placeholder?: string }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { data: glossary } = useGlossary()
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(-1)
   const boxRef = useRef<HTMLDivElement>(null)
 
-  const results = useMemo(() => {
-    const term = normalize(q)
-    if (term.length < 2 || !glossary) return []
-    const scored: { item: (typeof glossary)[number]; score: number; idx: number }[] = []
-    for (const item of glossary) {
-      const idx = normalize(item.name).indexOf(term)
-      if (idx === -1) continue
-      // Prefix matches rank above mid-word matches; shorter names break ties.
-      scored.push({ item, score: idx === 0 ? 0 : 1, idx })
-    }
-    scored.sort(
-      (a, b) => a.score - b.score || a.idx - b.idx || a.item.name.length - b.item.name.length,
-    )
-    return scored.slice(0, MAX_RESULTS).map((s) => s.item)
-  }, [q, glossary])
+  // Debounce so a fast typist doesn't fire an ilike scan on every keystroke.
+  const debouncedQ = useDebounce(q.trim(), 250)
+  const { data: results = [] } = useSearch(debouncedQ)
 
   // Reset the highlighted row whenever the suggestion list changes.
-  useEffect(() => setActive(-1), [q])
+  useEffect(() => setActive(-1), [results])
 
   // Close the dropdown when clicking outside the component.
   useEffect(() => {
@@ -52,16 +40,16 @@ export function SearchBox({ placeholder }: { placeholder?: string }) {
     return () => document.removeEventListener('mousedown', onDown)
   }, [])
 
-  const goToEntry = (slug: string) => {
+  const goTo = (r: SearchResult) => {
     setOpen(false)
     setQ('')
-    navigate(`/entry/${slug}`)
+    navigate(hrefFor(r))
   }
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
     if (active >= 0 && results[active]) {
-      goToEntry(results[active].slug)
+      goTo(results[active])
       return
     }
     if (!q.trim()) return
@@ -84,7 +72,7 @@ export function SearchBox({ placeholder }: { placeholder?: string }) {
     }
   }
 
-  const showDropdown = open && (results.length > 0 || normalize(q).length >= 2)
+  const showDropdown = open && q.trim().length >= 2
 
   return (
     <div ref={boxRef} className="relative w-full">
@@ -122,12 +110,21 @@ export function SearchBox({ placeholder }: { placeholder?: string }) {
                     role="option"
                     aria-selected={i === active}
                     onMouseEnter={() => setActive(i)}
-                    onClick={() => goToEntry(r.slug)}
+                    onClick={() => goTo(r)}
                     className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition ${
                       i === active ? 'bg-surface-2' : 'hover:bg-surface-2'
                     }`}
                   >
-                    <TypeIcon type={r.type} className="h-4 w-4 shrink-0 text-fg-mute" />
+                    {r.image ? (
+                      <img
+                        src={r.image}
+                        alt=""
+                        className="h-6 w-6 shrink-0 object-contain"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <TypeIcon type={r.type} className="h-4 w-4 shrink-0 text-fg-mute" />
+                    )}
                     <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg">
                       {r.name}
                     </span>
