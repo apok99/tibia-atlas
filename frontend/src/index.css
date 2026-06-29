@@ -446,13 +446,16 @@
 }
 .ks-orbit-slot {
   position: absolute;
+  width: 52px;
+  height: 52px;
+  /* Centre the slot on its (left, top) point; the sprite fills it, so its own
+     transform stays free for the counter-rotation animation. */
   transform: translate(-50%, -50%);
 }
 .ks-orbit-sprite {
   position: relative;
   width: 52px;
   height: 52px;
-  margin: -26px 0 0 -26px;
   display: grid;
   place-items: center;
   border-radius: 9999px;
@@ -627,46 +630,55 @@
   to { transform: translateX(-50%); }
 }
 
-/* ---- Pulse of the worlds (server orbs) ---- */
+/* ---- Pulse of the worlds (named server orbs) ---- */
 .ks-pulse-grid {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  gap: 14px;
-  padding: 10px 4px;
+  gap: 10px 6px;
+  padding: 8px 4px;
 }
-.ks-orb {
-  position: relative;
-  border-radius: 9999px;
-  cursor: default;
-  animation: ks-twinkle 3.4s ease-in-out infinite;
+.ks-world {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 62px;
+  gap: 3px;
   transition: transform 0.2s ease;
 }
-.ks-orb:hover {
-  transform: scale(1.35);
-  z-index: 10;
+.ks-world:hover {
+  transform: translateY(-3px) scale(1.06);
 }
-.ks-orb-tip {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: #16171c;
-  border: 1px solid var(--color-line-2);
-  color: var(--color-fg);
-  font-size: 11px;
-  font-weight: 700;
+.ks-world-orbwrap {
+  height: 42px;            /* fixed so different-sized orbs align by center */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ks-orb {
+  border-radius: 9999px;
+  animation: ks-twinkle 3.4s ease-in-out infinite;
+}
+.ks-world:hover .ks-orb {
+  filter: brightness(1.5);
+}
+.ks-world-name {
+  max-width: 62px;
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+  letter-spacing: 0.01em;
   white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease;
-  z-index: 11;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.ks-orb:hover .ks-orb-tip {
-  opacity: 1;
+.ks-world-count {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--color-fg-mute);
+  line-height: 1;
 }
 @keyframes ks-twinkle {
   0%, 100% { transform: scale(1); filter: brightness(1); }

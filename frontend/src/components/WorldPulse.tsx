@@ -43,25 +43,28 @@ export function WorldPulse({ worlds }: { worlds: KillWorld[] }) {
       <div className="ks-pulse-grid">
         {sorted.map((w, i) => {
           const ratio = w.players_online / max
-          const size = 12 + Math.sqrt(ratio) * 38 // 12..50px, sqrt so small worlds stay visible
+          const size = 10 + Math.sqrt(ratio) * 30 // 10..40px, sqrt so small worlds stay visible
           const color = REGION_COLOR[w.location ?? ''] ?? FALLBACK
+          const offline = w.players_online === 0
           return (
-            <span
-              key={w.name}
-              className="ks-orb"
-              style={{
-                width: `${size}px`,
-                height: `${size}px`,
-                background: color,
-                boxShadow: `0 0 ${6 + ratio * 18}px ${color}`,
-                animationDelay: `${(i % 24) * 0.12}s`,
-                opacity: w.players_online > 0 ? 1 : 0.25,
-              }}
-            >
-              <span className="ks-orb-tip">
-                {w.name} · {compact(w.players_online)}
+            <div key={w.name} className="ks-world" style={{ opacity: offline ? 0.4 : 1 }}>
+              <span className="ks-world-orbwrap">
+                <span
+                  className="ks-orb"
+                  style={{
+                    width: `${size}px`,
+                    height: `${size}px`,
+                    background: color,
+                    boxShadow: `0 0 ${6 + ratio * 18}px ${color}`,
+                    animationDelay: `${(i % 24) * 0.12}s`,
+                  }}
+                />
               </span>
-            </span>
+              <span className="ks-world-name" style={{ color }}>
+                {w.name}
+              </span>
+              <span className="ks-world-count">{compact(w.players_online)}</span>
+            </div>
           )
         })}
       </div>

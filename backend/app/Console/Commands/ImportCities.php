@@ -108,8 +108,11 @@ class ImportCities extends Command
                 $display = $this->cleanName($title);
                 [$slug, $existing] = $this->resolveSlug($display);
 
-                // Resume: skip finished imports unless --refresh.
-                if (! $refresh && $existing && ($existing->meta['imported_from'] ?? null) === 'tibiawiki') {
+                // Resume: skip finished imports unless --refresh. Only skip an
+                // entry that is ALREADY a city — a place still typed as a concept
+                // must fall through so it gets promoted, even if its lore is full.
+                if (! $refresh && $existing && $existing->type === EntryType::City
+                    && ($existing->meta['imported_from'] ?? null) === 'tibiawiki') {
                     $en = $existing->translation('en');
                     $es = $existing->translations->firstWhere('locale', 'es');
                     if ($en?->canon && (! $translate || $es?->canon)) {
