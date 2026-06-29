@@ -28,24 +28,86 @@ const PALETTE = ['#d23d2f', '#3fa7d6', '#6cc551', '#e0a531', '#9b5de5', '#f15bb5
 // the available tiles — tweak freely if any feels off.
 type Landmark = { name: string; x: number; y: number; floor: number }
 const LANDMARKS: Landmark[] = [
-  { name: "Ab'Dendriel", x: 32732, y: 31637, floor: 7 },
-  { name: 'Ankrahmun', x: 33097, y: 32673, floor: 7 },
-  { name: 'Carlin', x: 32360, y: 31782, floor: 7 },
-  { name: 'Cormaya', x: 33276, y: 31891, floor: 7 },
-  { name: 'Darashia', x: 33213, y: 32468, floor: 7 },
-  { name: 'Edron', x: 33193, y: 31784, floor: 7 },
+  { name: "Ab'Dendriel", x: 32665, y: 31652, floor: 7 },
+  { name: 'Ankrahmun', x: 33146, y: 32816, floor: 7 },
+  { name: 'Carlin', x: 32343, y: 31792, floor: 7 },
+  { name: 'Cormaya', x: 33307, y: 31999, floor: 7 },
+  { name: 'Darashia', x: 33236, y: 32432, floor: 7 },
+  { name: 'Edron', x: 33211, y: 31830, floor: 7 },
   { name: 'Farmine', x: 32919, y: 31023, floor: 7 },
-  { name: 'Kazordoon', x: 32649, y: 31925, floor: 7 },
-  { name: 'Krailos', x: 33677, y: 31487, floor: 7 },
-  { name: 'Liberty Bay', x: 32317, y: 32825, floor: 7 },
-  { name: 'Port Hope', x: 32623, y: 32761, floor: 7 },
-  { name: 'Rathleton', x: 33619, y: 31893, floor: 7 },
+  { name: 'Kazordoon', x: 32614, y: 31923, floor: 7 },
+  { name: 'Krailos', x: 33580, y: 31584, floor: 7 },
+  { name: 'Liberty Bay', x: 32309, y: 32794, floor: 7 },
+  { name: 'Port Hope', x: 32629, y: 32769, floor: 7 },
+  { name: 'Rathleton', x: 33607, y: 31955, floor: 7 },
   { name: 'Rookgaard', x: 32097, y: 32219, floor: 7 },
   { name: 'Roshamuul', x: 33524, y: 32477, floor: 7 },
-  { name: 'Svargrond', x: 32253, y: 31097, floor: 7 },
-  { name: 'Thais', x: 32369, y: 32241, floor: 7 },
-  { name: 'Venore', x: 32957, y: 32076, floor: 7 },
-  { name: 'Yalahar', x: 32816, y: 31106, floor: 7 },
+  { name: 'Svargrond', x: 32278, y: 31146, floor: 7 },
+  { name: 'Thais', x: 32365, y: 32224, floor: 7 },
+  { name: 'Venore', x: 32947, y: 32081, floor: 7 },
+  { name: 'Yalahar', x: 32805, y: 31234, floor: 7 },
+]
+
+// Named hunting regions / dungeons / islands shown as smaller on-map labels
+// (not in the navigation dropdowns). Coordinates are approximate centres within
+// the covered tile region — anchored to known landmarks or the community map
+// data — and easy to nudge if any feels off.
+type Place = Landmark & { kind: 'city' | 'region' }
+// Coordinates verified from TibiaWiki's {{Mapper Coords}} (the location field of
+// each place's article): game_x = floor*256 + offset. Underground areas are
+// labelled at their surface position so the name marks the spot on the map.
+const REGIONS: { name: string; x: number; y: number }[] = [
+  // Thais & central mainland
+  { name: 'Mount Sternum', x: 32494, y: 32072 },
+  { name: 'Femor Hills', x: 32569, y: 31803 },
+  { name: 'Fibula', x: 32261, y: 32385 },
+  { name: 'Plains of Havoc', x: 32735, y: 32297 },
+  { name: 'Demona', x: 32479, y: 31663 },
+  { name: 'Outlaw Camp', x: 32643, y: 32222 },
+  { name: 'Maze of Lost Souls', x: 32490, y: 31697 },
+  { name: 'Dark Cathedral', x: 32664, y: 32344 },
+  // Carlin & northern / western islands
+  { name: 'Folda', x: 32020, y: 31572 },
+  { name: 'Ramoa', x: 31931, y: 32567 },
+  { name: 'Goroma', x: 32095, y: 32583 },
+  { name: 'Treasure Island', x: 32156, y: 32948 },
+  { name: 'Laguna Islands', x: 32466, y: 32939 },
+  // Ab'Dendriel & orc lands
+  { name: 'Elvenbane', x: 32590, y: 31645 },
+  { name: 'Mistrock', x: 32567, y: 31442 },
+  { name: 'Orc Fortress', x: 32930, y: 31774 },
+  { name: 'Vengoth', x: 32916, y: 31516 },
+  // Edron & the east
+  { name: 'Cyclopolis', x: 33251, y: 31698 },
+  { name: 'Hero Cave', x: 33164, y: 31638 },
+  { name: 'Stonehome', x: 33303, y: 31773 },
+  { name: 'Grimvale', x: 33333, y: 31690 },
+  { name: 'Oramond', x: 33479, y: 31986 },
+  // Venore & the Ghostlands
+  { name: 'Shadowthorn', x: 33075, y: 32170 },
+  { name: 'Drefia', x: 33018, y: 32443 },
+  { name: 'Forbidden Lands', x: 32973, y: 32549 },
+  // Desert (Darashia / Ankrahmun)
+  { name: "Mal'ouquah", x: 33041, y: 32627 },
+  { name: 'Chor', x: 32952, y: 32855 },
+  // Tiquanda jungle (Port Hope)
+  { name: 'Tiquanda', x: 32812, y: 32699 },
+  { name: 'Banuta', x: 32807, y: 32542 },
+  { name: 'Trapwood', x: 32688, y: 32911 },
+  // Underground demon lairs
+  { name: 'Hellgate', x: 32675, y: 31647 },
+  // Svargrond archipelago (ice)
+  { name: 'Nibelor', x: 32353, y: 31053 },
+  { name: 'Helheim', x: 32478, y: 31179 },
+  { name: 'Okolnir', x: 32230, y: 31412 },
+  { name: 'Formorgar Glacier', x: 32102, y: 31144 },
+  { name: 'Chyllfroest', x: 32060, y: 31034 },
+]
+
+// Every name drawn on the map: the cities (prominent) plus the regions (subtle).
+const MAP_LABELS: Place[] = [
+  ...LANDMARKS.map((l): Place => ({ ...l, kind: 'city' })),
+  ...REGIONS.map((r): Place => ({ ...r, floor: 7, kind: 'region' })),
 ]
 
 type Marker = { id: string; x: number; y: number; floor: number; label: string }
@@ -575,11 +637,12 @@ export function MapPage() {
     const grp = cityGroupRef.current
     if (!grp) return
     grp.clearLayers()
-    for (const lm of LANDMARKS) {
+    for (const lm of MAP_LABELS) {
       if (lm.floor !== floor) continue
+      const cls = lm.kind === 'city' ? 'tm-city' : 'tm-city tm-region'
       const icon = L.divIcon({
         className: '',
-        html: `<div class="tm-city">${escapeHtml(lm.name)}</div>`,
+        html: `<div class="${cls}">${escapeHtml(lm.name)}</div>`,
         iconSize: [0, 0],
       })
       L.marker(toLatLng(lm.x, lm.y), { icon, interactive: true, keyboard: false })

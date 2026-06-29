@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\Locale;
+use App\Support\ContentCache;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -32,6 +33,13 @@ class EntryTranslation extends Model
         return [
             'locale' => Locale::class,
         ];
+    }
+
+    /** Names feed the glossary cache — invalidate it when a translation changes. */
+    protected static function booted(): void
+    {
+        static::saved(fn () => ContentCache::bump());
+        static::deleted(fn () => ContentCache::bump());
     }
 
     /** @return BelongsTo<Entry, $this> */

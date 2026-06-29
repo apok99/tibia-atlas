@@ -8,11 +8,12 @@ const navItems = [
   { to: '/browse/creature', key: 'nav.bestiary' },
   { to: '/browse/character', key: 'nav.characters' },
   { to: '/browse/city', key: 'nav.cities' },
-  { to: '/browse/quest', key: 'nav.quests' },
-  { to: '/browse/event', key: 'nav.events' },
+  { to: '/quests', key: 'nav.quests' },
+  { to: '/items', key: 'nav.items' },
   { to: '/history', key: 'nav.library' },
   { to: '/map', key: 'nav.map' },
   { to: '/killstats', key: 'nav.killstats' },
+  { to: '/timeline', key: 'nav.timeline' },
   { to: '/soundtrack', key: 'nav.soundtrack' },
 ]
 

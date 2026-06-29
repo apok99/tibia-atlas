@@ -5,8 +5,11 @@ import type {
   Entry,
   EntryListItem,
   Facets,
+  ItemDetail,
+  ItemFacets,
   LibraryBook,
   LibraryIndex,
+  Loadout,
   Paginated,
 } from '../types'
 
@@ -111,6 +114,68 @@ export function useLibraryBook(slug: string | undefined) {
       return data.data
     },
     // Keep the book text visible while it re-loads in the other language.
+    placeholderData: keepPreviousData,
+  })
+}
+
+/** The item catalogue, paginated and filterable (album gallery). */
+export function useItems(
+  filters: {
+    category?: string
+    slot?: string
+    vocation?: string
+    equippable?: '0' | '1'
+    q?: string
+    page?: number
+    per_page?: number
+  } = {},
+) {
+  const { i18n } = useTranslation()
+  return useQuery({
+    queryKey: ['items', i18n.language, filters],
+    queryFn: async () => {
+      const { data } = await api.get<Paginated<EntryListItem>>('/items', { params: filters })
+      return data
+    },
+    placeholderData: keepPreviousData,
+  })
+}
+
+/** Item categories with counts + overall totals (album sections + progress). */
+export function useItemFacets() {
+  const { i18n } = useTranslation()
+  return useQuery({
+    queryKey: ['item-facets', i18n.language],
+    queryFn: async () => {
+      const { data } = await api.get<ItemFacets>('/items/facets')
+      return data
+    },
+  })
+}
+
+/** Full detail for one item (the album click-through modal). */
+export function useItemDetail(slug: string | undefined) {
+  const { i18n } = useTranslation()
+  return useQuery({
+    queryKey: ['item-detail', i18n.language, slug],
+    enabled: !!slug,
+    queryFn: async () => {
+      const { data } = await api.get<{ data: ItemDetail }>(`/items/${slug}`)
+      return data.data
+    },
+  })
+}
+
+/** Best-in-slot loadout (+ alternatives) for a level and vocation. */
+export function useLoadout(level: number, vocation: string, enabled = true) {
+  const { i18n } = useTranslation()
+  return useQuery({
+    queryKey: ['loadout', i18n.language, level, vocation],
+    enabled,
+    queryFn: async () => {
+      const { data } = await api.get<Loadout>('/items/loadout', { params: { level, vocation } })
+      return data
+    },
     placeholderData: keepPreviousData,
   })
 }

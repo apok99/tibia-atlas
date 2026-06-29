@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\EntryStatus;
 use App\Enums\EntryType;
+use App\Support\ContentCache;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -45,6 +46,13 @@ class Entry extends Model
             'reviewed' => 'boolean',
             'reviewed_at' => 'datetime',
         ];
+    }
+
+    /** Invalidate the public content caches (glossary, facets) on any change. */
+    protected static function booted(): void
+    {
+        static::saved(fn () => ContentCache::bump());
+        static::deleted(fn () => ContentCache::bump());
     }
 
     public function getRouteKeyName(): string

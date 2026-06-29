@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\EntryView;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -14,3 +15,10 @@ Artisan::command('inspire', function () {
 Schedule::command('tibia:etl-killstats')
     ->hourly()
     ->withoutOverlapping();
+
+// The raw view log only feeds the trailing-window "trending" calc (72h) and the
+// all-time counter is denormalized on the entry, so anything older than 90 days
+// is dead weight. Prune daily to keep the table from growing unbounded.
+Schedule::call(function () {
+    EntryView::where('created_at', '<', now()->subDays(90))->delete();
+})->daily()->name('prune-entry-views')->withoutOverlapping();

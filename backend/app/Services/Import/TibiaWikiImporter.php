@@ -102,6 +102,12 @@ class TibiaWikiImporter
                 $meta = array_merge($data['meta'], $meta);
                 $links = $data['links'];
 
+                // Keep the textual spawn location ("where it is found") so the
+                // creature page can name the places next to the map button.
+                if ($data['location']) {
+                    $meta['location'] = $data['location'];
+                }
+
                 // Build the lore from the infobox fields ONLY — never the parsed
                 // intro (that is just the rendered stat table). The Library
                 // description lives in `bestiarytext`; bosses use `notes` instead.

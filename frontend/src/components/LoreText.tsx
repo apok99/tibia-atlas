@@ -16,7 +16,9 @@ export function LoreText({ text, currentSlug }: { text: string; currentSlug?: st
 
   if (!text) return null
 
-  const names = (glossary ?? []).filter((g) => g.slug !== currentSlug && g.name.length >= 3)
+  const names = (Array.isArray(glossary) ? glossary : []).filter(
+    (g) => g.slug !== currentSlug && g.name.length >= 3,
+  )
   if (names.length === 0) return <>{text}</>
 
   const lookup = new Map(names.map((g) => [g.name.toLowerCase(), g]))

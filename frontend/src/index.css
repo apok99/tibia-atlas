@@ -237,6 +237,21 @@
   color: #fff;
   border-color: var(--color-accent);
 }
+/* Secondary regions / dungeons / islands: smaller, quieter, no chip border. */
+.tm-region {
+  padding: 0 3px;
+  background: transparent;
+  border-color: transparent;
+  color: #cdbfa0;
+  font-size: 10px;
+  font-weight: 600;
+  font-style: italic;
+  letter-spacing: 0.02em;
+}
+.tm-region:hover {
+  color: #fff;
+  border-color: transparent;
+}
 
 /* ---- Creature spawn icons on the map ---- */
 .tm-spawn {

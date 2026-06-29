@@ -5,12 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\EntryListResource;
 use App\Http\Resources\EntryResource;
+use App\Jobs\RecordEntryView;
 use App\Models\Entry;
 use App\Models\EntryView;
+use App\Support\ContentCache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 /**
@@ -47,10 +48,16 @@ class EntryController extends Controller
                     ->orWhere('overview', 'ilike', $term));
             })
             ->latest('published_at')
-            ->paginate($request->integer('per_page', 24))
+            ->paginate($this->perPage($request, 24, 60))
             ->withQueryString();
 
         return EntryListResource::collection($entries);
+    }
+
+    /** Clamp a client-supplied page size to a sane range. */
+    private function perPage(Request $request, int $default, int $max): int
+    {
+        return min(max($request->integer('per_page', $default), 1), $max);
     }
 
     /**
@@ -60,24 +67,32 @@ class EntryController extends Controller
      */
     public function facets(Request $request): JsonResponse
     {
-        $base = Entry::published()
-            ->when($request->filled('type'), fn ($q) => $q->ofType($request->string('type')));
+        $type = (string) $request->string('type');
 
-        $classifications = (clone $base)
-            ->selectRaw("meta->>'classification' as value, count(*) as count")
-            ->whereRaw("meta->>'classification' is not null")
-            ->whereRaw("meta->>'classification' <> ''")
-            ->groupByRaw("meta->>'classification'")
-            ->orderByDesc('count')
-            ->get()
-            ->map(fn ($row) => ['value' => $row->value, 'count' => (int) $row->count]);
+        // Facets only change when content does; cache them and let any entry
+        // write invalidate the whole set via the content version stamp.
+        $payload = Cache::remember(ContentCache::key("facets:{$type}"), 3600, function () use ($request, $type) {
+            $base = Entry::published()
+                ->when($type !== '', fn ($q) => $q->ofType($type));
 
-        $bosses = (clone $base)->where('meta->rank', 'Boss')->count();
+            $classifications = (clone $base)
+                ->selectRaw("meta->>'classification' as value, count(*) as count")
+                ->whereRaw("meta->>'classification' is not null")
+                ->whereRaw("meta->>'classification' <> ''")
+                ->groupByRaw("meta->>'classification'")
+                ->orderByDesc('count')
+                ->get()
+                ->map(fn ($row) => ['value' => $row->value, 'count' => (int) $row->count])
+                // Cache a plain array (see glossary): a serialized Collection can
+                // round-trip into a __PHP_Incomplete_Class on some cache drivers.
+                ->all();
 
-        return response()->json([
-            'classifications' => $classifications,
-            'bosses' => $bosses,
-        ]);
+            $bosses = (clone $base)->where('meta->rank', 'Boss')->count();
+
+            return ['classifications' => $classifications, 'bosses' => $bosses];
+        });
+
+        return response()->json($payload);
     }
 
     public function show(Request $request, Entry $entry): EntryResource
@@ -101,21 +116,21 @@ class EntryController extends Controller
     {
         $visitor = hash('sha256', ($request->ip() ?? '').'|'.($request->userAgent() ?? ''));
 
-        $seenRecently = EntryView::query()
-            ->where('entry_id', $entry->id)
-            ->where('visitor', $visitor)
-            ->where('created_at', '>=', now()->subHours(self::VIEW_DEDUP_HOURS))
-            ->exists();
+        // Atomic dedup in the cache: Cache::add only succeeds the first time the
+        // key is set, so a repeat view within the window is a single cache op and
+        // never touches the database — no SELECT on the hot path.
+        $isFreshView = Cache::add(
+            "view:{$entry->id}:{$visitor}",
+            1,
+            now()->addHours(self::VIEW_DEDUP_HOURS)
+        );
 
-        if ($seenRecently) {
+        if (! $isFreshView) {
             return;
         }
 
-        EntryView::create(['entry_id' => $entry->id, 'visitor' => $visitor]);
-
-        // Bump the all-time counter without touching the entry's updated_at
-        // (a view is not an editorial change).
-        Entry::whereKey($entry->id)->update(['view_count' => DB::raw('view_count + 1')]);
+        // Persist off the request path (queued in production).
+        RecordEntryView::dispatch($entry->id, $visitor);
     }
 
     /**
@@ -175,7 +190,7 @@ class EntryController extends Controller
             ->when($request->filled('type'), fn ($q) => $q->ofType($request->string('type')))
             ->orderByDesc('view_count')
             ->latest('published_at')
-            ->paginate($request->integer('per_page', 12))
+            ->paginate($this->perPage($request, 12, 48))
             ->withQueryString();
 
         return EntryListResource::collection($entries);
@@ -188,12 +203,33 @@ class EntryController extends Controller
      */
     public function random(Request $request): AnonymousResourceCollection
     {
+        $count = min(max($request->integer('count', 5), 1), 24);
+        $exclude = $request->filled('exclude') ? (string) $request->string('exclude') : null;
+
+        // `ORDER BY RANDOM()` full-scans + sorts the whole table on every call.
+        // Instead keep a cheap cached pool of published [id => slug] (invalidated
+        // by the content version stamp) and sample it in PHP.
+        $pool = Cache::remember(
+            ContentCache::key('random-pool'),
+            3600,
+            fn () => Entry::published()->pluck('slug', 'id')->all()
+        );
+
+        $ids = array_keys($pool);
+        if ($exclude !== null) {
+            $ids = array_values(array_filter($ids, fn ($id) => $pool[$id] !== $exclude));
+        }
+
+        if ($ids === []) {
+            return EntryListResource::collection(collect());
+        }
+
+        shuffle($ids);
+        $pick = array_slice($ids, 0, $count);
+
         $entries = Entry::query()
-            ->published()
+            ->whereIn('id', $pick)
             ->with('translations')
-            ->when($request->filled('exclude'), fn ($q) => $q->where('slug', '!=', $request->string('exclude')))
-            ->inRandomOrder()
-            ->limit($request->integer('count', 5))
             ->get();
 
         return EntryListResource::collection($entries);
@@ -207,18 +243,29 @@ class EntryController extends Controller
     {
         $locale = app()->getLocale();
 
-        $items = Entry::published()
-            ->with('translations')
-            ->get()
-            ->map(fn (Entry $e) => [
-                'slug' => $e->slug,
-                'type' => $e->type->value,
-                'name' => $e->translation($locale)?->name,
-            ])
-            ->filter(fn ($i) => filled($i['name']))
-            // Longest names first so multi-word matches win over their substrings.
-            ->sortByDesc(fn ($i) => mb_strlen($i['name']))
-            ->values();
+        // The glossary is requested on virtually every page (to auto-link entity
+        // mentions) yet only changes when content is edited. Cache it per locale,
+        // selecting just the columns the payload needs instead of hydrating the
+        // full Entry + every translation field.
+        $items = Cache::remember(ContentCache::key("glossary:{$locale}"), 3600, function () use ($locale) {
+            return Entry::published()
+                ->select('id', 'slug', 'type')
+                ->with(['translations' => fn ($q) => $q->select('id', 'entry_id', 'locale', 'name')])
+                ->get()
+                ->map(fn (Entry $e) => [
+                    'slug' => $e->slug,
+                    'type' => $e->type->value,
+                    'name' => $e->translation($locale)?->name,
+                ])
+                ->filter(fn ($i) => filled($i['name']))
+                // Longest names first so multi-word matches win over their substrings.
+                ->sortByDesc(fn ($i) => mb_strlen($i['name']))
+                ->values()
+                // Cache a plain array, not a Collection: some cache drivers
+                // round-trip a serialized Collection into a __PHP_Incomplete_Class,
+                // which then JSON-encodes as an object and breaks the client.
+                ->all();
+        });
 
         return response()->json(['data' => $items]);
     }

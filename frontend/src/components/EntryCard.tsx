@@ -25,6 +25,11 @@ export function EntryCard({ entry }: { entry: EntryListItem }) {
         {entry.featured && (
           <span className="absolute left-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent" />
         )}
+        {typeof entry.recommended_level === 'number' && (
+          <span className="absolute bottom-1 left-1 rounded bg-bg/85 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-accent-2 ring-1 ring-line">
+            {t('quests.lvl', { n: entry.recommended_level })}
+          </span>
+        )}
       </div>
       <div className="flex min-w-0 flex-1 flex-col justify-center p-3">
         <div className="flex items-center gap-1.5 text-fg-mute">

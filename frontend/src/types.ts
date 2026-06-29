@@ -63,6 +63,14 @@ export interface EntryListItem {
   boss?: boolean
   /** Official bestiary difficulty (creatures only), e.g. "Medium". */
   difficulty?: string | null
+  /** Recommended level (quests only), from meta.recommended_level. */
+  recommended_level?: number | null
+  /** Region the quest takes place in (quests only). */
+  region?: string | null
+  /** Access requirement, e.g. "Premium" (quests only). */
+  access?: string | null
+  /** Item stats (items only); null for every other type. */
+  item?: ItemStats | null
   reviewed?: boolean
   reviewed_at?: string | null
   available_locales?: Locale[] | null
@@ -134,6 +142,93 @@ export interface LibraryBook {
 export interface Facets {
   classifications: { value: string; count: number }[]
   bosses: number
+}
+
+/** Canonical equipment slot used by the album filters and the configurator. */
+export type EquipSlot =
+  | 'head'
+  | 'neck'
+  | 'body'
+  | 'weapon'
+  | 'offhand'
+  | 'legs'
+  | 'finger'
+  | 'feet'
+  | 'ammo'
+
+/** Structured item stats attached to item entries (EntryListItem.item). */
+export interface ItemStats {
+  category: string | null
+  object_class: string | null
+  slot: EquipSlot | null
+  vocations: string[]
+  level: number | null
+  attack: number | null
+  defense: number | null
+  defense_mod: string | null
+  armor: number | null
+  power: number | null
+  weight: number | null
+  hands: string | null
+  weapon_type: string | null
+  damage_range: string | null
+  damage_type: string | null
+  imbue_slots: number | null
+}
+
+/** An NPC that buys or sells an item, with the price when fixed. */
+export interface NpcDeal {
+  npc: string
+  price?: number
+}
+
+/** A creature that drops an item, resolved to its lore entry when it exists. */
+export interface Dropper {
+  name: string
+  slug: string | null
+  image: string | null
+  published: boolean
+}
+
+/** Full item detail (the album's click-through modal). */
+export interface ItemDetail {
+  slug: string
+  name: string | null
+  image: string | null
+  overview: string | null
+  notes: string | null
+  item: ItemStats
+  value: string | null
+  npc_value: number | null
+  npc_buy: NpcDeal[]
+  npc_sell: NpcDeal[]
+  dropped_by: Dropper[]
+  wiki_url: string | null
+}
+
+/** Item category with its count, for album sections + progress denominators. */
+export interface ItemCategory {
+  value: string
+  count: number
+}
+
+export interface ItemFacets {
+  categories: ItemCategory[]
+  total: number
+  equippable: number
+}
+
+/** One equipment slot's recommendation in the loadout configurator. */
+export interface LoadoutSlot {
+  slot: EquipSlot
+  best: EntryListItem
+  alternatives: EntryListItem[]
+}
+
+export interface Loadout {
+  level: number
+  vocation: string
+  slots: LoadoutSlot[]
 }
 
 export interface Paginated<T> {

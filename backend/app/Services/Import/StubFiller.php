@@ -184,6 +184,129 @@ class StubFiller
     }
 
     /**
+     * Extract the full lead LORE of a city / geography page: everything before
+     * the first "== section ==", with Mapper-Coords replaced by their human map
+     * label, news-archive/see-also pointers dropped, hatnotes and the infobox
+     * removed, and the punctuation gaps those inline templates leave tidied up.
+     *
+     * Unlike the generic describeGeography() (which truncates to one section and
+     * lets the "This article is about…" hatnote and ", ." gaps leak through),
+     * this returns the city's complete intro lore — used by tibia:import-cities.
+     *
+     * @return array{overview: string, canon: string, meta: array<string, string>}|null
+     */
+    public function fetchCityLore(string $title): ?array
+    {
+        $json = $this->http()->get(self::API, [
+            'action'    => 'parse',
+            'format'    => 'json',
+            'page'      => $title,
+            'prop'      => 'wikitext',
+            'redirects' => 1,
+        ])->json();
+
+        $wikitext = $json['parse']['wikitext']['*'] ?? null;
+        if (! is_string($wikitext) || $wikitext === '') {
+            return null;
+        }
+
+        $meta = $this->geographyMeta($wikitext);
+
+        // Candidate prose blocks in priority order: the lead (text before the
+        // first "== heading =="), then each non-gameplay section body — some
+        // city pages (Darashia) keep their lore in a "The City" section instead
+        // of the infobox-only lead.
+        $chunks = [preg_split('/^\s*==[^=].*$/m', $wikitext, 2)[0] ?? $wikitext];
+
+        if (preg_match_all('/^==[^=]\s*(.+?)\s*==\s*$\n(.*?)(?=^==[^=]|\z)/ms', $wikitext, $sm, PREG_SET_ORDER)) {
+            $skip = '/\b(NPC|Creature|Quest|Hunting|Near Place|Related|Hometown|Location|Spawn|Item|Achievement|Map|Trivia|Gallery|Reference)/i';
+            foreach ($sm as $s) {
+                if (! preg_match($skip, $s[1])) {
+                    $chunks[] = $s[2];
+                }
+            }
+        }
+
+        // Concatenate every qualifying block so the canon holds the city's full
+        // lore/history, not just its first paragraph; the overview is the first
+        // substantial block (the intro).
+        $parts = [];
+        foreach ($chunks as $chunk) {
+            $prose = $this->cleanCityChunk($chunk);
+            if (Str::length($prose) >= 40) {
+                $parts[] = $prose;
+            }
+        }
+
+        if (! $parts) {
+            return null;
+        }
+
+        $canon = trim(preg_replace("/\n{3,}/", "\n\n", implode("\n\n", $parts)) ?? implode("\n\n", $parts));
+        if (Str::length($canon) < 60) {
+            return null;
+        }
+
+        return [
+            'overview' => Str::limit($parts[0], 600, '…'),
+            'canon'    => $canon,
+            'meta'     => $meta,
+        ];
+    }
+
+    /** Reduce a city wikitext block (lead or section) to clean reading prose. */
+    private function cleanCityChunk(string $chunk): string
+    {
+        // Drop the disambiguation hatnote block and ":''about… see…''" lines.
+        $chunk = preg_replace('/<noinclude>.*?<\/noinclude>/is', '', $chunk) ?? $chunk;
+        $chunk = preg_replace('/^\s*:+\s*\'\'.*$/m', '', $chunk) ?? $chunk;
+
+        // Sub-section headings (=== Houses ===) → plain label lines.
+        $chunk = preg_replace('/^\s*={2,}\s*(.+?)\s*={2,}\s*$/m', "$1", $chunk) ?? $chunk;
+
+        // Map-coord templates: drop generic "here/map" pointers outright, keep
+        // meaningful place labels (Frodo's Hut, Games Hall…); then drop the rest.
+        $chunk = preg_replace('/\{\{Mapper Coords\|[^}]*?text=\s*(?:here|map|this map|located here|click here)\s*\}\}/i', '', $chunk) ?? $chunk;
+        $chunk = preg_replace('/\{\{Mapper Coords\|[^}]*?text=([^|}]+)[^}]*\}\}/i', '$1', $chunk) ?? $chunk;
+        $chunk = preg_replace('/\{\{Mapper Coords\|[^}]*\}\}/i', '', $chunk) ?? $chunk;
+        $chunk = preg_replace('/\{\{OfficialNewsArchive\|[^}]*\}\}/i', '', $chunk) ?? $chunk;
+        $chunk = preg_replace('/\'*\s*See also:\s*\'*/i', '', $chunk) ?? $chunk;
+
+        // Strip the infobox + any remaining templates / tables / file links.
+        $chunk = $this->stripTemplates($chunk);
+        $chunk = $this->stripTables($chunk);
+        $chunk = preg_replace('/\[\[(?:File|Image|Category):[^\]]*\]\]/i', '', $chunk) ?? $chunk;
+
+        $prose = $this->cleanWikitext($chunk);
+        // Tidy the punctuation left where inline templates were removed.
+        $prose = preg_replace('/[ \t]+([,.;:])/', '$1', $prose) ?? $prose;
+        $prose = preg_replace('/,(\s*,)+/', ',', $prose) ?? $prose;
+        $prose = preg_replace('/,\s*\./', '.', $prose) ?? $prose;
+        $prose = preg_replace('/\(\s*\)/', '', $prose) ?? $prose;
+        $prose = preg_replace('/[ \t]{2,}/', ' ', $prose) ?? $prose;
+
+        return trim(preg_replace("/\n{3,}/", "\n\n", $prose) ?? $prose);
+    }
+
+    /** Pull ruler / nearby places / organisations from an Infobox Geography. */
+    private function geographyMeta(string $w): array
+    {
+        $meta = [];
+        foreach (['ruler' => 'ruler', 'near_places' => 'near', 'organizations' => 'organization'] as $key => $field) {
+            $val = $this->field($w, $field);
+            if ($val === null) {
+                continue;
+            }
+            $clean = trim($this->cleanWikitext($val));
+            if ($clean !== '') {
+                $meta[$key] = $clean;
+            }
+        }
+
+        return $meta;
+    }
+
+    /**
      * Legacy compat: kept for refillEntry calls from outside that expect a string.
      *
      * @internal
@@ -375,27 +498,47 @@ class StubFiller
         return $text ? ['overview' => Str::limit($text, 400, '…'), 'canon' => $text] : null;
     }
 
-    /** Creatures — Infobox Creature (bestiarytext approach) */
+    /** Creatures — Infobox Creature (bestiarytext only; notes are gameplay tips, not lore) */
     private function describeCreature(string $w): ?array
     {
         $bestiary = $this->field($w, 'bestiarytext');
-        $notes    = $this->field($w, 'notes');
-
         $overview = $bestiary ? $this->cleanWikitext($bestiary) : null;
-        $canon    = $overview;
 
-        if ($notes) {
-            $n = $this->cleanWikitext($notes);
-            if ($n && strlen($n) > 20) {
-                $canon = $overview ? "{$overview}\n\n{$n}" : $n;
-            }
+        if ($overview && strlen($overview) >= 20) {
+            return ['overview' => $overview, 'canon' => $overview];
         }
 
-        if (! $overview && ! $notes) {
+        // No official Bestiary text — build a minimal factual stub from infobox metadata.
+        $name        = $this->field($w, 'name');
+        $primary     = $this->field($w, 'primarytype');
+        $class       = $this->field($w, 'creatureclass');
+        $sounds      = $this->field($w, 'sounds');
+        $isBoss      = strtolower($this->field($w, 'isboss') ?? '') === 'yes';
+
+        if (! $name) {
             return null;
         }
 
-        return ['overview' => $overview ?? Str::limit($canon ?? '', 400), 'canon' => $canon ?? ''];
+        $type = implode(' ', array_filter([$primary, $class ? "({$class})" : null]));
+        $desc = $isBoss
+            ? "{$name} is a boss creature" . ($type ? " of the {$type} type" : '') . " in Tibia."
+            : "{$name} is a " . ($type ?: 'creature') . " in Tibia.";
+
+        if ($sounds) {
+            // {{Sound List|cry1|cry2|...}} — extract entries before stripping the template.
+            if (preg_match('/\{\{Sound List\|([^}]+)\}\}/i', $sounds, $sm)) {
+                $cries = array_filter(array_map('trim', explode('|', $sm[1])));
+            } else {
+                $cleaned = $this->cleanWikitext($sounds);
+                $cries   = array_filter(array_map('trim', preg_split('/\||,|\n/', $cleaned) ?: []));
+            }
+            $cries = array_values(array_filter(array_slice($cries, 0, 3), fn ($l) => strlen($l) > 3));
+            if ($cries) {
+                $desc .= ' Known utterances: "' . implode('", "', $cries) . '".';
+            }
+        }
+
+        return strlen($desc) >= 20 ? ['overview' => $desc, 'canon' => $desc] : null;
     }
 
     /** Mounts — Infobox Mount */
@@ -425,32 +568,31 @@ class StubFiller
         return $text ? ['overview' => Str::limit($text, 400, '…'), 'canon' => $text] : null;
     }
 
-    /** Hunt locations — Infobox Hunt */
+    /** Hunt locations — Infobox Hunt (location geography only; no game metrics) */
     private function describeHunt(string $w): ?array
     {
         $name     = $this->field($w, 'name');
         $city     = $this->field($w, 'city');
         $location = $this->field($w, 'location');
-        $best1    = $this->field($w, 'bestloot');
-        $best2    = $this->field($w, 'bestloot2');
-        $exp      = $this->field($w, 'exp');
+        $image    = $this->field($w, 'image'); // Often the name of the primary creature
 
         $parts = [];
         if ($name && $city) {
-            $parts[] = "{$name} is a hunting ground near {$city}.";
-        }
-        if ($location) {
-            $parts[] = 'Location: ' . $this->cleanWikitext($location) . '.';
-        }
-        $loot = implode(', ', array_filter([$best1, $best2]));
-        if ($loot) {
-            $parts[] = 'Notable loot: ' . $this->cleanWikitext($loot) . '.';
-        }
-        if ($exp) {
-            $parts[] = "Experience: {$exp}.";
+            $parts[] = "{$name} is a region near {$city} in Tibia.";
+        } elseif ($name) {
+            $parts[] = "{$name} is a location in Tibia.";
         }
 
-        $text = implode("\n\n", array_filter($parts));
+        if ($location) {
+            $loc = $this->cleanWikitext($location);
+            // Strip map coordinate tags left by cleanWikitext.
+            $loc = trim(preg_replace('/\(([^)]{0,10})\)/', '', $loc));
+            if ($loc) {
+                $parts[] = "Located in {$loc}.";
+            }
+        }
+
+        $text = implode(' ', array_filter($parts));
 
         return $text ? ['overview' => $text, 'canon' => $text] : null;
     }
@@ -680,6 +822,9 @@ class StubFiller
     private function cleanWikitext(string $text): string
     {
         $text = preg_replace('/\[\[(?:[^|\]]*\|)?([^\]]+)\]\]/', '$1', $text) ?? $text;
+        // [http://... label] → label ; bare [http://...] → remove
+        $text = preg_replace('/\[https?:\/\/[^\s\]]+\s+([^\]]+)\]/', '$1', $text) ?? $text;
+        $text = preg_replace('/\[https?:\/\/[^\]]+\]/', '', $text) ?? $text;
         $text = preg_replace('/<ref[^>]*>.*?<\/ref>/is', '', $text) ?? $text;
         $text = preg_replace('/<ref[^>]*\/>/i', '', $text) ?? $text;
         // Strip nested templates that weren't stripped at the block level.

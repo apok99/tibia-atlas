@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\Admin\EntryController as AdminEntryController;
 use App\Http\Controllers\Api\Admin\ImportController;
 use App\Http\Controllers\Api\BookController;
 use App\Http\Controllers\Api\EntryController;
+use App\Http\Controllers\Api\ItemController;
 use App\Http\Controllers\Api\KillStatsController;
 use App\Http\Middleware\SetLocale;
 use Illuminate\Support\Facades\Route;
@@ -14,19 +15,36 @@ use Illuminate\Support\Facades\Route;
 | Public API (read-only) — resolves content locale from ?lang= / header.
 |--------------------------------------------------------------------------
 */
-Route::middleware(SetLocale::class)->group(function () {
-    Route::get('/entries', [EntryController::class, 'index']);
-    Route::get('/glossary', [EntryController::class, 'glossary']);
-    Route::get('/spawns', [EntryController::class, 'spawns']);
+Route::middleware([SetLocale::class, 'throttle:public'])->group(function () {
+    // Cache-Control tiers. `s_maxage` lets Cloudflare serve the bulk of read
+    // traffic without hitting PHP; `max_age` is the browser's own window.
+    // Stable, rarely-changing data (glossary/facets/spawns/books) gets long CDN
+    // TTLs; listings get short ones. `show` is deliberately NOT CDN-cached so
+    // its view counter keeps incrementing on real hits.
+    Route::middleware('cache.headers:public;max_age=120;s_maxage=600')->group(function () {
+        Route::get('/glossary', [EntryController::class, 'glossary']);
+        Route::get('/spawns', [EntryController::class, 'spawns']);
+        Route::get('/entries/facets', [EntryController::class, 'facets']);
+        Route::get('/books', [BookController::class, 'index']);
+        Route::get('/books/{book:slug}', [BookController::class, 'show']);
+        // Item catalogue: album gallery + loadout configurator.
+        Route::get('/items', [ItemController::class, 'index']);
+        Route::get('/items/facets', [ItemController::class, 'facets']);
+        Route::get('/items/loadout', [ItemController::class, 'loadout']);
+        // Detail must come AFTER the literal item routes or it'd bind them as a slug.
+        Route::get('/items/{slug}', [ItemController::class, 'show']);
+    });
+
+    Route::middleware('cache.headers:public;max_age=30;s_maxage=120')->group(function () {
+        Route::get('/entries', [EntryController::class, 'index']);
+        Route::get('/entries/popular', [EntryController::class, 'popular']);
+    });
+
+    // Random/trending must stay fresh; show carries the view-count side effect.
     Route::get('/entries/random', [EntryController::class, 'random']);
     Route::get('/entries/trending', [EntryController::class, 'trending']);
-    Route::get('/entries/popular', [EntryController::class, 'popular']);
-    Route::get('/entries/facets', [EntryController::class, 'facets']);
-    Route::get('/entries/{entry}', [EntryController::class, 'show']);
-
-    // The in-game library — readable Tibia books.
-    Route::get('/books', [BookController::class, 'index']);
-    Route::get('/books/{book:slug}', [BookController::class, 'show']);
+    Route::get('/entries/{entry}', [EntryController::class, 'show'])
+        ->middleware('cache.headers:public;max_age=15;etag');
 });
 
 /*
@@ -34,7 +52,7 @@ Route::middleware(SetLocale::class)->group(function () {
 | Kill statistics (TibiaData ETL warehouse) — read-only, locale-agnostic.
 |--------------------------------------------------------------------------
 */
-Route::prefix('killstats')->group(function () {
+Route::prefix('killstats')->middleware(['throttle:public', 'cache.headers:public;max_age=60;s_maxage=300'])->group(function () {
     Route::get('/meta', [KillStatsController::class, 'meta']);
     Route::get('/worlds', [KillStatsController::class, 'worlds']);
     Route::get('/ranking', [KillStatsController::class, 'ranking']);
@@ -49,14 +67,14 @@ Route::prefix('killstats')->group(function () {
 | Auth
 |--------------------------------------------------------------------------
 */
-Route::post('/auth/login', [AuthController::class, 'login']);
+Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:login');
 
 /*
 |--------------------------------------------------------------------------
 | Admin API (Sanctum-protected editorial panel)
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth:sanctum', SetLocale::class])->prefix('admin')->group(function () {
+Route::middleware(['auth:sanctum', SetLocale::class, 'throttle:admin'])->prefix('admin')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/logout', [AuthController::class, 'logout']);
 

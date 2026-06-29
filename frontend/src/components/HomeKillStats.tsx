@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { useKillExperience, useKillMeta, useKillRanking } from '../hooks/useKillStats'
@@ -5,6 +6,18 @@ import { useKillExperience, useKillMeta, useKillRanking } from '../hooks/useKill
 const RED = '#d23d2f'
 const CORAL = '#ec6a55'
 const GOLD = '#d8a23a'
+
+/** Auto-rotate interval for the dual "deadliest" card (ms). */
+const DEADLIEST_ROTATE_MS = 6000
+
+/**
+ * The five Tibiadrome arena creatures (killstats race names, lowercase plurals).
+ * They top the players-killed ranking because the arena is run constantly, but
+ * they aren't open-world hunting creatures — so we surface them in their own
+ * "deadliest" variant instead of letting them eclipse the real world ranking.
+ */
+const TIBIADROME = new Set(['domestikions', 'hoodinions', 'mearidions', 'murmillions', 'scissorions'])
+const isTibiadrome = (race: string) => TIBIADROME.has(race.trim().toLowerCase())
 
 /** Compact number: 1_457_335 → "1.46M", 824_120 → "824k". */
 function compact(n: number): string {
@@ -23,7 +36,7 @@ export function HomeKillStats() {
   const { t } = useTranslation()
   const { data: meta } = useKillMeta()
   const { data: topKilled } = useKillRanking({ world: 'all', metric: 'killed', window: 'day', limit: 14 })
-  const { data: deadliest } = useKillRanking({ world: 'all', metric: 'players_killed', window: 'day', limit: 8 })
+  const { data: deadliest } = useKillRanking({ world: 'all', metric: 'players_killed', window: 'day', limit: 20 })
   const { data: topExp } = useKillExperience({ world: 'all', window: 'day', limit: 1 })
 
   // Drop non-monster pseudo-races: "players" (PvP deaths) and bracketed groups
@@ -35,10 +48,35 @@ export function HomeKillStats() {
   const mostKilled = creatures[0]
   const board = creatures.slice(0, 8)
   const maxKilled = board[0]?.killed ?? 1
-  const killer = (deadliest ?? []).find((r) => isMonster(r.race))
   const xp = topExp?.[0]
 
-  if (!mostKilled && !killer && !xp) return null
+  // Two flavours of "deadliest": the deadliest open-world creature and the
+  // deadliest Tibiadrome arena creature. The card carousels between them.
+  const deadlyMonsters = (deadliest ?? []).filter((r) => isMonster(r.race))
+  const killerWorld = deadlyMonsters.find((r) => !isTibiadrome(r.race))
+  const killerDrome = deadlyMonsters.find((r) => isTibiadrome(r.race))
+  const deadliestVariants = [
+    killerWorld && {
+      kicker: t('home.deadliestWorld'),
+      race: killerWorld.race,
+      slug: killerWorld.slug,
+      image: killerWorld.image,
+      value: killerWorld.players_killed.toLocaleString(),
+      unit: t('ks.playersKilled'),
+      color: RED,
+    },
+    killerDrome && {
+      kicker: t('home.deadliestDrome'),
+      race: killerDrome.race,
+      slug: killerDrome.slug,
+      image: killerDrome.image,
+      value: killerDrome.players_killed.toLocaleString(),
+      unit: t('ks.playersKilled'),
+      color: RED,
+    },
+  ].filter((v): v is HighlightCardProps => Boolean(v))
+
+  if (!mostKilled && deadliestVariants.length === 0 && !xp) return null
 
   return (
     <section>
@@ -66,17 +104,7 @@ export function HomeKillStats() {
             color={CORAL}
           />
         )}
-        {killer && (
-          <HighlightCard
-            kicker={t('home.deadliest')}
-            race={killer.race}
-            slug={killer.slug}
-            image={killer.image}
-            value={killer.players_killed.toLocaleString()}
-            unit={t('ks.playersKilled')}
-            color={RED}
-          />
-        )}
+        {deadliestVariants.length > 0 && <RotatingHighlight variants={deadliestVariants} />}
         {xp && (
           <HighlightCard
             kicker={t('home.topExp')}
@@ -157,15 +185,7 @@ export function HomeKillStats() {
   )
 }
 
-function HighlightCard({
-  kicker,
-  race,
-  slug,
-  image,
-  value,
-  unit,
-  color,
-}: {
+interface HighlightCardProps {
   kicker: string
   race: string
   slug: string | null
@@ -173,7 +193,47 @@ function HighlightCard({
   value: string
   unit: string
   color: string
-}) {
+}
+
+/**
+ * One headline card that cycles through several variants (used for the dual
+ * open-world / Tibiadrome "deadliest" card). Auto-rotates; dots jump directly.
+ */
+function RotatingHighlight({ variants }: { variants: HighlightCardProps[] }) {
+  const [i, setI] = useState(0)
+  const n = variants.length
+
+  useEffect(() => {
+    if (n < 2) return
+    const id = setInterval(() => setI((p) => (p + 1) % n), DEADLIEST_ROTATE_MS)
+    return () => clearInterval(id)
+  }, [n])
+
+  const active = variants[i % n]
+
+  return (
+    <div className="relative h-full">
+      <HighlightCard {...active} />
+      {n > 1 && (
+        <div className="absolute bottom-2 right-3 flex gap-1.5">
+          {variants.map((v, j) => (
+            <button
+              key={v.kicker}
+              type="button"
+              aria-label={v.kicker}
+              onClick={() => setI(j)}
+              className={`h-1.5 w-1.5 rounded-full transition ${
+                j === i % n ? 'bg-fg-dim' : 'bg-line hover:bg-fg-mute'
+              }`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function HighlightCard({ kicker, race, slug, image, value, unit, color }: HighlightCardProps) {
   const inner = (
     <div className="flex h-full items-center gap-3 rounded-lg border border-line bg-surface p-4 transition hover:border-line-2">
       <div className="sprite-tile grid h-16 w-16 shrink-0 place-items-center rounded border border-line">

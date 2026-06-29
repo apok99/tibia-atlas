@@ -36,6 +36,31 @@ class EntryListResource extends JsonResource
             'trend_views' => isset($this->trend_views) ? (int) $this->trend_views : null,
             'boss' => data_get($this->meta, 'rank') === 'Boss',
             'difficulty' => data_get($this->meta, 'difficulty'),
+            // Quest progression facets — let the quests index group cards by
+            // recommended level and show region/access without a full load.
+            'recommended_level' => data_get($this->meta, 'recommended_level'),
+            'region' => data_get($this->meta, 'region'),
+            'access' => data_get($this->meta, 'access'),
+            // Item stats — null for non-items. Powers the album sections, the
+            // collection progress, and the loadout configurator.
+            'item' => $this->type === \App\Enums\EntryType::Item ? [
+                'category' => data_get($this->meta, 'item_category'),
+                'object_class' => data_get($this->meta, 'object_class'),
+                'slot' => data_get($this->meta, 'equip_slot'),
+                'vocations' => data_get($this->meta, 'vocations', []),
+                'level' => data_get($this->meta, 'level'),
+                'attack' => data_get($this->meta, 'attack'),
+                'defense' => data_get($this->meta, 'defense'),
+                'defense_mod' => data_get($this->meta, 'defense_mod'),
+                'armor' => data_get($this->meta, 'armor'),
+                'power' => data_get($this->meta, 'power'),
+                'weight' => data_get($this->meta, 'weight'),
+                'hands' => data_get($this->meta, 'hands'),
+                'weapon_type' => data_get($this->meta, 'weapon_type'),
+                'damage_range' => data_get($this->meta, 'damage_range'),
+                'damage_type' => data_get($this->meta, 'damage_type'),
+                'imbue_slots' => data_get($this->meta, 'imbue_slots'),
+            ] : null,
             'reviewed' => (bool) $this->reviewed,
             'reviewed_at' => $this->reviewed_at?->toIso8601String(),
             'available_locales' => $this->relationLoaded('translations')

@@ -36,11 +36,13 @@ export function EntryPage() {
   const others = related.filter((r) => r.type !== 'creature' && r.type !== 'character')
 
   // Internal bookkeeping fields that must never appear in the stat block.
-  const hiddenMeta = ['imported_from', 'wiki_pageid', 'auto_stub', 'artwork', 'note']
+  const hiddenMeta = ['imported_from', 'wiki_pageid', 'auto_stub', 'artwork', 'note', 'character_kind', 'location', 'importance_rank']
   const metaEntries = Object.entries(entry.meta ?? {}).filter(
     ([k, v]) => !hiddenMeta.includes(k) && v !== null && v !== '' && typeof v !== 'object',
   )
   const artwork = typeof entry.meta?.artwork === 'string' ? entry.meta.artwork : null
+  // Textual spawn locations from TibiaWiki ("Plains of Havoc, Hellgate, …").
+  const location = typeof entry.meta?.location === 'string' ? entry.meta.location : null
 
   return (
     <div className="space-y-6">
@@ -86,6 +88,19 @@ export function EntryPage() {
                 </svg>
                 {t('entry.openMap')}
               </Link>
+            )}
+
+            {entry.type === 'creature' && location && (
+              <p className="mt-3 text-sm leading-relaxed text-fg-dim">
+                <span className="mr-1.5 inline-flex items-center gap-1 align-middle text-[11px] font-bold uppercase tracking-wider text-accent">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                    <circle cx="12" cy="10" r="3" />
+                  </svg>
+                  {t('entry.foundIn')}:
+                </span>
+                <LoreText text={location} currentSlug={entry.slug} />
+              </p>
             )}
 
             {lead && (
