@@ -22,3 +22,7 @@ Schedule::command('tibia:etl-killstats')
 Schedule::call(function () {
     EntryView::where('created_at', '<', now()->subDays(90))->delete();
 })->daily()->name('prune-entry-views')->withoutOverlapping();
+
+// Telescope monitoring data: keep only the last 3 days so the telescope_entries
+// tables can't grow unbounded on the box.
+Schedule::command('telescope:prune --hours=72')->daily();
