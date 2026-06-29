@@ -10,6 +10,7 @@ use App\Models\Entry;
 use App\Services\EntryService;
 use App\Services\Import\BookTranslator;
 use App\Services\Import\StubFiller;
+use App\Services\Import\TibiaWikiImporter;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -37,13 +38,28 @@ class ImportCities extends Command
 
     private const UA = 'TibiaAtlas/1.0 (lore research project; contact: contact@tibiaatlas.test)';
 
-    /** Fallback list if the wiki "Cities" article can't be parsed. */
+    /** The canonical hometowns (wiki "Cities" article) — fallback if it can't be parsed. */
     private const FALLBACK = [
         'Dawnport', 'Rookgaard', "Ab'Dendriel", 'Carlin', 'Kazordoon', 'Thais',
         'Venore', 'Ankrahmun', 'Darashia', 'Edron', 'Farmine', 'Gray Beach',
         'Issavi', 'Liberty Bay', 'Port Hope', 'Rathleton', 'Roshamuul',
         'Svargrond', 'Yalahar',
     ];
+
+    /**
+     * Genuinely inhabited villages / smaller settlements (houses, NPCs, lore) —
+     * the populated places from the wiki "Villages" list, minus the pure
+     * creature-lairs and hunting grounds that page also mixes in (Drefia,
+     * Demona, Dark Pyramid, Mal'ouquah, Shadowthorn, Trapwood, …).
+     */
+    private const VILLAGES = [
+        'Cormaya', 'Fibula', 'Greenshore', 'Feyrist', 'Krailos Village', 'Northport',
+        'Senja', 'Stonehome', 'Sabrehaven', 'Mintwallin', 'Beregar', 'Mistrock',
+        'Banuta', 'Inukaya', 'Chor', 'Krimhorn', 'Bittermor', 'Nargor',
+    ];
+
+    /** List/maintenance pages that show up in the category but aren't places. */
+    private const NOT_PLACES = ['Towns', 'Cities', 'Villages', 'Geography', 'Hometown'];
 
     protected $signature = 'tibia:import-cities
         {--limit=0 : Max cities to process (0 = all)}
@@ -59,13 +75,14 @@ class ImportCities extends Command
         StubFiller $filler,
         BookTranslator $translator,
         EntryService $entries,
+        TibiaWikiImporter $importer,
     ): int {
         $userId = null;
 
         $names = (array) $this->option('names');
         $titles = $names
             ? array_values(array_unique(array_map('trim', $names)))
-            : $this->resolveTownList();
+            : $this->resolveTownList($importer);
 
         $limit = (int) $this->option('limit');
         if ($limit > 0) {
@@ -179,13 +196,16 @@ class ImportCities extends Command
     }
 
     /**
-     * The canonical town list = the == [[Town]] == headings on the wiki "Cities"
-     * article. Falls back to a hardcoded list if the page can't be fetched.
+     * The full settlement list = the hometowns (wiki "Cities" article headings)
+     * ∪ Category:Towns (catches newer towns: Marapur, Moonfall, Podzilla,
+     * Salgadara, Silvertides…) ∪ the curated VILLAGES set. Each source degrades
+     * gracefully so a single failed fetch can't empty the list.
      *
      * @return list<string>
      */
-    private function resolveTownList(): array
+    private function resolveTownList(TibiaWikiImporter $importer): array
     {
+        $hometowns = [];
         try {
             $json = Http::acceptJson()
                 ->withHeaders(['User-Agent' => self::UA])
@@ -197,17 +217,27 @@ class ImportCities extends Command
                 ])->json();
 
             $wikitext = $json['parse']['wikitext']['*'] ?? '';
-            if (preg_match_all('/^==+\s*\[\[([^\]|]+)/m', $wikitext, $m) && $m[1]) {
-                $towns = array_values(array_unique(array_map('trim', $m[1])));
-                if (count($towns) >= 10) {
-                    return $towns;
-                }
+            if (preg_match_all('/^==+\s*\[\[([^\]|]+)/m', $wikitext, $m)) {
+                $hometowns = array_map('trim', $m[1]);
             }
         } catch (\Throwable $e) {
-            $this->warn('Could not read the wiki Cities list, using the fallback set: '.$e->getMessage());
+            $this->warn('Could not read the wiki Cities list: '.$e->getMessage());
+        }
+        if (count($hometowns) < 10) {
+            $hometowns = self::FALLBACK;
         }
 
-        return self::FALLBACK;
+        $catTowns = [];
+        try {
+            $catTowns = $importer->listCategory('Towns', 200);
+        } catch (\Throwable $e) {
+            $this->warn('Could not read Category:Towns: '.$e->getMessage());
+        }
+
+        $all = array_merge($hometowns, $catTowns, self::VILLAGES);
+        $all = array_values(array_unique(array_map('trim', $all)));
+
+        return array_values(array_filter($all, fn ($t) => $t !== '' && ! in_array($t, self::NOT_PLACES, true)));
     }
 
     /** Strip a disambiguating "(City)" suffix some titles carry. */
@@ -217,24 +247,42 @@ class ImportCities extends Command
     }
 
     /**
-     * Pick a slug for the town. If a non-city entry already owns the base slug
-     * (e.g. the character "Thais" vs the city), suffix it.
+     * Pick the slug + existing entry to write. Most place names already exist as
+     * an empty/filled `concept` or `location` stub (auto-registered from lore
+     * links) — promote those IN PLACE to keep the clean URL + inbound auto-links
+     * (no "<slug>-city" duplicate). Only when a genuinely different entity owns
+     * the base slug (the character "Thais", a creature, a quest…) do we suffix.
+     * withTrashed() so a soft-deleted owner is detected instead of colliding on
+     * INSERT (the unique-slug constraint covers trashed rows too).
      *
      * @return array{0: string, 1: ?Entry}
      */
     private function resolveSlug(string $display): array
     {
         $base = Str::slug($display) ?: 'city';
-        $existing = Entry::with('translations')->where('slug', $base)->first();
+        $existing = Entry::withTrashed()->with('translations')->where('slug', $base)->first();
 
-        if ($existing && $existing->type !== EntryType::City) {
-            $slug = $base.'-city';
-            $existing = Entry::with('translations')->where('slug', $slug)->first();
-
-            return [$slug, $existing];
+        if (! $existing) {
+            return [$base, null];
         }
 
-        return [$base, $existing];
+        $promotable = [EntryType::City, EntryType::Concept, EntryType::Location];
+        if (in_array($existing->type, $promotable, true)) {
+            if ($existing->trashed()) {
+                $existing->restore();
+            }
+
+            return [$base, $existing];
+        }
+
+        // A different real entity owns the base slug → use a "<slug>-city" entry.
+        $slug = $base.'-city';
+        $dup = Entry::withTrashed()->with('translations')->where('slug', $slug)->first();
+        if ($dup && $dup->trashed()) {
+            $dup->restore();
+        }
+
+        return [$slug, $dup];
     }
 
     private function tryTranslate(BookTranslator $translator, ?string $text): ?string
