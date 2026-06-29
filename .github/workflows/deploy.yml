@@ -67,6 +67,10 @@ jobs:
           composer install --no-dev --optimize-autoloader --no-interaction
           php artisan migrate --force
           php artisan optimize:clear
+          # Regenerate the package manifest explicitly: composer's post-autoload
+          # package:discover can throw in that context and leave it broken, which
+          # drops package routes (API 404s). Re-running it standalone is reliable.
+          php artisan package:discover
           php artisan config:cache
           php artisan route:cache
           php artisan event:cache
