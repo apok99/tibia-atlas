@@ -99,7 +99,10 @@ class EntryReadService
         $locale = app()->getLocale();
         $terms = $this->searchTerms->topTerms($days, $limit);
 
-        if ($terms->count() >= self::MIN_TERMS) {
+        // Only show the "most searched" view once the log can fill the whole
+        // module with real opened-entry searches; until then show "most viewed"
+        // so the widget is always a full list of real entries (never a stub of 3-4).
+        if ($terms->count() >= $limit) {
             // Resolve every slug at once for the sprite + link + localised name.
             $entries = $this->search->bySlugs($terms->pluck('slug')->all());
 
