@@ -19,6 +19,11 @@ class SearchTermsQuery
     public function topTerms(int $days, int $limit): Collection
     {
         return DB::table('search_terms')
+            // Legacy rows logged raw typed fragments (e.g. "mord") with no slug;
+            // they can't resolve to an entry, so skip them — only real opened
+            // entries count, and the service falls back to "most viewed" until
+            // enough genuine slug-based searches accumulate.
+            ->whereNotNull('slug')
             ->where('last_searched_at', '>=', now()->subDays($days))
             ->orderByDesc('hits')
             ->limit($limit)
