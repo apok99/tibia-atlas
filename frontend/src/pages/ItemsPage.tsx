@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useCollection } from '../hooks/useCollection'
 import { ItemAlbum } from '../components/items/ItemAlbum'
 import { ItemConfigurator } from '../components/items/ItemConfigurator'
+import { Seo, collectionJsonLd } from '../lib/seo'
 
 type Tab = 'album' | 'config'
 
@@ -22,6 +23,12 @@ export function ItemsPage() {
 
   return (
     <div>
+      <Seo
+        title={t('items.title')}
+        description={t('items.intro')}
+        path="/items"
+        jsonLd={collectionJsonLd({ name: t('items.title'), description: t('items.intro'), path: '/items' })}
+      />
       <header className="mb-6">
         <p className="text-xs font-bold uppercase tracking-widest text-accent">
           {t('items.kicker')}

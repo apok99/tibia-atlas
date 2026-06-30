@@ -7,6 +7,7 @@ import { EntryCard } from '../components/EntryCard'
 import { EntryGridSkeleton } from '../components/Skeleton'
 import { Pagination } from '../components/Pagination'
 import { BestiaryFilters } from '../components/BestiaryFilters'
+import { Seo, collectionJsonLd } from '../lib/seo'
 import type { EntryType } from '../types'
 
 export function BrowsePage() {
@@ -75,8 +76,17 @@ export function BrowsePage() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  const heading = type ? t(`types.${type}`) : t('home.browseAll')
+  const browsePath = type ? `/browse/${type}` : '/browse'
+
   return (
     <div>
+      <Seo
+        title={heading}
+        path={browsePath}
+        noindex={!!debouncedQ}
+        jsonLd={collectionJsonLd({ name: heading, description: heading, path: browsePath })}
+      />
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="flex items-center gap-3 text-3xl font-black tracking-tight text-fg">
           <span className="h-7 w-1.5 rounded-full bg-accent" />

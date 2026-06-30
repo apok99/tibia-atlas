@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { api } from '../lib/api'
+import { Seo } from '../lib/seo'
 import { useGlossary } from '../hooks/useGlossary'
 import type { Entry, Spawn } from '../types'
 
@@ -878,6 +879,7 @@ export function MapPage() {
 
   return (
     <div className="space-y-4">
+      <Seo title={t('map.title')} description={t('map.intro')} path="/map" />
       <div>
         <p className="text-xs font-bold uppercase tracking-widest text-accent">{t('map.kicker')}</p>
         <h1 className="text-2xl font-black tracking-tight">{t('map.title')}</h1>

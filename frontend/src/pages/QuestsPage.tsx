@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useEntries } from '../hooks/useEntries'
 import { EntryCard } from '../components/EntryCard'
 import { EntryGridSkeleton } from '../components/Skeleton'
+import { Seo, collectionJsonLd } from '../lib/seo'
 import type { EntryListItem } from '../types'
 
 /**
@@ -55,6 +56,12 @@ export function QuestsPage() {
 
   return (
     <div>
+      <Seo
+        title={t('quests.title')}
+        description={t('quests.intro')}
+        path="/quests"
+        jsonLd={collectionJsonLd({ name: t('quests.title'), description: t('quests.intro'), path: '/quests' })}
+      />
       <header className="mb-6">
         <p className="text-xs font-bold uppercase tracking-widest text-accent">{t('quests.kicker')}</p>
         <h1 className="mt-1 flex items-center gap-3 text-3xl font-black tracking-tight text-fg">

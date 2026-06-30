@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
+import { Seo } from '../lib/seo'
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
@@ -499,6 +500,15 @@ export function TimelinePage() {
 
   return (
     <div>
+      <Seo
+        title={lang === 'es' ? 'Cronología de Tibia' : 'Timeline of Tibia'}
+        description={
+          lang === 'es'
+            ? 'Desde la creación del mundo por los dioses hasta los eventos más recientes — la historia completa del universo de Tibia.'
+            : 'From the creation of the world by the gods to the most recent events — the complete history of the Tibia universe.'
+        }
+        path="/timeline"
+      />
       {/* Header */}
       <div className="mb-10 text-center">
         <p className="mb-2 text-xs font-bold uppercase tracking-widest text-accent">

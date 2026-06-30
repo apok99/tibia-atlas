@@ -10,8 +10,17 @@ import { CreatureKillStats } from '../components/CreatureKillStats'
 import { DamageAffinity } from '../components/DamageAffinity'
 import { BossRespawn } from '../components/BossRespawn'
 import { Lightbox } from '../components/Lightbox'
+import { Seo, articleJsonLd, breadcrumbJsonLd } from '../lib/seo'
 import { useState } from 'react'
 import type { EntryListItem } from '../types'
+
+/** Trim a lore paragraph into a clean ~160-char meta description. */
+function metaExcerpt(text: string | null | undefined, max = 160): string {
+  if (!text) return ''
+  const clean = text.replace(/\s+/g, ' ').trim()
+  if (clean.length <= max) return clean
+  return clean.slice(0, max - 1).replace(/\s+\S*$/, '') + '…'
+}
 
 export function EntryPage() {
   const { slug } = useParams<{ slug: string }>()
@@ -46,8 +55,34 @@ export function EntryPage() {
   // Textual spawn locations from TibiaWiki ("Plains of Havoc, Hellgate, …").
   const location = typeof entry.meta?.location === 'string' ? entry.meta.location : null
 
+  const seoDesc = metaExcerpt(lead || entry.content.canon)
+  const browsePath = `/browse/${entry.type}`
+
   return (
     <div className="space-y-6">
+      <Seo
+        title={entry.name ?? entry.slug}
+        description={seoDesc}
+        path={`/entry/${entry.slug}`}
+        image={entry.primary_image}
+        type="article"
+        jsonLd={[
+          articleJsonLd({
+            headline: entry.name ?? entry.slug ?? '',
+            description: seoDesc,
+            path: `/entry/${entry.slug}`,
+            image: entry.primary_image,
+            datePublished: entry.published_at,
+            dateModified: entry.updated_at,
+            lang: uiLang || 'es',
+          }),
+          breadcrumbJsonLd([
+            { name: 'Tibia Atlas', path: '/' },
+            { name: entry.type_label, path: browsePath },
+            { name: entry.name ?? entry.slug ?? '', path: `/entry/${entry.slug}` },
+          ]),
+        ]}
+      />
       <Link
         to="/"
         className="text-xs font-bold uppercase tracking-wider text-fg-mute transition hover:text-fg"

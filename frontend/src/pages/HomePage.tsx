@@ -8,6 +8,7 @@ import { DiscoverCarousel } from '../components/DiscoverCarousel'
 import { HomeKillStats } from '../components/HomeKillStats'
 import { MapPreview } from '../components/MapPreview'
 import { SearchBox } from '../components/SearchBox'
+import { Seo, websiteJsonLd, organizationJsonLd } from '../lib/seo'
 import type { EntryType } from '../types'
 
 const categories: EntryType[] = [
@@ -21,6 +22,7 @@ export function HomePage() {
 
   return (
     <div className="space-y-12">
+      <Seo path="/" jsonLd={[websiteJsonLd(), organizationJsonLd()]} />
       {/* Hero — Google-style: centered logo, one big search, minimal chrome. */}
       <section className="flex flex-col items-center px-4 pt-8 pb-2 text-center sm:pt-12">
         <img

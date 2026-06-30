@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
+import { Seo } from '../lib/seo'
 import {
   Area,
   AreaChart,
@@ -371,6 +372,7 @@ export function KillStatsPage() {
 
   return (
     <>
+      <Seo title={t('nav.killstats')} path="/killstats" />
       {/* Full-bleed: break out of the layout's max-w container for a widescreen wall. */}
       <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen overflow-x-hidden px-3 sm:px-5">
         {/* Slim top bar (title/subtitle removed per request) */}

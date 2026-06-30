@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { usePlayer } from '../context/PlayerContext'
+import { Seo } from '../lib/seo'
 
 export function SoundtrackPage() {
   const { t } = useTranslation()
@@ -7,6 +8,7 @@ export function SoundtrackPage() {
 
   return (
     <div className="space-y-8">
+      <Seo title={t('nav.soundtrack')} path="/soundtrack" />
       {/* Header */}
       <section className="panel overflow-hidden">
         <div className="flex flex-col gap-5 p-6 sm:flex-row sm:items-end sm:p-8">

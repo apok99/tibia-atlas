@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useWordleToday, postGuess, type Tile } from '../hooks/useWordle'
 import { WordleSkeleton } from '../components/Skeleton'
+import { Seo } from '../lib/seo'
 
 type Status = 'playing' | 'won' | 'lost'
 interface Row {
@@ -199,6 +200,7 @@ export function WordlePage() {
 
   return (
     <div className="mx-auto flex max-w-md flex-col items-center">
+      <Seo title={t('wordle.brand')} description={t('wordle.subtitle')} path="/wordle" />
       <header className="mb-6 text-center">
         <p className="text-[0.65rem] font-bold uppercase tracking-[0.25em] text-accent">
           {t('wordle.kicker')}

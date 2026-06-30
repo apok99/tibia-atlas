@@ -1,0 +1,22 @@
+# Tibia Atlas
+
+> Bilingual (Spanish & English) archive of the lore of Tibia — the MMORPG by CipSoft. It documents creatures, characters, cities, organizations, quests, historical events and concepts with an editorial discipline that separates canon from interpretation and cites every source. Fan project; lore is documented, never invented. Not affiliated with CipSoft.
+
+Each article is structured as: Overview, Canon (only what official sources support), Interpretations, Theories, Related Entities and Sources. Content is available in Spanish (`?lang=es`, default) and English (`?lang=en`).
+
+## Explore
+
+- [Bestiary (creatures)](https://tibiaatlas.com/browse/creature): every documented Tibia creature with stats and lore
+- [Characters](https://tibiaatlas.com/browse/character): notable NPCs and figures of Tibian history
+- [Cities](https://tibiaatlas.com/browse/city): the cities of Tibia
+- [Organizations](https://tibiaatlas.com/browse/organization): factions, guilds and orders
+- [Quests](https://tibiaatlas.com/quests): quests grouped by recommended level
+- [Items](https://tibiaatlas.com/items): the full item catalogue with stats
+- [Map](https://tibiaatlas.com/map): interactive map with creature spawn points
+- [Library](https://tibiaatlas.com/history): every readable in-game book, transcribed
+- [Timeline](https://tibiaatlas.com/timeline): the complete history of the world and the game
+
+## Full index
+
+- [Complete Markdown index of every article](https://tibiaatlas.com/llms-full.txt)
+- [XML sitemap](https://tibiaatlas.com/sitemap.xml)

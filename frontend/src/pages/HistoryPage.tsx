@@ -8,6 +8,7 @@ import {
   BookReaderSkeleton,
   ShelfListSkeleton,
 } from '../components/Skeleton'
+import { Seo, collectionJsonLd } from '../lib/seo'
 import type { LibraryBookItem } from '../types'
 
 /**
@@ -93,6 +94,12 @@ export function HistoryPage() {
 
   return (
     <div className="space-y-8">
+      <Seo
+        title={t('library.title')}
+        description={t('library.intro')}
+        path="/history"
+        jsonLd={collectionJsonLd({ name: t('library.title'), description: t('library.intro'), path: '/history' })}
+      />
       {/* Header */}
       <section className="panel overflow-hidden">
         <div className="flex flex-col gap-5 p-6 sm:flex-row sm:items-end sm:p-8">

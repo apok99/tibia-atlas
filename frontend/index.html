@@ -2,22 +2,20 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/logo.png" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/logo.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon-64.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta
-      name="description"
-      content="Tibia Atlas — the living archive of Tibian lore. El archivo viviente del lore de Tibia."
-    />
-    <meta property="og:title" content="Tibia Atlas" />
-    <meta
-      property="og:description"
-      content="The living archive of Tibian lore. El archivo viviente del lore de Tibia."
-    />
-    <meta property="og:image" content="/logo.png" />
-    <meta property="og:type" content="website" />
-    <title>Tibia Atlas</title>
+    <meta name="theme-color" content="#0e1015" />
+    <!--
+      SEO meta (title, description, canonical, Open Graph, Twitter, hreflang,
+      JSON-LD) is managed per-route by the <Seo> component (React 19 document
+      metadata). Don't add static description/og tags here or they'd duplicate
+      the ones React injects. Search/AI crawlers are served the Laravel
+      server-rendered mirror instead. This title is just the pre-hydration
+      fallback; React replaces it on mount.
+    -->
+    <title>Tibia Atlas — El archivo viviente del lore de Tibia</title>
   </head>
   <body>
     <div id="root"></div>
