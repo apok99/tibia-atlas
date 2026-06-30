@@ -84,7 +84,7 @@ export function Layout() {
               alt="Tibia Atlas"
               className="h-9 w-9 shrink-0 object-contain drop-shadow-[0_2px_6px_rgba(0,0,0,0.4)]"
             />
-            <span className="text-lg font-black tracking-tight">
+            <span className="whitespace-nowrap text-lg font-black tracking-tight">
               Tibia<span className="text-accent">Atlas</span>
             </span>
           </Link>
