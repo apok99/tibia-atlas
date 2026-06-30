@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { useItemDetail } from '../../hooks/useEntries'
 import type { Dropper as DropperT, NpcDeal } from '../../types'
 import { statChips, VocationDots } from './itemStats'
+import { ItemDetailSkeleton } from '../Skeleton'
 
 /** How many NPCs / droppers to show before a "show all (N)" toggle. */
 const NPC_LIMIT = 10
@@ -60,7 +61,7 @@ export function ItemDetailModal({
         </button>
 
         {isLoading || !data ? (
-          <div className="p-10 text-center text-fg-mute">…</div>
+          <ItemDetailSkeleton />
         ) : (
           <div className="min-h-0 overflow-y-auto p-6">
             {/* Header. */}

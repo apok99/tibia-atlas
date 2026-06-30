@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { useSearch } from '../hooks/useEntries'
+import { useSearch, logSearchClick } from '../hooks/useEntries'
 import { useDebounce } from '../hooks/useDebounce'
 import { TypeIcon } from './TypeIcon'
 import type { SearchResult } from '../types'
@@ -41,6 +41,7 @@ export function SearchBox({ placeholder }: { placeholder?: string }) {
   }, [])
 
   const goTo = (r: SearchResult) => {
+    logSearchClick(r.slug)
     setOpen(false)
     setQ('')
     navigate(hrefFor(r))

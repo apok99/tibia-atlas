@@ -54,6 +54,16 @@ export function useSearch(q: string) {
   })
 }
 
+/**
+ * Fire-and-forget: record that a search result was actually opened. This is what
+ * feeds "most searched" — we log the chosen entry's slug, never the raw typed
+ * text, so half-typed fragments don't pollute the ranking and the same entry
+ * never appears twice.
+ */
+export function logSearchClick(slug: string) {
+  api.post('/search/click', { slug }).catch(() => {})
+}
+
 /** Available filter facets (classifications, boss count) for a given entry type. */
 export function useFacets(type?: string) {
   const { i18n } = useTranslation()
@@ -95,13 +105,17 @@ export function usePopular(filters: { type?: string; page?: number; per_page?: n
 }
 
 /** Random sample of entries for the rotating "recommended reading" widget. */
-export function useRandomEntries(count = 5, excludeSlug?: string) {
+export function useRandomEntries(
+  count = 5,
+  opts: { excludeSlug?: string; preferImages?: boolean } = {},
+) {
+  const { excludeSlug, preferImages } = opts
   const { i18n } = useTranslation()
   return useQuery({
-    queryKey: ['entries-random', i18n.language, count, excludeSlug],
+    queryKey: ['entries-random', i18n.language, count, excludeSlug, preferImages],
     queryFn: async () => {
       const { data } = await api.get<Paginated<EntryListItem>>('/entries/random', {
-        params: { count, exclude: excludeSlug },
+        params: { count, exclude: excludeSlug, images: preferImages ? 1 : undefined },
       })
       return data.data
     },

@@ -99,6 +99,82 @@ export function BookReaderSkeleton() {
   )
 }
 
+/** Placeholder for the item detail modal body while the cromo loads. */
+export function ItemDetailSkeleton() {
+  return (
+    <div className="p-6" aria-busy="true">
+      {/* Header: sprite + title block. */}
+      <div className="flex items-start gap-4">
+        <Skeleton className="h-20 w-20 shrink-0 rounded" />
+        <div className="min-w-0 flex-1 space-y-2">
+          <Skeleton className="h-7 w-2/3" />
+          <Skeleton className="h-3 w-1/3" />
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-4 w-14" />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <Skeleton className="mt-4 h-9 w-full rounded-md" />
+
+      <div className="mt-4 space-y-2">
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-5/6" />
+      </div>
+
+      {Array.from({ length: 2 }).map((_, s) => (
+        <div key={s} className="mt-4 border-t border-line pt-3">
+          <Skeleton className="mb-2 h-3 w-24" />
+          <div className="flex flex-wrap gap-1.5">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-5 w-20 rounded" />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** Placeholder for the daily Wordle board while the puzzle loads. */
+export function WordleSkeleton({ length = 6, rows = 6 }: { length?: number; rows?: number }) {
+  return (
+    <div className="mx-auto flex max-w-md flex-col items-center" aria-busy="true">
+      <div className="mb-6 flex flex-col items-center gap-2">
+        <Skeleton className="h-3 w-24" />
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-4 w-56" />
+        <div className="mt-1 flex gap-2">
+          <Skeleton className="h-6 w-24 rounded-full" />
+          <Skeleton className="h-6 w-20 rounded-full" />
+        </div>
+      </div>
+
+      <div className="grid gap-1.5">
+        {Array.from({ length: rows }).map((_, r) => (
+          <div key={r} className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${length}, 1fr)` }}>
+            {Array.from({ length }).map((_, c) => (
+              <Skeleton key={c} className="h-12 w-12 rounded sm:h-14 sm:w-14" />
+            ))}
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-6 flex w-full flex-col items-center gap-1.5">
+        {[10, 9, 9].map((n, i) => (
+          <div key={i} className="flex justify-center gap-1.5">
+            {Array.from({ length: n }).map((_, k) => (
+              <Skeleton key={k} className="h-12 w-8 rounded sm:w-9" />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /** Full-page placeholder for a single entry while its lore loads. */
 export function EntryPageSkeleton() {
   return (

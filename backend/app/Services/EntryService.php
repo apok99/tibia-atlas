@@ -62,6 +62,14 @@ class EntryService
     }
 
     /**
+     * Soft-delete an entry. The model's `deleted` event bumps the content cache.
+     */
+    public function delete(Entry $entry): void
+    {
+        $entry->delete();
+    }
+
+    /**
      * Persist nested translations / sources / related entries when provided.
      *
      * @param  array<string, mixed>  $data

@@ -7,6 +7,7 @@ import { RecommendedReading } from '../components/RecommendedReading'
 import { TypeIcon } from '../components/TypeIcon'
 import { LoreText } from '../components/LoreText'
 import { CreatureKillStats } from '../components/CreatureKillStats'
+import { DamageAffinity } from '../components/DamageAffinity'
 import { BossRespawn } from '../components/BossRespawn'
 import { Lightbox } from '../components/Lightbox'
 import { useState } from 'react'
@@ -36,7 +37,8 @@ export function EntryPage() {
   const others = related.filter((r) => r.type !== 'creature' && r.type !== 'character')
 
   // Internal bookkeeping fields that must never appear in the stat block.
-  const hiddenMeta = ['imported_from', 'wiki_pageid', 'auto_stub', 'artwork', 'note', 'character_kind', 'location', 'importance_rank']
+  // immune_to / weak_to get their own visual DamageAffinity panel below.
+  const hiddenMeta = ['imported_from', 'wiki_pageid', 'auto_stub', 'artwork', 'note', 'character_kind', 'location', 'importance_rank', 'immune_to', 'weak_to']
   const metaEntries = Object.entries(entry.meta ?? {}).filter(
     ([k, v]) => !hiddenMeta.includes(k) && v !== null && v !== '' && typeof v !== 'object',
   )
@@ -153,6 +155,8 @@ export function EntryPage() {
               </div>
             </div>
           )}
+
+          {entry.type === 'creature' && <DamageAffinity meta={entry.meta} />}
 
           {entry.type === 'creature' && entry.slug && (
             <CreatureKillStats slug={entry.slug} />

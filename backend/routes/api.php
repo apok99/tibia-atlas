@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\BookController;
 use App\Http\Controllers\Api\EntryController;
 use App\Http\Controllers\Api\ItemController;
 use App\Http\Controllers\Api\KillStatsController;
+use App\Http\Controllers\Api\WordleController;
 use App\Http\Middleware\SetLocale;
 use Illuminate\Support\Facades\Route;
 
@@ -37,13 +38,29 @@ Route::middleware([SetLocale::class, 'throttle:public'])->group(function () {
         Route::get('/entries/popular', [EntryController::class, 'popular']);
         // Global autocomplete search (published lore + the item catalogue).
         Route::get('/search', [EntryController::class, 'search']);
+        // Most-searched terms on the site (falls back to most-viewed).
+        Route::get('/search/top', [EntryController::class, 'topSearches']);
     });
+
+    // Record that a search result was actually opened (search-popularity log).
+    Route::post('/search/click', [EntryController::class, 'logSearchClick']);
 
     // Random/trending must stay fresh; show carries the view-count side effect.
     Route::get('/entries/random', [EntryController::class, 'random']);
     Route::get('/entries/trending', [EntryController::class, 'trending']);
     Route::get('/entries/{entry}', [EntryController::class, 'show'])
         ->middleware('cache.headers:public;max_age=15;etag');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Editorial CRUD (authenticated) — create / update / delete lore entries.
+|--------------------------------------------------------------------------
+*/
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/entries', [EntryController::class, 'store']);
+    Route::match(['put', 'patch'], '/entries/{entry}', [EntryController::class, 'update']);
+    Route::delete('/entries/{entry}', [EntryController::class, 'destroy']);
 });
 
 /*
@@ -58,6 +75,20 @@ Route::prefix('killstats')->middleware(['throttle:public', 'cache.headers:public
     Route::get('/ranking', [KillStatsController::class, 'ranking']);
     Route::get('/series', [KillStatsController::class, 'series']);
     Route::get('/experience', [KillStatsController::class, 'experience']);
+    Route::get('/bosses', [KillStatsController::class, 'bosses']);
     Route::get('/entry/{slug}', [KillStatsController::class, 'entry']);
     Route::get('/boss/{slug}', [KillStatsController::class, 'boss']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Bestiordle — the daily creature word game. Locale-agnostic (English names).
+| `today` ships the puzzle shape + valid-word list; `guess` scores server-side
+| so the answer is only revealed once the player finishes.
+|--------------------------------------------------------------------------
+*/
+Route::prefix('wordle')->middleware('throttle:public')->group(function () {
+    Route::get('/today', [WordleController::class, 'today'])
+        ->middleware('cache.headers:public;max_age=30;s_maxage=60');
+    Route::post('/guess', [WordleController::class, 'guess']);
 });

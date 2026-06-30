@@ -9,7 +9,7 @@ const ROTATE_MS = 8000
 /** Sidebar/section widget that cycles through a small set of random published entries. */
 export function RecommendedReading({ excludeSlug }: { excludeSlug?: string }) {
   const { t } = useTranslation()
-  const { data: entries, isLoading } = useRandomEntries(6, excludeSlug)
+  const { data: entries, isLoading } = useRandomEntries(6, { excludeSlug, preferImages: true })
   const [index, setIndex] = useState(0)
 
   useEffect(() => {

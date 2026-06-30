@@ -62,10 +62,56 @@ export interface KillOverview {
   top_worlds: { name: string; players_online: number }[]
 }
 
-export function useKillOverview() {
+/** Dashboard hero overview. The kill totals scope to `world`; online/pulse stay global. */
+export function useKillOverview(world = 'all') {
   return useQuery({
-    queryKey: ['killstats', 'overview'],
-    queryFn: async () => (await api.get<KillOverview>('/killstats/overview')).data,
+    queryKey: ['killstats', 'overview', world],
+    queryFn: async () => (await api.get<KillOverview>('/killstats/overview', { params: { world } })).data,
+    staleTime: 60 * 1000,
+  })
+}
+
+export interface BossRow {
+  race: string
+  slug: string | null
+  image: string | null
+  worlds_active: number
+  cooldown: number
+  recent: number
+  due: number
+  day_killed: number
+  week_killed: number
+  heat: number
+  worlds: string[]
+  iconic: boolean
+  rank: number
+}
+
+/** Boss roster. type='raid' → rare world bosses; type='daily' → daily-cooldown bosses. */
+export function useBosses(type: 'raid' | 'daily' = 'raid', limit = 24) {
+  return useQuery({
+    queryKey: ['killstats', 'bosses', type, limit],
+    queryFn: async () =>
+      (await api.get<{ latest: string | null; data: BossRow[] }>('/killstats/bosses', { params: { type, limit } })).data.data,
+    staleTime: 60 * 1000,
+  })
+}
+
+export interface TopSearch {
+  term: string
+  hits: number
+  slug: string | null
+  type: string | null
+  name: string | null
+  image: string | null
+}
+
+/** Most-searched terms on the site (falls back to most-viewed). */
+export function useTopSearches(limit = 10) {
+  return useQuery({
+    queryKey: ['search', 'top', limit],
+    queryFn: async () =>
+      (await api.get<{ source: 'searches' | 'views'; data: TopSearch[] }>('/search/top', { params: { limit } })).data,
     staleTime: 60 * 1000,
   })
 }
@@ -149,6 +195,7 @@ export interface BossRespawnData {
   linked: boolean
   race: string | null
   is_boss?: boolean
+  type?: 'raid' | 'daily'
   latest_date?: string | null
   summary?: { worlds_total: number; cooldown: number; recent: number; due: number }
   worlds?: BossWorld[]
@@ -159,6 +206,13 @@ export interface BossRespawnData {
     median_days?: number
     max_days?: number
     cdf: { day: number; prob: number }[]
+  }
+  activity?: {
+    killed_today: number
+    killed_week: number
+    worlds_killed_today: number
+    worlds_total: number
+    trend: { period: string; killed: number }[]
   }
 }
 

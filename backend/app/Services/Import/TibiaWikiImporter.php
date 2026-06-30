@@ -622,24 +622,35 @@ class TibiaWikiImporter
             $meta['mitigation'] = $mm[0].'%';
         }
 
-        // Damage modifiers → immunities (0%) and weaknesses (>100%).
+        // Damage modifiers. Each *dmgmod is the % of damage the creature takes
+        // from that element: 0% = immune, <100% = resistant, >100% = weak.
+        // We keep the raw percentages in `damage_mods` (keyed by the frontend
+        // element id) so the UI can show exactly *how much* extra/less damage,
+        // plus the immune_to / weak_to label strings for back-compat.
         $elements = [
-            'physical' => 'Physical', 'holy' => 'Holy', 'death' => 'Death', 'fire' => 'Fire',
-            'energy' => 'Energy', 'ice' => 'Ice', 'earth' => 'Earth', 'drown' => 'Drown',
-            'hpdrain' => 'Life drain',
+            'physical' => ['physical', 'Physical'], 'holy' => ['holy', 'Holy'],
+            'death' => ['death', 'Death'], 'fire' => ['fire', 'Fire'],
+            'energy' => ['energy', 'Energy'], 'ice' => ['ice', 'Ice'],
+            'earth' => ['earth', 'Earth'], 'drown' => ['drown', 'Drown'],
+            'hpdrain' => ['life_drain', 'Life drain'],
         ];
+        $mods = [];
         $immune = $weak = [];
-        foreach ($elements as $key => $label) {
+        foreach ($elements as $key => [$id, $label]) {
             $field = $p[$key.'dmgmod'] ?? null;
             if ($field === null || ! preg_match('/\d/', $field)) {
                 continue;
             }
             $pct = (int) preg_replace('/\D/', '', $field);
+            $mods[$id] = $pct;
             if ($pct === 0) {
                 $immune[] = $label;
             } elseif ($pct > 100) {
                 $weak[] = $label;
             }
+        }
+        if ($mods) {
+            $meta['damage_mods'] = $mods;
         }
         if ($immune) {
             $meta['immune_to'] = implode(', ', $immune);

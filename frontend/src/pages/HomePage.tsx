@@ -1,10 +1,12 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { usePopular } from '../hooks/useEntries'
 import { EntryCard } from '../components/EntryCard'
 import { EntryCardSkeleton } from '../components/Skeleton'
 import { DiscoverCarousel } from '../components/DiscoverCarousel'
 import { HomeKillStats } from '../components/HomeKillStats'
+import { MapPreview } from '../components/MapPreview'
 import { SearchBox } from '../components/SearchBox'
 import type { EntryType } from '../types'
 
@@ -21,6 +23,11 @@ export function HomePage() {
     <div className="space-y-12">
       {/* Hero — Google-style: centered logo, one big search, minimal chrome. */}
       <section className="flex flex-col items-center px-4 pt-8 pb-2 text-center sm:pt-12">
+        <img
+          src="/logo.png"
+          alt=""
+          className="mb-4 h-20 w-20 object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.45)] sm:h-24 sm:w-24"
+        />
         <h1 className="text-4xl font-black tracking-tight sm:text-5xl">
           <span className="text-accent">Tibia</span> Atlas
         </h1>
@@ -29,9 +36,30 @@ export function HomePage() {
         <div className="mt-7 w-full max-w-xl">
           <SearchBox placeholder={t('home.searchHero')} />
         </div>
+
+        {/* Daily creature word game */}
+        <Link
+          to="/wordle"
+          className="group mt-5 inline-flex items-center gap-3 rounded-full border border-line bg-surface px-5 py-2.5 text-sm font-bold text-fg transition hover:border-accent hover:text-accent"
+        >
+          <span className="grid grid-cols-2 gap-0.5">
+            <span className="block h-2 w-2 rounded-[2px] bg-emerald-600" />
+            <span className="block h-2 w-2 rounded-[2px] bg-amber-500" />
+            <span className="block h-2 w-2 rounded-[2px] bg-zinc-500" />
+            <span className="block h-2 w-2 rounded-[2px] bg-emerald-600" />
+          </span>
+          <span>
+            <span className="text-accent">{t('wordle.brand')}</span>
+            <span className="ml-2 font-medium text-fg-mute group-hover:text-accent">
+              {t('wordle.subtitle')}
+            </span>
+          </span>
+        </Link>
       </section>
 
       <DiscoverCarousel />
+
+      <MapPreview />
 
       <HomeKillStats />
 
