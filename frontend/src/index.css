@@ -1260,3 +1260,75 @@ html[data-theme='dark'] .atlas-plate:hover {
   .dc-rotate, .dc-hero::after, .dc-sprite-wrap, .dc-ember { animation: none; }
   .dc-ember { display: none; }
 }
+
+/* ---- Draggable world globe (globe-home experiment) ---------------------- */
+.wg-wrap {
+  position: relative;
+  user-select: none;
+}
+/* Atmospheric halo bleeding out behind the sphere. */
+.wg-glow {
+  position: absolute;
+  inset: -16%;
+  border-radius: 9999px;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at 50% 48%,
+    color-mix(in srgb, var(--color-accent) 42%, transparent),
+    transparent 66%
+  );
+  filter: blur(22px);
+  opacity: 0.5;
+}
+.wg-globe {
+  position: relative;
+  border-radius: 9999px;
+  overflow: hidden;
+  cursor: grab;
+  background: #0a140d;
+  box-shadow: 0 26px 70px -22px rgba(0, 0, 0, 0.65);
+  touch-action: none;
+}
+.wg-globe.is-grabbing {
+  cursor: grabbing;
+}
+.wg-band {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  will-change: transform;
+}
+.wg-grid {
+  display: grid;
+}
+.wg-tile {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-rendering: pixelated;
+  display: block;
+}
+/* Specular highlight + shaded side = spherical read. */
+.wg-shade {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 32% 27%, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0) 44%),
+    radial-gradient(circle at 70% 76%, rgba(0, 0, 0, 0.66), rgba(0, 0, 0, 0) 62%);
+}
+/* Limb darkening + a faint rim of light around the edge. */
+.wg-rim {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 34px 8px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 2px rgba(255, 245, 220, 0.14);
+}
+@media (prefers-reduced-motion: reduce) {
+  .wg-band { will-change: auto; }
+}

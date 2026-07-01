@@ -1,17 +1,8 @@
-import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { usePopular } from '../hooks/useEntries'
-import { EntryCard } from '../components/EntryCard'
-import { EntryCardSkeleton } from '../components/Skeleton'
-import { MapPreview } from '../components/MapPreview'
 import { SearchBox } from '../components/SearchBox'
+import { WorldGlobe } from '../components/WorldGlobe'
 import { Seo, websiteJsonLd, organizationJsonLd } from '../lib/seo'
-import type { EntryType } from '../types'
-
-const categories: EntryType[] = [
-  'creature', 'character', 'city', 'organization', 'quest', 'event', 'location', 'item',
-]
 
 const chapters: { num: string; to: string; titleKey: string; descKey: string; lead: boolean }[] = [
   { num: 'I', to: '/map', titleKey: 'nav.map', descKey: 'home.chapMapDesc', lead: true },
@@ -21,49 +12,66 @@ const chapters: { num: string; to: string; titleKey: string; descKey: string; le
 
 export function HomePage() {
   const { t } = useTranslation()
-  const [filter, setFilter] = useState<EntryType | undefined>(undefined)
-  const popular = usePopular({ type: filter, per_page: 12 })
 
   return (
     <div className="space-y-14">
       <Seo path="/" jsonLd={[websiteJsonLd(), organizationJsonLd()]} />
 
-      {/* Hero — an atlas frontispiece. Kicker, big serif title, quill search. */}
-      <section className="pt-4 text-center sm:pt-8">
-        <p className="font-title text-xs uppercase tracking-[0.28em] text-accent">
-          <span aria-hidden="true">✦ </span>
-          {t('home.atlasKicker')}
-          <span aria-hidden="true"> ✦</span>
-        </p>
-        <h1 className="mx-auto mt-4 max-w-3xl font-title text-4xl font-semibold leading-[1.1] text-fg sm:text-6xl">
-          {t('home.heroTitle')}
-        </h1>
-        <p className="mx-auto mt-5 max-w-xl text-lg italic leading-relaxed text-fg-dim">
-          {t('home.heroLead')}
-        </p>
+      {/* Hero — search top-left, a draggable world globe anchored bottom-right. */}
+      <section className="relative min-h-[76vh] overflow-hidden">
+        <div className="relative z-10 max-w-xl pt-6 sm:pt-10">
+          <p className="font-title text-xs uppercase tracking-[0.28em] text-accent">
+            <span aria-hidden="true">✦ </span>
+            {t('home.atlasKicker')}
+            <span aria-hidden="true"> ✦</span>
+          </p>
+          <h1 className="mt-4 font-title text-4xl font-semibold leading-[1.08] text-fg sm:text-6xl">
+            {t('home.heroTitle')}
+          </h1>
+          <p className="mt-5 max-w-md text-lg italic leading-relaxed text-fg-dim">
+            {t('home.heroLead')}
+          </p>
 
-        <div className="mx-auto mt-7 w-full max-w-xl">
-          <SearchBox placeholder={t('home.searchHero')} />
+          <div className="mt-7 max-w-md">
+            <SearchBox placeholder={t('home.searchHero')} />
+          </div>
+
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link to="/map" className="btn">
+              {t('home.exploreMap')} <span aria-hidden="true">↗</span>
+            </Link>
+            <Link to="/browse/creature" className="btn-quill">
+              {t('home.exploreBestiary')}
+            </Link>
+          </div>
         </div>
 
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-          <Link to="/map" className="btn">
-            {t('home.exploreMap')} <span aria-hidden="true">↗</span>
-          </Link>
-          <Link to="/browse/creature" className="btn-quill">
-            {t('home.exploreBestiary')}
-          </Link>
+        {/* Globe — bleeds off the bottom-right corner on desktop. */}
+        <div className="pointer-events-none absolute -bottom-28 -right-20 z-0 hidden md:block">
+          <div className="pointer-events-auto">
+            <WorldGlobe diameter={540} />
+          </div>
+          <p className="pointer-events-none mt-2 text-right text-[11px] italic text-fg-mute">
+            arrástrame
+          </p>
         </div>
 
-        <div className="rule-gilt mx-auto mt-10 max-w-md" />
+        {/* Mobile: globe centred below the search block. */}
+        <div className="mt-10 flex flex-col items-center md:hidden">
+          <WorldGlobe diameter={280} />
+          <p className="mt-2 text-[11px] italic text-fg-mute">arrástrame</p>
+        </div>
       </section>
-
-      {/* The map — the star of the atlas. */}
-      <MapPreview />
 
       {/* The chapters — few, clear sections, like a book's table of contents. */}
       <section>
-        <SectionHeading>{t('home.chapters')}</SectionHeading>
+        <div className="mb-5 flex items-center gap-3">
+          <span className="h-1.5 w-1.5 rotate-45 bg-accent" aria-hidden="true" />
+          <h2 className="font-title text-sm uppercase tracking-[0.18em] text-fg">
+            {t('home.chapters')}
+          </h2>
+          <span className="rule-gilt flex-1" />
+        </div>
         <div className="grid gap-4 sm:grid-cols-3">
           {chapters.map((c) => (
             <Link
@@ -90,67 +98,6 @@ export function HomePage() {
           ))}
         </div>
       </section>
-
-      {/* Most popular — all-time, filterable by category. */}
-      <section>
-        <SectionHeading>{t('home.popular')}</SectionHeading>
-
-        <div className="mb-5 flex flex-wrap gap-2">
-          <FilterChip active={!filter} onClick={() => setFilter(undefined)}>
-            {t('home.allCategories')}
-          </FilterChip>
-          {categories.map((c) => (
-            <FilterChip key={c} active={filter === c} onClick={() => setFilter(c)}>
-              {t(`types.${c}`)}
-            </FilterChip>
-          ))}
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {popular.isLoading
-            ? Array.from({ length: 6 }).map((_, i) => <EntryCardSkeleton key={i} />)
-            : popular.data?.data.map((e) => <EntryCard key={e.id} entry={e} />)}
-        </div>
-
-        {!popular.isLoading && !popular.data?.data.length && (
-          <p className="py-8 text-center text-sm italic text-fg-mute">{t('browse.empty')}</p>
-        )}
-      </section>
     </div>
-  )
-}
-
-/** Section eyebrow: a seal-red diamond, serif small-caps title, gilt rule. */
-function SectionHeading({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="mb-5 flex items-center gap-3">
-      <span className="h-1.5 w-1.5 rotate-45 bg-accent" aria-hidden="true" />
-      <h2 className="font-title text-sm uppercase tracking-[0.18em] text-fg">{children}</h2>
-      <span className="rule-gilt flex-1" />
-    </div>
-  )
-}
-
-function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`chip font-medium ${
-        active
-          ? 'border-accent bg-accent text-[color:var(--color-surface)]'
-          : 'hover:border-line-2 hover:text-fg'
-      }`}
-    >
-      {children}
-    </button>
   )
 }
