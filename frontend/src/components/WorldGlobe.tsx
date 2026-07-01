@@ -23,8 +23,8 @@ const MAP_H = DTILE_H * ROWS
 const MAP_X = 0
 const MAP_Y = (TEX_H - MAP_H) / 2 // negative: crops a sliver of N/S to fill height
 
-const AXIAL_TILT = THREE.MathUtils.degToRad(23.5) // classic desk-globe tilt
-const IDLE_SPIN = -0.0014 // rad/frame — gentle, east→west
+const AXIAL_TILT = THREE.MathUtils.degToRad(-23.5) // desk-globe tilt, leaning right
+const IDLE_SPIN = 0.0014 // rad/frame — gentle, spinning to the right
 
 /**
  * A real 3D globe of the Tibia world: a lit, axis-tilted sphere textured with
@@ -53,7 +53,7 @@ export function WorldGlobe({ diameter = 500 }: { diameter?: number }) {
 
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100)
-    camera.position.z = 3.15 // close enough to read the map, with room for the halo
+    camera.position.z = 3.0 // zoomed in to read the map, with room for the halo
 
     // Composite the minimap tiles into one texture canvas (sea-blue base while
     // the tiles stream in), then wrap it around the sphere.
@@ -85,8 +85,8 @@ export function WorldGlobe({ diameter = 500 }: { diameter?: number }) {
       map: texture,
       roughness: 0.92,
       metalness: 0,
-      emissive: new THREE.Color(0x17242c),
-      emissiveIntensity: 0.28, // lift the dark seas so the map reads clearly
+      emissive: new THREE.Color(0x1c2b33),
+      emissiveIntensity: 0.36, // lift the dark seas so the map reads clearly
     })
     const sphere = new THREE.Mesh(geometry, material)
 
@@ -97,14 +97,14 @@ export function WorldGlobe({ diameter = 500 }: { diameter?: number }) {
     scene.add(tilt)
 
     // Even, soft lighting so the whole map is legible, with a gentle key for form.
-    scene.add(new THREE.AmbientLight(0xffffff, 0.92))
-    const key = new THREE.DirectionalLight(0xfff4e0, 0.6)
+    scene.add(new THREE.AmbientLight(0xffffff, 1.12))
+    const key = new THREE.DirectionalLight(0xfff4e0, 0.7)
     key.position.set(-1.8, 1.4, 2.4)
     scene.add(key)
 
     // Atmosphere: a fresnel halo on a slightly larger back-side shell — the touch
     // that reads as "premium". Kept outside the tilt group so it stays centred.
-    const atmGeo = new THREE.SphereGeometry(1.12, 64, 48)
+    const atmGeo = new THREE.SphereGeometry(1.1, 64, 48)
     const atmMat = new THREE.ShaderMaterial({
       uniforms: { glowColor: { value: new THREE.Color(0x8fbce8) } },
       vertexShader:
