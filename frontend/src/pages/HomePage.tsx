@@ -44,9 +44,6 @@ export function HomePage() {
         <MapPlate />
       </section>
 
-      {/* Live "most hunted" board — real Tibia data, useful and un-fakeable. */}
-      <MostHunted />
-
       {/* Bestiordle — the daily creature game, featured on the home. */}
       <Link
         to="/wordle"
@@ -70,6 +67,9 @@ export function HomePage() {
           {t('wordle.play')} <span aria-hidden="true">→</span>
         </span>
       </Link>
+
+      {/* The dashboard's rotating creature orbit — real "most hunted" data. */}
+      <MostHunted />
     </div>
   )
 }
