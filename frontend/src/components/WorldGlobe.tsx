@@ -6,11 +6,23 @@ import * as THREE from 'three'
 const X = [31744, 32000, 32256, 32512, 32768, 33024, 33280, 33536, 33792, 34048]
 const Y = [30976, 31232, 31488, 31744, 32000, 32256, 32512, 32768]
 const FLOOR = 7
-const TILE = 256
 const COLS = X.length
 const ROWS = Y.length
-const TEX_W = COLS * TILE
-const TEX_H = ROWS * TILE
+
+// Equirectangular texture is 2:1 so the sphere's UVs don't stretch it. The flat
+// (near-square) Tibia map keeps its own aspect and sits as a landmass on an
+// ocean globe, centred on the equator — so the unavoidable polar pinch lands in
+// empty sea instead of tearing the map apart.
+const TEX_W = 4096
+const TEX_H = 2048
+const OCEAN = '#22506b'
+const MAP_W = 1950
+const MAP_H = MAP_W * (ROWS / COLS) // preserve the map's true (square-tile) aspect
+const MAP_X = (TEX_W - MAP_W) / 2
+const MAP_Y = (TEX_H - MAP_H) / 2
+const DTILE_W = MAP_W / COLS
+const DTILE_H = MAP_H / ROWS
+
 const AXIAL_TILT = THREE.MathUtils.degToRad(23.5) // classic desk-globe tilt
 const IDLE_SPIN = 0.0026 // rad/frame, west→east
 
@@ -49,19 +61,19 @@ export function WorldGlobe({ diameter = 500 }: { diameter?: number }) {
     canvas.width = TEX_W
     canvas.height = TEX_H
     const ctx = canvas.getContext('2d')!
-    ctx.fillStyle = '#22506b'
+    ctx.fillStyle = OCEAN
     ctx.fillRect(0, 0, TEX_W, TEX_H)
 
     const texture = new THREE.CanvasTexture(canvas)
     texture.colorSpace = THREE.SRGBColorSpace
-    texture.magFilter = THREE.NearestFilter // crisp pixel-art coastlines
     texture.wrapS = THREE.RepeatWrapping
+    texture.anisotropy = renderer.capabilities.getMaxAnisotropy()
 
     Y.forEach((y, ry) =>
       X.forEach((x, cx) => {
         const img = new Image()
         img.onload = () => {
-          ctx.drawImage(img, cx * TILE, ry * TILE, TILE, TILE)
+          ctx.drawImage(img, MAP_X + cx * DTILE_W, MAP_Y + ry * DTILE_H, DTILE_W, DTILE_H)
           texture.needsUpdate = true
         }
         img.src = `/minimap/Minimap_Color_${x}_${y}_${FLOOR}.png`
