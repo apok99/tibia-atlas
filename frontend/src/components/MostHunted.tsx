@@ -22,9 +22,9 @@ export function MostHunted() {
   const total = overview?.totals.killed_24h ?? 0
 
   return (
-    <section className="panel overflow-hidden">
+    <section className="atlas-plate overflow-hidden">
       <div className="grid items-center gap-4 p-5 sm:gap-8 sm:p-7 md:grid-cols-[minmax(0,300px)_1fr]">
-        <div className="flex justify-center">
+        <div className="flex items-center justify-center">
           <CreatureOrbit
             items={items}
             coreValue={total}

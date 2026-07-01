@@ -682,8 +682,10 @@ html[data-theme='dark'] .ks-orbit-core-value {
   transition: transform 0.2s ease, border-color 0.2s ease;
 }
 .ks-orbit-slot:hover .ks-orbit-sprite {
-  transform: scale(1.18);
+  /* No transform here — it would override the counter-rotation animation and
+     make the sprite visibly spin on hover. Just highlight the rim. */
   border-color: var(--color-accent);
+  box-shadow: 0 4px 14px -5px rgba(74, 54, 26, 0.5), 0 0 0 2px var(--color-accent);
   z-index: 5;
 }
 .ks-orbit-sprite img {
