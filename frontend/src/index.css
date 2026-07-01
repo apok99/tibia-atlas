@@ -1,59 +1,83 @@
 @import 'tailwindcss';
 
 /*
-  Tibia Atlas — a fan-built bestiary/codex. Warm, slightly grimy dark UI with a
-  Tibia-red accent and cream text (deliberately NOT the cool grey-on-black of a
-  generic template). Dense, database-like, with real iconography and stat blocks.
+  Tibia Atlas — a hand-drawn cartographer's atlas of Tibia. Aged parchment,
+  sepia ink, wax-seal red, and serif type (Cinzel display / EB Garamond body).
+  Deliberately NOT the generic dark-card AI look: this should feel like opening
+  an old book of maps. The map is the star; sections read like chapters.
 */
 @theme {
-  --color-bg: #131419;
-  --color-bg-2: #181a20;
-  --color-surface: #1b1d24;
-  --color-surface-2: #23262e;
-  --color-line: #2c2f38;
-  --color-line-2: #3d414c;
+  --color-bg: #e7d7b4;         /* main parchment page */
+  --color-bg-2: #ddca9f;       /* darker paper (wells, insets) */
+  --color-surface: #f2e8ce;    /* lighter card paper */
+  --color-surface-2: #e9dcbb;  /* raised paper */
+  --color-line: #c9b184;       /* aged rule */
+  --color-line-2: #a98f5f;     /* darker rule / border */
 
-  --color-fg: #e9e3d6;        /* warm cream */
-  --color-fg-dim: #aaa394;
-  --color-fg-mute: #76705f;
+  --color-fg: #33271a;         /* dark sepia ink */
+  --color-fg-dim: #6a5535;     /* faded ink */
+  --color-fg-mute: #8a7550;    /* light ink / captions */
 
-  --color-accent: #d23d2f;    /* Tibia red */
-  --color-accent-2: #ec6a55;
+  --color-accent: #9c3b2e;     /* wax-seal red */
+  --color-accent-2: #b8503b;   /* brighter seal */
+  --color-gold: #a2854e;       /* gilt rule / flourish */
 
-  --color-canon: #79b169;     /* confirmed */
-  --color-interp: #6fa8c4;    /* inferred */
-  --color-theory: #d8a23a;    /* unconfirmed */
+  --color-canon: #4f7a3a;      /* confirmed — forest ink */
+  --color-interp: #3f6b7a;     /* inferred — slate ink */
+  --color-theory: #a2854e;     /* unconfirmed — gilt */
 
-  --font-display: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'EB Garamond', Georgia, 'Times New Roman', serif;
+  --font-title: 'Cinzel', Georgia, serif;
 
-  /* Admin back-office reuses these dark surfaces under legacy token names. */
-  --color-atlas-bg: #131419;
-  --color-atlas-panel: #1b1d24;
-  --color-atlas-border: #2c2f38;
-  --color-atlas-gold: #d23d2f;
-  --color-atlas-gold-bright: #ec6a55;
-  --color-atlas-ink: #e9e3d6;
-  --color-atlas-muted: #76705f;
-  --color-stone-950: #0b0d10;
+  /* Admin back-office reuses these under legacy token names. */
+  --color-atlas-bg: #e7d7b4;
+  --color-atlas-panel: #f2e8ce;
+  --color-atlas-border: #c9b184;
+  --color-atlas-gold: #9c3b2e;
+  --color-atlas-gold-bright: #b8503b;
+  --color-atlas-ink: #33271a;
+  --color-atlas-muted: #8a7550;
+  --color-stone-950: #efe4ca;
 }
 
 @layer base {
   body {
     @apply text-fg antialiased;
     font-family: var(--font-display);
+    font-size: 17px;
     background-color: var(--color-bg);
+    /* Aged-paper wash: warm highlight top-centre, dusty falloff to the edges. */
+    background-image:
+      radial-gradient(120% 90% at 50% -10%, #f0e4c6 0%, #e6d4ac 48%, #d8c393 100%);
+    background-attachment: fixed;
     min-height: 100vh;
   }
 
-  /* Fine film grain over everything — kills the flat "rendered gradient" feel. */
+  /* Fine paper-fibre grain — keeps the parchment from looking like a flat fill. */
   body::before {
     content: '';
     position: fixed;
     inset: 0;
     z-index: 0;
     pointer-events: none;
-    opacity: 0.035;
+    opacity: 0.06;
+    mix-blend-mode: multiply;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* Corner vignette so the page reads like a bound leaf, darker at the edges. */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    box-shadow: inset 0 0 180px rgba(74, 54, 26, 0.28);
+  }
+
+  h1, h2, h3, .font-title {
+    font-family: var(--font-title);
+    letter-spacing: 0.02em;
   }
 
   #root {
@@ -79,18 +103,61 @@
 
 @layer components {
   .panel {
-    @apply rounded-md border border-line bg-surface;
+    @apply rounded-[3px] border border-line bg-surface;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.4) inset, 0 6px 16px -12px rgba(74, 54, 26, 0.5);
   }
 
+  /* Primary "ink" button: filled sepia, serif small-caps, squared like a stamp. */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-white transition;
+    font-family: var(--font-title);
+    @apply inline-flex items-center justify-center gap-2 rounded-[2px] bg-fg px-5 py-2.5 text-xs font-medium uppercase tracking-[0.12em] text-[color:var(--color-surface)] transition;
   }
   .btn:hover {
-    @apply bg-accent-2;
+    background: #241a11;
+  }
+
+  /* Secondary "quill" button: outlined, no fill. */
+  .btn-quill {
+    font-family: var(--font-title);
+    @apply inline-flex items-center justify-center gap-2 rounded-[2px] border border-line-2 bg-transparent px-5 py-2.5 text-xs font-medium uppercase tracking-[0.12em] text-fg-dim transition;
+  }
+  .btn-quill:hover {
+    @apply border-accent text-accent;
   }
 
   .chip {
-    @apply inline-flex items-center gap-1.5 rounded border border-line bg-surface-2 px-2 py-1 text-xs text-fg-dim transition;
+    font-family: var(--font-title);
+    @apply inline-flex items-center gap-1.5 rounded-[2px] border border-line bg-surface-2 px-2.5 py-1 text-[11px] uppercase tracking-[0.08em] text-fg-dim transition;
+  }
+
+  /* Serif small-caps label — used for nav links, kickers, section eyebrows. */
+  .small-caps {
+    font-family: var(--font-title);
+    @apply text-[11px] uppercase tracking-[0.14em];
+  }
+
+  /* Double-rule divider with a diamond node — a book-plate flourish. */
+  .rule-gilt {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--color-gold), transparent);
+  }
+
+  /* A framed "page" — double border like an old map plate. */
+  .atlas-plate {
+    position: relative;
+    @apply rounded-[3px] border border-line-2 bg-surface;
+    box-shadow: 0 0 0 3px var(--color-bg), 0 0 0 4px var(--color-line-2),
+      0 10px 30px -16px rgba(74, 54, 26, 0.6);
+  }
+
+  /* Illuminated drop-cap for the first letter of a chapter intro. */
+  .drop-cap::first-letter {
+    font-family: var(--font-title);
+    float: left;
+    font-size: 3.1em;
+    line-height: 0.82;
+    padding: 0.05em 0.12em 0 0;
+    color: var(--color-accent);
   }
 
   .sprite {

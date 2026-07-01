@@ -8,9 +8,14 @@ const resources = {
     translation: {
       brand: 'Tibia Atlas',
       tagline: 'The living archive of Tibian lore',
+      footer: {
+        signature: 'Hand-drawn by David — a Tibia player since I was eight, mapping the world I grew up in.',
+        disclaimer: 'A fan project, not affiliated with CipSoft. Tibia is a registered trademark of CipSoft GmbH.',
+      },
       nav: {
         home: 'Home',
         menu: 'Menu',
+        more: 'More',
         explore: 'Explore',
         lore: 'Lore',
         play: 'Play',
@@ -290,7 +295,7 @@ const resources = {
           'Music © CipSoft GmbH. Shared here for fans — not affiliated with CipSoft.',
       },
       home: {
-        heroTitle: 'Documenting the world of Tibia',
+        heroTitle: 'A world to chart',
         heroSubtitle:
           '“If you strike me down, I shall become more powerful than you could possibly imagine.” — Ferumbras',
         featured: 'Featured entries',
@@ -331,6 +336,15 @@ const resources = {
         mapFloors: 'floors',
         mapCities: 'cities',
         mapRegions: 'regions',
+        atlasKicker: 'Atlas of Tibia',
+        heroLead:
+          'Explore the map of Tibia as if you were opening an old book of travels. Find where every creature spawns, every city, every secret.',
+        exploreMap: 'Open the map',
+        exploreBestiary: 'The bestiary',
+        chapters: 'The chapters',
+        chapMapDesc: 'Roam the world floor by floor and mark where each beast is hunted.',
+        chapBestiaryDesc: 'A page for every creature, its lore translated into Spanish.',
+        chapLibraryDesc: 'The history and secrets of Tibia, chapter by chapter.',
       },
       browse: {
         title: '{{type}}',
@@ -477,9 +491,14 @@ const resources = {
     translation: {
       brand: 'Tibia Atlas',
       tagline: 'El archivo viviente del lore de Tibia',
+      footer: {
+        signature: 'Trazado a mano por David — juego a Tibia desde los ocho años, cartografiando el mundo en el que crecí.',
+        disclaimer: 'Proyecto de fan, sin afiliación con CipSoft. Tibia es una marca registrada de CipSoft GmbH.',
+      },
       nav: {
         home: 'Inicio',
         menu: 'Menú',
+        more: 'Más',
         explore: 'Explorar',
         lore: 'Lore',
         play: 'Jugar',
@@ -759,7 +778,7 @@ const resources = {
           'Música © CipSoft GmbH. Compartida aquí para fans — sin afiliación con CipSoft.',
       },
       home: {
-        heroTitle: 'Documentando el mundo de Tibia',
+        heroTitle: 'Un mundo por trazar',
         heroSubtitle:
           '«Si me derrotas, me volveré más poderoso de lo que imaginas.» — Ferumbras',
         featured: 'Entradas destacadas',
@@ -800,6 +819,15 @@ const resources = {
         mapFloors: 'pisos',
         mapCities: 'ciudades',
         mapRegions: 'regiones',
+        atlasKicker: 'Atlas de Tibia',
+        heroLead:
+          'Explora el mapa de Tibia como si abrieras un viejo tomo de viajes. Encuentra dónde aparece cada criatura, cada ciudad, cada secreto.',
+        exploreMap: 'Abrir el mapa',
+        exploreBestiary: 'El bestiario',
+        chapters: 'Los capítulos',
+        chapMapDesc: 'Recorre el mundo piso por piso y marca dónde se caza cada bestia.',
+        chapBestiaryDesc: 'Una ficha para cada criatura, con su lore traducido al español.',
+        chapLibraryDesc: 'La historia y los secretos de Tibia, capítulo a capítulo.',
       },
       browse: {
         title: '{{type}}',
