@@ -46,46 +46,70 @@
   only the ground turns to night. Toggled via data-theme="dark" on <html>.
 */
 html[data-theme='dark'] {
-  --color-bg: #1a1610;
-  --color-bg-2: #131009;
-  --color-surface: #221d15;
-  --color-surface-2: #2b241a;
-  --color-line: #463b28;
-  --color-line-2: #6a5838;
+  --color-bg: #15110a;
+  --color-bg-2: #0d0a05;
+  --color-surface: #211b11;      /* card — clearly lifted above the ground */
+  --color-surface-2: #2b2416;
+  --color-line: #3f3420;         /* warm, visible hairline */
+  --color-line-2: #63512f;       /* gilt-leaning border */
 
-  --color-fg: #ecdcb8;
-  --color-fg-dim: #c7b287;
-  --color-fg-mute: #97835d;
+  --color-fg: #f1e4c3;           /* brighter candle-lit cream */
+  --color-fg-dim: #cbb689;
+  --color-fg-mute: #9a8560;
 
-  --color-accent: #cf5540;
-  --color-accent-2: #e5745c;
-  --color-gold: #c2a25c;
+  --color-accent: #db5c45;       /* seal red, warmed to glow on dark */
+  --color-accent-2: #ec7a60;
+  --color-gold: #ceaa61;         /* brighter gilt */
 
   --color-canon: #7bb069;
   --color-interp: #6fa8c4;
-  --color-theory: #d8a23a;
+  --color-theory: #dcae4a;
 
-  --color-atlas-bg: #1a1610;
-  --color-atlas-panel: #221d15;
-  --color-atlas-border: #463b28;
-  --color-atlas-gold: #cf5540;
-  --color-atlas-gold-bright: #e5745c;
-  --color-atlas-ink: #ecdcb8;
-  --color-atlas-muted: #97835d;
-  --color-stone-950: #0d0b07;
+  --color-atlas-bg: #15110a;
+  --color-atlas-panel: #211b11;
+  --color-atlas-border: #3f3420;
+  --color-atlas-gold: #db5c45;
+  --color-atlas-gold-bright: #ec7a60;
+  --color-atlas-ink: #f1e4c3;
+  --color-atlas-muted: #9a8560;
+  --color-stone-950: #090702;
 }
 
-/* Dark ground: candlelit leather wash instead of the sunlit parchment one. */
+/* Dark ground: a warm pool of candlelight up top fading into deep leather. */
 html[data-theme='dark'] body {
   background-image:
-    radial-gradient(120% 90% at 50% -10%, #241d12 0%, #17120a 55%, #0e0b06 100%);
+    radial-gradient(90% 60% at 50% -8%, rgba(219, 155, 74, 0.14), transparent 60%),
+    radial-gradient(120% 85% at 50% 0%, #251c11 0%, #16110a 42%, #0a0803 100%);
 }
 html[data-theme='dark'] body::before {
   mix-blend-mode: overlay;
-  opacity: 0.05;
+  opacity: 0.055;
 }
 html[data-theme='dark'] body::after {
-  box-shadow: inset 0 0 200px rgba(0, 0, 0, 0.55);
+  box-shadow: inset 0 0 220px rgba(0, 0, 0, 0.6);
+}
+
+/* Component polish for night: refined shadows, seal-red primary button. */
+html[data-theme='dark'] .panel {
+  box-shadow: 0 1px 0 rgba(255, 240, 210, 0.05) inset,
+    0 10px 26px -16px rgba(0, 0, 0, 0.85);
+}
+html[data-theme='dark'] .atlas-plate {
+  /* Drop the chunky parchment ring for a soft-lifted card with a gilt hairline. */
+  box-shadow: 0 1px 0 rgba(255, 240, 210, 0.06) inset,
+    0 14px 34px -18px rgba(0, 0, 0, 0.9);
+}
+html[data-theme='dark'] .atlas-plate:hover {
+  border-color: var(--color-line-2);
+}
+/* Primary "ink" button becomes a wax-red seal at night — warmer than a stark
+   cream slab, and on-brand. */
+html[data-theme='dark'] .btn {
+  background: #b8452f;
+  color: #f7e9cc;
+}
+html[data-theme='dark'] .btn:hover {
+  background: #cc5238;
 }
 
 @layer base {
