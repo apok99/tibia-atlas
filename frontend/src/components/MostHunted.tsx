@@ -33,7 +33,7 @@ export function MostHunted() {
           />
         </div>
 
-        <div className="max-w-md sm:ml-auto sm:text-right">
+        <div className="flex-1">
           <p className="font-title text-[11px] uppercase tracking-[0.22em] text-accent">
             {t('home.huntedKicker')}
           </p>
