@@ -17,9 +17,10 @@ export function HomePage() {
     <div className="space-y-14">
       <Seo path="/" jsonLd={[websiteJsonLd(), organizationJsonLd()]} />
 
-      {/* Hero — search top-left, a draggable world globe anchored bottom-right. */}
-      <section className="relative min-h-[54vh] overflow-hidden">
-        <div className="relative z-10 max-w-xl pt-6 sm:pt-8">
+      {/* Hero — search on the left, a draggable world globe on the right. Two
+          in-flow columns so the globe is never clipped. */}
+      <section className="grid items-center gap-6 lg:min-h-[58vh] lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-4">
+        <div className="max-w-xl">
           <p className="font-title text-xs uppercase tracking-[0.28em] text-accent">
             <span aria-hidden="true">✦ </span>
             {t('home.atlasKicker')}
@@ -46,19 +47,15 @@ export function HomePage() {
           </div>
         </div>
 
-        {/* Globe — anchored to the right, kept close to the search block. */}
-        <div className="pointer-events-none absolute -right-16 top-2 z-0 hidden lg:block">
-          <div className="pointer-events-auto">
-            <WorldGlobe diameter={580} />
-          </div>
-          <p className="pointer-events-none mt-1 text-right text-[11px] italic text-fg-mute">
-            arrástrame
-          </p>
+        {/* Globe — desktop (in flow, fully visible). */}
+        <div className="hidden justify-self-end lg:block">
+          <WorldGlobe diameter={520} />
+          <p className="mt-1 text-center text-[11px] italic text-fg-mute">arrástrame</p>
         </div>
 
-        {/* Below lg: globe centred under the search block. */}
-        <div className="mt-10 flex flex-col items-center lg:hidden">
-          <WorldGlobe diameter={340} />
+        {/* Globe — below lg, centred under the text. */}
+        <div className="flex flex-col items-center lg:hidden">
+          <WorldGlobe diameter={320} />
           <p className="mt-2 text-[11px] italic text-fg-mute">arrástrame</p>
         </div>
       </section>

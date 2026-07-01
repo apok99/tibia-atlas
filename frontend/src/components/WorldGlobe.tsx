@@ -26,6 +26,25 @@ const MAP_Y = (TEX_H - MAP_H) / 2 // negative: crops a sliver of N/S to fill hei
 const AXIAL_TILT = THREE.MathUtils.degToRad(-23.5) // desk-globe tilt, leaning right
 const IDLE_SPIN = 0.0014 // rad/frame — gentle, spinning to the right
 
+// Creature "spawn" markers scattered over the continent (front-ish, near the
+// equator so they sit on the map). Decorative — they pin to the sphere and
+// rotate with it, glowing seal-red like the map's spawn overlay.
+const MARKERS: { lat: number; lon: number }[] = [
+  { lat: 12, lon: -8 }, { lat: -6, lon: 14 }, { lat: 24, lon: 6 }, { lat: 2, lon: -26 },
+  { lat: -18, lon: -4 }, { lat: 30, lon: 22 }, { lat: -10, lon: 34 }, { lat: 16, lon: 48 },
+  { lat: -24, lon: 20 }, { lat: 8, lon: -42 }, { lat: -2, lon: 58 }, { lat: 20, lon: -30 },
+]
+
+function latLonToVec3(lat: number, lon: number, r: number) {
+  const phi = ((90 - lat) * Math.PI) / 180
+  const theta = ((lon + 180) * Math.PI) / 180
+  return new THREE.Vector3(
+    -r * Math.sin(phi) * Math.cos(theta),
+    r * Math.cos(phi),
+    r * Math.sin(phi) * Math.sin(theta),
+  )
+}
+
 /**
  * A real 3D globe of the Tibia world: a lit, axis-tilted sphere textured with
  * the surface minimap. Spins like a desk globe (features compress toward the
@@ -53,7 +72,7 @@ export function WorldGlobe({ diameter = 500 }: { diameter?: number }) {
 
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100)
-    camera.position.z = 3.0 // zoomed in to read the map, with room for the halo
+    camera.position.z = 2.85 // zoomed in close to read the map
 
     // Composite the minimap tiles into one texture canvas (sea-blue base while
     // the tiles stream in), then wrap it around the sphere.
@@ -90,6 +109,32 @@ export function WorldGlobe({ diameter = 500 }: { diameter?: number }) {
     })
     const sphere = new THREE.Mesh(geometry, material)
 
+    // Glowing red dot texture shared by every creature marker.
+    const dot = document.createElement('canvas')
+    dot.width = dot.height = 64
+    const dctx = dot.getContext('2d')!
+    const grd = dctx.createRadialGradient(32, 32, 0, 32, 32, 32)
+    grd.addColorStop(0, 'rgba(255,226,190,1)')
+    grd.addColorStop(0.4, 'rgba(210,61,47,0.95)')
+    grd.addColorStop(1, 'rgba(210,61,47,0)')
+    dctx.fillStyle = grd
+    dctx.fillRect(0, 0, 64, 64)
+    const dotTex = new THREE.CanvasTexture(dot)
+    const markerMat = new THREE.SpriteMaterial({
+      map: dotTex,
+      transparent: true,
+      depthWrite: false,
+    })
+    const markers: THREE.Sprite[] = []
+    MARKERS.forEach((m, i) => {
+      const s = new THREE.Sprite(markerMat)
+      s.position.copy(latLonToVec3(m.lat, m.lon, 1.015))
+      s.scale.setScalar(0.085)
+      s.userData.phase = i * 0.6
+      sphere.add(s) // child of the sphere → rotates with it, hides behind the limb
+      markers.push(s)
+    })
+
     // Tilt group holds the axis lean; the sphere spins around its own (tilted) Y.
     const tilt = new THREE.Group()
     tilt.rotation.z = AXIAL_TILT
@@ -104,7 +149,7 @@ export function WorldGlobe({ diameter = 500 }: { diameter?: number }) {
 
     // Atmosphere: a fresnel halo on a slightly larger back-side shell — the touch
     // that reads as "premium". Kept outside the tilt group so it stays centred.
-    const atmGeo = new THREE.SphereGeometry(1.1, 64, 48)
+    const atmGeo = new THREE.SphereGeometry(1.07, 64, 48)
     const atmMat = new THREE.ShaderMaterial({
       uniforms: { glowColor: { value: new THREE.Color(0x8fbce8) } },
       vertexShader:
@@ -151,10 +196,15 @@ export function WorldGlobe({ diameter = 500 }: { diameter?: number }) {
     window.addEventListener('pointerup', onUp)
 
     let raf = 0
+    let tick = 0
     const animate = () => {
       if (!dragging) {
         velocity += (IDLE_SPIN - velocity) * 0.03 // ease momentum back to idle
         sphere.rotation.y += velocity
+      }
+      tick += 1
+      for (const s of markers) {
+        s.scale.setScalar(0.08 + Math.sin(tick * 0.05 + s.userData.phase) * 0.018)
       }
       renderer.render(scene, camera)
       raf = requestAnimationFrame(animate)
@@ -170,6 +220,8 @@ export function WorldGlobe({ diameter = 500 }: { diameter?: number }) {
       material.dispose()
       atmGeo.dispose()
       atmMat.dispose()
+      markerMat.dispose()
+      dotTex.dispose()
       texture.dispose()
       renderer.dispose()
       if (el.parentNode) el.parentNode.removeChild(el)
