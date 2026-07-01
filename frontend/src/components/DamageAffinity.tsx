@@ -32,9 +32,9 @@ const stroke = {
   strokeLinejoin: 'round' as const,
 }
 
-const WEAK = '#ff6a3d'
-const RESIST = '#5aa9e6'
-const IMMUNE_GREY = '#6b7280'
+const WEAK = '#b0402d' // muted seal red — reads as "weak" without neon
+const RESIST = '#3f6b7a' // muted slate
+const IMMUNE_GREY = '#8a7550' // warm parchment grey
 
 // The seven core elements are always shown; Drown and Life drain only appear
 // when a creature actually has an affinity to them (otherwise they're noise).
@@ -42,7 +42,7 @@ const CORE: ElementDef[] = [
   {
     id: 'physical',
     label: 'Physical',
-    color: '#9aa0a6',
+    color: '#8a8578',
     glyph: (
       <>
         <path d="M14.5 17.5 3 6V3h3l11.5 11.5" {...stroke} />
@@ -53,7 +53,7 @@ const CORE: ElementDef[] = [
   {
     id: 'fire',
     label: 'Fire',
-    color: '#ff6a3d',
+    color: '#c0592f',
     glyph: (
       <path
         d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"
@@ -64,7 +64,7 @@ const CORE: ElementDef[] = [
   {
     id: 'energy',
     label: 'Energy',
-    color: '#b06bff',
+    color: '#7d5aa8',
     glyph: (
       <path
         d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"
@@ -75,7 +75,7 @@ const CORE: ElementDef[] = [
   {
     id: 'ice',
     label: 'Ice',
-    color: '#57c7ff',
+    color: '#4f8fb0',
     glyph: (
       <>
         <path d="M2 12h20M12 2v20" {...stroke} />
@@ -86,7 +86,7 @@ const CORE: ElementDef[] = [
   {
     id: 'earth',
     label: 'Earth',
-    color: '#5fbf52',
+    color: '#5f8a3e',
     glyph: (
       <path
         d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5S12.5 5.5 12 3c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"
@@ -97,7 +97,7 @@ const CORE: ElementDef[] = [
   {
     id: 'holy',
     label: 'Holy',
-    color: '#ffd24a',
+    color: '#c69a3a',
     glyph: (
       <>
         <circle cx="12" cy="12" r="4" {...stroke} />
@@ -111,7 +111,7 @@ const CORE: ElementDef[] = [
   {
     id: 'death',
     label: 'Death',
-    color: '#a07fce',
+    color: '#6d5a86',
     glyph: (
       <>
         <path d="M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20" {...stroke} />
@@ -127,7 +127,7 @@ const EXTRA: ElementDef[] = [
   {
     id: 'drown',
     label: 'Drown',
-    color: '#3f8fe0',
+    color: '#3f7495',
     glyph: (
       <>
         <path d="M2 7c.6.5 1.2 1 2.5 1C7 8 7 6 9.5 6c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" {...stroke} />
@@ -139,7 +139,7 @@ const EXTRA: ElementDef[] = [
   {
     id: 'life_drain',
     label: 'Life drain',
-    color: '#e0556f',
+    color: '#a8455c',
     glyph: (
       <>
         <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7z" {...stroke} />
@@ -252,16 +252,14 @@ export function DamageAffinity({ meta }: { meta: Record<string, unknown> }) {
                       ? t('affinity.immuneHint')
                       : t('affinity.neutralHint')
               }
-              style={isWeak ? { boxShadow: `0 0 22px -6px ${WEAK}d9` } : undefined}
+              style={{
+                borderColor: isWeak ? WEAK : isResist ? RESIST : 'var(--color-line)',
+                background: isWeak ? `${WEAK}1f` : isResist ? `${RESIST}14` : 'var(--color-bg-2)',
+                boxShadow: isWeak ? `0 0 20px -8px ${WEAK}` : undefined,
+              }}
               className={[
-                'relative flex flex-col items-center gap-1.5 rounded-lg border px-2 py-3 text-center transition',
-                isWeak
-                  ? 'border-[#ff6a3d]/70 bg-[#ff6a3d]/10'
-                  : isResist
-                    ? 'border-[#5aa9e6]/45 bg-[#5aa9e6]/[0.07]'
-                    : isImmune
-                      ? 'border-line bg-bg-2 opacity-55 grayscale'
-                      : 'border-line bg-bg-2',
+                'relative flex flex-col items-center gap-1.5 rounded-[3px] border px-2 py-3 text-center transition',
+                isImmune ? 'opacity-60 grayscale' : '',
               ].join(' ')}
             >
               {(isWeak || isResist) && (
