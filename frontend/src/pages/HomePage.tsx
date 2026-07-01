@@ -18,7 +18,7 @@ export function HomePage() {
       <Seo path="/" jsonLd={[websiteJsonLd(), organizationJsonLd()]} />
 
       {/* Hero — text + search on the left, the framed map plate on the right. */}
-      <section className="grid items-center gap-10 lg:min-h-[62vh] lg:grid-cols-[1fr_minmax(0,36rem)]">
+      <section className="grid items-start gap-10 lg:grid-cols-[1fr_minmax(0,32rem)]">
         <div className="max-w-xl">
           <p className="font-title text-xs uppercase tracking-[0.28em] text-accent">
             <span aria-hidden="true">✦ </span>
@@ -48,6 +48,30 @@ export function HomePage() {
 
         <MapPlate />
       </section>
+
+      {/* Bestiordle — the daily creature game, featured on the home. */}
+      <Link
+        to="/wordle"
+        className="atlas-plate group flex flex-col items-start gap-4 p-5 sm:flex-row sm:items-center sm:gap-6"
+      >
+        <span className="grid shrink-0 grid-cols-3 gap-1" aria-hidden="true">
+          {['bg-canon', 'bg-theory', 'bg-line-2', 'bg-line-2', 'bg-canon', 'bg-theory'].map((c, i) => (
+            <span key={i} className={`h-5 w-5 rounded-[2px] ${c}`} />
+          ))}
+        </span>
+        <div className="flex-1">
+          <p className="font-title text-[11px] uppercase tracking-[0.2em] text-accent">
+            {t('wordle.kicker')}
+          </p>
+          <h3 className="mt-1 font-title text-xl uppercase tracking-[0.06em] text-fg">
+            {t('wordle.brand')}
+          </h3>
+          <p className="mt-1 text-sm italic leading-relaxed text-fg-dim">{t('wordle.subtitle')}</p>
+        </div>
+        <span className="btn shrink-0">
+          {t('wordle.play')} <span aria-hidden="true">→</span>
+        </span>
+      </Link>
 
       {/* The chapters — few, clear sections, like a book's table of contents. */}
       <section>
