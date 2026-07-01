@@ -24,7 +24,7 @@ const DTILE_W = MAP_W / COLS
 const DTILE_H = MAP_H / ROWS
 
 const AXIAL_TILT = THREE.MathUtils.degToRad(23.5) // classic desk-globe tilt
-const IDLE_SPIN = 0.0026 // rad/frame, west→east
+const IDLE_SPIN = -0.0014 // rad/frame — gentle, east→west
 
 /**
  * A real 3D globe of the Tibia world: a lit, axis-tilted sphere textured with

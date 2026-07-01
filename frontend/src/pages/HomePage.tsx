@@ -18,8 +18,8 @@ export function HomePage() {
       <Seo path="/" jsonLd={[websiteJsonLd(), organizationJsonLd()]} />
 
       {/* Hero — search top-left, a draggable world globe anchored bottom-right. */}
-      <section className="relative min-h-[76vh] overflow-hidden">
-        <div className="relative z-10 max-w-xl pt-6 sm:pt-10">
+      <section className="relative min-h-[54vh] overflow-hidden">
+        <div className="relative z-10 max-w-xl pt-6 sm:pt-8">
           <p className="font-title text-xs uppercase tracking-[0.28em] text-accent">
             <span aria-hidden="true">✦ </span>
             {t('home.atlasKicker')}
@@ -46,18 +46,18 @@ export function HomePage() {
           </div>
         </div>
 
-        {/* Globe — bleeds off the bottom-right corner on desktop. */}
-        <div className="pointer-events-none absolute -bottom-28 -right-20 z-0 hidden md:block">
+        {/* Globe — anchored to the right, kept close to the search block. */}
+        <div className="pointer-events-none absolute -right-16 top-2 z-0 hidden lg:block">
           <div className="pointer-events-auto">
-            <WorldGlobe diameter={540} />
+            <WorldGlobe diameter={480} />
           </div>
-          <p className="pointer-events-none mt-2 text-right text-[11px] italic text-fg-mute">
+          <p className="pointer-events-none mt-1 text-right text-[11px] italic text-fg-mute">
             arrástrame
           </p>
         </div>
 
-        {/* Mobile: globe centred below the search block. */}
-        <div className="mt-10 flex flex-col items-center md:hidden">
+        {/* Below lg: globe centred under the search block. */}
+        <div className="mt-10 flex flex-col items-center lg:hidden">
           <WorldGlobe diameter={280} />
           <p className="mt-2 text-[11px] italic text-fg-mute">arrástrame</p>
         </div>
