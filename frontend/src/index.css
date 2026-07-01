@@ -102,11 +102,15 @@ html[data-theme='dark'] .btn {
   font-family: var(--font-display);
   background: var(--color-accent);
   color: #fff;
-  border-radius: 0.375rem;
   text-transform: none;
   letter-spacing: normal;
   font-weight: 600;
   font-size: 0.875rem;
+}
+/* rounded-md by default, but never clobber a button that opts into a pill
+   (e.g. the search submit uses `rounded-full`). */
+html[data-theme='dark'] .btn:not(.rounded-full) {
+  border-radius: 0.375rem;
 }
 html[data-theme='dark'] .btn:hover {
   background: var(--color-accent-2);
