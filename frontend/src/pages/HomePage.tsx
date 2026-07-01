@@ -2,13 +2,8 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { SearchBox } from '../components/SearchBox'
 import { MapPlate } from '../components/MapPlate'
+import { MostHunted } from '../components/MostHunted'
 import { Seo, websiteJsonLd, organizationJsonLd } from '../lib/seo'
-
-const chapters: { num: string; to: string; titleKey: string; descKey: string; lead: boolean }[] = [
-  { num: 'I', to: '/map', titleKey: 'nav.map', descKey: 'home.chapMapDesc', lead: true },
-  { num: 'II', to: '/browse/creature', titleKey: 'nav.bestiary', descKey: 'home.chapBestiaryDesc', lead: false },
-  { num: 'III', to: '/history', titleKey: 'nav.library', descKey: 'home.chapLibraryDesc', lead: false },
-]
 
 export function HomePage() {
   const { t } = useTranslation()
@@ -49,6 +44,9 @@ export function HomePage() {
         <MapPlate />
       </section>
 
+      {/* Live "most hunted" board — real Tibia data, useful and un-fakeable. */}
+      <MostHunted />
+
       {/* Bestiordle — the daily creature game, featured on the home. */}
       <Link
         to="/wordle"
@@ -72,42 +70,6 @@ export function HomePage() {
           {t('wordle.play')} <span aria-hidden="true">→</span>
         </span>
       </Link>
-
-      {/* The chapters — few, clear sections, like a book's table of contents. */}
-      <section>
-        <div className="mb-5 flex items-center gap-3">
-          <span className="h-1.5 w-1.5 rotate-45 bg-accent" aria-hidden="true" />
-          <h2 className="font-title text-sm uppercase tracking-[0.18em] text-fg">
-            {t('home.chapters')}
-          </h2>
-          <span className="rule-gilt flex-1" />
-        </div>
-        <div className="grid gap-4 sm:grid-cols-3">
-          {chapters.map((c) => (
-            <Link
-              key={c.to}
-              to={c.to}
-              className="atlas-plate group flex flex-col p-5 transition hover:-translate-y-0.5"
-              style={{ borderColor: c.lead ? 'var(--color-accent)' : undefined }}
-            >
-              <span
-                className="font-title text-4xl leading-none"
-                style={{ color: c.lead ? 'var(--color-accent)' : 'var(--color-gold)' }}
-              >
-                {c.num}
-              </span>
-              <h3 className="mt-3 font-title text-base uppercase tracking-[0.08em] text-fg">
-                {t(c.titleKey)}
-              </h3>
-              <p className="mt-2 text-sm italic leading-relaxed text-fg-dim">{t(c.descKey)}</p>
-              <span className="small-caps mt-4 inline-flex items-center gap-1.5 font-medium text-accent">
-                {t('home.readMore')}
-                <span className="transition-transform group-hover:translate-x-1" aria-hidden="true">→</span>
-              </span>
-            </Link>
-          ))}
-        </div>
-      </section>
     </div>
   )
 }
