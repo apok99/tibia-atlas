@@ -9,7 +9,7 @@ const resources = {
       brand: 'Tibia Atlas',
       tagline: 'The living archive of Tibian lore',
       footer: {
-        signature: 'Hand-drawn by David — a Tibia player since I was eight, mapping the world I grew up in.',
+        signature: 'A hand-made atlas for the Spanish-speaking Tibia community.',
         disclaimer: 'A fan project, not affiliated with CipSoft. Tibia is a registered trademark of CipSoft GmbH.',
       },
       nav: {
@@ -502,7 +502,7 @@ const resources = {
       brand: 'Tibia Atlas',
       tagline: 'El archivo viviente del lore de Tibia',
       footer: {
-        signature: 'Trazado a mano por David — juego a Tibia desde los ocho años, cartografiando el mundo en el que crecí.',
+        signature: 'Un atlas hecho a mano para la comunidad hispanohablante de Tibia.',
         disclaimer: 'Proyecto de fan, sin afiliación con CipSoft. Tibia es una marca registrada de CipSoft GmbH.',
       },
       nav: {
