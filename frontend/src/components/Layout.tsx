@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, Link, Outlet, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from './LanguageSwitcher'
+import { ThemeToggle } from './ThemeToggle'
 import { PlayerBar } from './PlayerBar'
 import { SearchBox } from './SearchBox'
 
@@ -94,7 +95,8 @@ export function Layout() {
             </div>
           </div>
 
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-2.5">
+            <ThemeToggle />
             <LanguageSwitcher />
             {/* Hamburger — only below lg */}
             <button

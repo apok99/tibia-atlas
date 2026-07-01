@@ -22,6 +22,14 @@
       fallback; React replaces it on mount.
     -->
     <title>Tibia Atlas — El archivo viviente del lore de Tibia</title>
+    <script>
+      // Apply the saved theme before first paint to avoid a flash. Defaults to
+      // the parchment "day" atlas so first-time visitors meet the identity.
+      try {
+        var t = localStorage.getItem('theme') === 'dark' ? 'dark' : 'light'
+        document.documentElement.setAttribute('data-theme', t)
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

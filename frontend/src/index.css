@@ -40,6 +40,54 @@
   --color-stone-950: #efe4ca;
 }
 
+/*
+  Night atlas — the same book by candlelight. Dark tooled-leather ground, warm
+  cream ink, brighter seal red and gilt. Keeps the serif + compass identity;
+  only the ground turns to night. Toggled via data-theme="dark" on <html>.
+*/
+html[data-theme='dark'] {
+  --color-bg: #1a1610;
+  --color-bg-2: #131009;
+  --color-surface: #221d15;
+  --color-surface-2: #2b241a;
+  --color-line: #463b28;
+  --color-line-2: #6a5838;
+
+  --color-fg: #ecdcb8;
+  --color-fg-dim: #c7b287;
+  --color-fg-mute: #97835d;
+
+  --color-accent: #cf5540;
+  --color-accent-2: #e5745c;
+  --color-gold: #c2a25c;
+
+  --color-canon: #7bb069;
+  --color-interp: #6fa8c4;
+  --color-theory: #d8a23a;
+
+  --color-atlas-bg: #1a1610;
+  --color-atlas-panel: #221d15;
+  --color-atlas-border: #463b28;
+  --color-atlas-gold: #cf5540;
+  --color-atlas-gold-bright: #e5745c;
+  --color-atlas-ink: #ecdcb8;
+  --color-atlas-muted: #97835d;
+  --color-stone-950: #0d0b07;
+}
+
+/* Dark ground: candlelit leather wash instead of the sunlit parchment one. */
+html[data-theme='dark'] body {
+  background-image:
+    radial-gradient(120% 90% at 50% -10%, #241d12 0%, #17120a 55%, #0e0b06 100%);
+}
+html[data-theme='dark'] body::before {
+  mix-blend-mode: overlay;
+  opacity: 0.05;
+}
+html[data-theme='dark'] body::after {
+  box-shadow: inset 0 0 200px rgba(0, 0, 0, 0.55);
+}
+
 @layer base {
   body {
     @apply text-fg antialiased;
