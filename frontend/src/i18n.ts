@@ -350,7 +350,7 @@ const resources = {
         allWorlds: 'all worlds',
         huntedKicker: 'Live data',
         huntedDesc:
-          'The creatures most hunted across every Tibia world in the last 24 hours. Real data, straight from the server stats, updated daily.',
+          'The creatures most hunted across every Tibia world in the last 24 hours, summed from the official server stats. See what the whole community is farming right now, spot what is rising or falling, and decide where to hunt next. It refreshes with each server save, so the ranking shifts day to day — tap any creature to open its page with spawns, resistances and experience.',
         chapters: 'The chapters',
         chapMapDesc: 'Roam the world floor by floor and mark where each beast is hunted.',
         chapBestiaryDesc: 'A page for every creature, its lore translated into Spanish.',
@@ -843,7 +843,7 @@ const resources = {
         allWorlds: 'todos los mundos',
         huntedKicker: 'Datos en vivo',
         huntedDesc:
-          'Las criaturas más cazadas en todos los mundos de Tibia en las últimas 24 horas. Datos reales, sacados de las estadísticas del servidor y actualizados cada día.',
+          'Las criaturas más cazadas en todos los mundos de Tibia en las últimas 24 horas, sumadas de las estadísticas oficiales del servidor. Sirve para ver qué está farmeando la comunidad ahora mismo, detectar qué sube o baja y decidir dónde cazar. Se actualiza con cada server save, así que el ranking cambia día a día — toca cualquier criatura para abrir su ficha con spawns, resistencias y experiencia.',
         chapters: 'Los capítulos',
         chapMapDesc: 'Recorre el mundo piso por piso y marca dónde se caza cada bestia.',
         chapBestiaryDesc: 'Una ficha para cada criatura, con su lore traducido al español.',
