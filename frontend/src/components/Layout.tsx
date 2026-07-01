@@ -12,6 +12,7 @@ type NavItem = { to: string; key: string; end?: boolean }
 // the library and the daily game. Everything else lives under "Más" so the bar
 // stays uncluttered and focused (the whole point of the redesign).
 const primaryNav: NavItem[] = [
+  { to: '/', key: 'nav.home', end: true },
   { to: '/map', key: 'nav.map' },
   { to: '/browse/creature', key: 'nav.bestiary' },
   { to: '/history', key: 'nav.library' },
@@ -29,11 +30,7 @@ const moreNav: NavItem[] = [
 ]
 
 // Flat list for the mobile menu (shows everything at once).
-const allNav: NavItem[] = [
-  { to: '/', key: 'nav.home', end: true },
-  ...primaryNav,
-  ...moreNav,
-]
+const allNav: NavItem[] = [...primaryNav, ...moreNav]
 
 /** Small ink compass-rose — the brand mark. */
 function CompassRose({ className = '' }: { className?: string }) {
