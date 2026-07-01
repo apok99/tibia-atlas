@@ -49,7 +49,7 @@ export function HomePage() {
         {/* Globe — anchored to the right, kept close to the search block. */}
         <div className="pointer-events-none absolute -right-16 top-2 z-0 hidden lg:block">
           <div className="pointer-events-auto">
-            <WorldGlobe diameter={480} />
+            <WorldGlobe diameter={540} />
           </div>
           <p className="pointer-events-none mt-1 text-right text-[11px] italic text-fg-mute">
             arrástrame
@@ -58,7 +58,7 @@ export function HomePage() {
 
         {/* Below lg: globe centred under the search block. */}
         <div className="mt-10 flex flex-col items-center lg:hidden">
-          <WorldGlobe diameter={280} />
+          <WorldGlobe diameter={320} />
           <p className="mt-2 text-[11px] italic text-fg-mute">arrástrame</p>
         </div>
       </section>

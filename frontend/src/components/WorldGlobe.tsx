@@ -53,7 +53,7 @@ export function WorldGlobe({ diameter = 500 }: { diameter?: number }) {
 
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100)
-    camera.position.z = 3.4 // pulled back to leave room for the atmosphere halo
+    camera.position.z = 3.15 // close enough to read the map, with room for the halo
 
     // Composite the minimap tiles into one texture canvas (sea-blue base while
     // the tiles stream in), then wrap it around the sphere.
@@ -104,7 +104,7 @@ export function WorldGlobe({ diameter = 500 }: { diameter?: number }) {
 
     // Atmosphere: a fresnel halo on a slightly larger back-side shell — the touch
     // that reads as "premium". Kept outside the tilt group so it stays centred.
-    const atmGeo = new THREE.SphereGeometry(1.16, 64, 48)
+    const atmGeo = new THREE.SphereGeometry(1.12, 64, 48)
     const atmMat = new THREE.ShaderMaterial({
       uniforms: { glowColor: { value: new THREE.Color(0x8fbce8) } },
       vertexShader:
