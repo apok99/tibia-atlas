@@ -157,6 +157,14 @@ html[data-theme='dark'] .ks-orbit-core-value {
   color: var(--color-accent-2);
   text-shadow: 0 0 18px rgba(236, 106, 85, 0.5);
 }
+/* Night: dark medallions for boss watch + raid watch. */
+html[data-theme='dark'] .ks-boss-sprite {
+  background: radial-gradient(circle at 50% 35%, #23262e, #14151a);
+  box-shadow: 0 6px 22px -6px rgba(0, 0, 0, 0.85);
+}
+html[data-theme='dark'] .ks-raid-badge {
+  background: radial-gradient(circle at 50% 35%, #23262e, #14151a);
+}
 
 @layer base {
   body {
@@ -933,9 +941,9 @@ html[data-theme='dark'] .ks-orbit-core-value {
   display: grid;
   place-items: center;
   border-radius: 9999px;
-  background: radial-gradient(circle at 50% 35%, #23262e, #14151a);
+  background: radial-gradient(circle at 50% 35%, #f4e9cf, #e0cfa2);
   border: 2px solid var(--color-line-2);
-  box-shadow: 0 6px 22px -6px rgba(0, 0, 0, 0.85);
+  box-shadow: 0 6px 22px -8px rgba(74, 54, 26, 0.5);
   animation: ks-boss-pop 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .ks-boss-sprite img {
@@ -1060,7 +1068,7 @@ html[data-theme='dark'] .ks-orbit-core-value {
   display: grid;
   place-items: center;
   border-radius: 9999px;
-  background: radial-gradient(circle at 50% 35%, #23262e, #14151a);
+  background: radial-gradient(circle at 50% 35%, #f4e9cf, #e0cfa2);
   border: 2px solid var(--temp);
   box-shadow: 0 0 16px -4px var(--temp), inset 0 0 12px -6px var(--temp);
 }
