@@ -23,8 +23,8 @@ export function MostHunted() {
 
   return (
     <section className="atlas-plate overflow-hidden">
-      <div className="grid items-center gap-4 p-5 sm:gap-8 sm:p-7 md:grid-cols-[minmax(0,300px)_1fr]">
-        <div className="flex items-center justify-center">
+      <div className="flex flex-col items-center gap-6 p-5 sm:flex-row sm:gap-8 sm:p-7">
+        <div className="flex w-full max-w-[300px] shrink-0 items-center justify-center sm:w-[280px]">
           <CreatureOrbit
             items={items}
             coreValue={total}
@@ -33,14 +33,14 @@ export function MostHunted() {
           />
         </div>
 
-        <div>
+        <div className="max-w-md sm:ml-auto sm:text-right">
           <p className="font-title text-[11px] uppercase tracking-[0.22em] text-accent">
             {t('home.huntedKicker')}
           </p>
           <h2 className="mt-2 font-title text-2xl uppercase tracking-[0.06em] text-fg">
             {t('home.huntedTitle')}
           </h2>
-          <p className="mt-3 max-w-md text-[15px] italic leading-relaxed text-fg-dim">
+          <p className="mt-3 text-[15px] italic leading-relaxed text-fg-dim">
             {t('home.huntedDesc')}
           </p>
           <Link to="/killstats" className="btn-quill mt-5 inline-flex">
