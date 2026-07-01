@@ -18,7 +18,7 @@ export function HomePage() {
       <Seo path="/" jsonLd={[websiteJsonLd(), organizationJsonLd()]} />
 
       {/* Hero — text + search on the left, the framed map plate on the right. */}
-      <section className="grid items-center gap-8 lg:min-h-[62vh] lg:grid-cols-[1fr_minmax(0,30rem)]">
+      <section className="grid items-center gap-10 lg:min-h-[62vh] lg:grid-cols-[1fr_minmax(0,36rem)]">
         <div className="max-w-xl">
           <p className="font-title text-xs uppercase tracking-[0.28em] text-accent">
             <span aria-hidden="true">✦ </span>
