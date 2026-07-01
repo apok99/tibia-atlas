@@ -53,7 +53,7 @@ export function WorldGlobe({ diameter = 500 }: { diameter?: number }) {
 
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100)
-    camera.position.z = 2.9
+    camera.position.z = 3.4 // pulled back to leave room for the atmosphere halo
 
     // Composite the minimap tiles into one texture canvas (sea-blue base while
     // the tiles stream in), then wrap it around the sphere.
@@ -80,8 +80,14 @@ export function WorldGlobe({ diameter = 500 }: { diameter?: number }) {
       }),
     )
 
-    const geometry = new THREE.SphereGeometry(1, 64, 48)
-    const material = new THREE.MeshStandardMaterial({ map: texture, roughness: 1, metalness: 0 })
+    const geometry = new THREE.SphereGeometry(1, 96, 64)
+    const material = new THREE.MeshStandardMaterial({
+      map: texture,
+      roughness: 0.92,
+      metalness: 0,
+      emissive: new THREE.Color(0x17242c),
+      emissiveIntensity: 0.28, // lift the dark seas so the map reads clearly
+    })
     const sphere = new THREE.Mesh(geometry, material)
 
     // Tilt group holds the axis lean; the sphere spins around its own (tilted) Y.
@@ -90,10 +96,28 @@ export function WorldGlobe({ diameter = 500 }: { diameter?: number }) {
     tilt.add(sphere)
     scene.add(tilt)
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.68))
-    const sun = new THREE.DirectionalLight(0xfff1d6, 1.05)
-    sun.position.set(-2.4, 1.3, 2.2)
-    scene.add(sun)
+    // Even, soft lighting so the whole map is legible, with a gentle key for form.
+    scene.add(new THREE.AmbientLight(0xffffff, 0.92))
+    const key = new THREE.DirectionalLight(0xfff4e0, 0.6)
+    key.position.set(-1.8, 1.4, 2.4)
+    scene.add(key)
+
+    // Atmosphere: a fresnel halo on a slightly larger back-side shell — the touch
+    // that reads as "premium". Kept outside the tilt group so it stays centred.
+    const atmGeo = new THREE.SphereGeometry(1.16, 64, 48)
+    const atmMat = new THREE.ShaderMaterial({
+      uniforms: { glowColor: { value: new THREE.Color(0x8fbce8) } },
+      vertexShader:
+        'varying vec3 vN; void main(){ vN = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader:
+        'varying vec3 vN; uniform vec3 glowColor; void main(){ float i = pow(0.62 - dot(vN, vec3(0.0, 0.0, 1.0)), 3.2); i = clamp(i, 0.0, 1.0); gl_FragColor = vec4(glowColor, i); }',
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending,
+      transparent: true,
+      depthWrite: false,
+    })
+    const atmosphere = new THREE.Mesh(atmGeo, atmMat)
+    scene.add(atmosphere)
 
     let dragging = false
     let lastX = 0
@@ -144,6 +168,8 @@ export function WorldGlobe({ diameter = 500 }: { diameter?: number }) {
       window.removeEventListener('pointerup', onUp)
       geometry.dispose()
       material.dispose()
+      atmGeo.dispose()
+      atmMat.dispose()
       texture.dispose()
       renderer.dispose()
       if (el.parentNode) el.parentNode.removeChild(el)
@@ -152,7 +178,6 @@ export function WorldGlobe({ diameter = 500 }: { diameter?: number }) {
 
   return (
     <div className="wg-wrap" style={{ width: diameter, height: diameter }}>
-      <span className="wg-glow" />
       <div ref={mountRef} style={{ width: diameter, height: diameter, position: 'relative' }} />
     </div>
   )
