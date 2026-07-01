@@ -101,6 +101,12 @@ export function WorldGlobe({ diameter = 500 }: { diameter?: number }) {
     controls.minDistance = 160
     controls.maxDistance = 480
 
+    // Force a fully transparent canvas — globe.gl's backgroundColor with an
+    // alpha can still leave an opaque dark scene background, which reads as a
+    // grey box behind the planet. Null the scene bg and clear with alpha 0.
+    world.scene().background = null
+    world.renderer().setClearColor(0x000000, 0)
+
     return () => {
       controls.autoRotate = false
       const w = world as unknown as { _destructor?: () => void }
