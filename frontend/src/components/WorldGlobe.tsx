@@ -9,19 +9,19 @@ const FLOOR = 7
 const COLS = X.length
 const ROWS = Y.length
 
-// Equirectangular texture is 2:1 so the sphere's UVs don't stretch it. The flat
-// (near-square) Tibia map keeps its own aspect and sits as a landmass on an
-// ocean globe, centred on the equator — so the unavoidable polar pinch lands in
-// empty sea instead of tearing the map apart.
+// Equirectangular texture is 2:1 so the sphere's UVs don't stretch it. The map
+// is drawn to COVER the whole texture at a uniform (square-tile) scale: it fills
+// the full 360° of longitude and, being near-square, slightly overflows top and
+// bottom — so we crop a little of the poles rather than leave empty ocean. Full
+// globe, no stretch distortion.
 const TEX_W = 4096
 const TEX_H = 2048
 const OCEAN = '#22506b'
-const MAP_W = 1950
-const MAP_H = MAP_W * (ROWS / COLS) // preserve the map's true (square-tile) aspect
-const MAP_X = (TEX_W - MAP_W) / 2
-const MAP_Y = (TEX_H - MAP_H) / 2
-const DTILE_W = MAP_W / COLS
-const DTILE_H = MAP_H / ROWS
+const DTILE_W = TEX_W / COLS // square tiles → uniform scale, no distortion
+const DTILE_H = DTILE_W
+const MAP_H = DTILE_H * ROWS
+const MAP_X = 0
+const MAP_Y = (TEX_H - MAP_H) / 2 // negative: crops a sliver of N/S to fill height
 
 const AXIAL_TILT = THREE.MathUtils.degToRad(23.5) // classic desk-globe tilt
 const IDLE_SPIN = -0.0014 // rad/frame — gentle, east→west
