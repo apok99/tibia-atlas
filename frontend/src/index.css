@@ -141,6 +141,22 @@ html[data-theme='dark'] .sprite-tile {
     repeating-linear-gradient(0deg, #1a1c22 0 1px, #16181d 1px 2px);
   box-shadow: none;
 }
+/* Night: the dark creature orbit (killstats + home centrepiece). */
+html[data-theme='dark'] .ks-orbit-sprite {
+  background: radial-gradient(circle at 50% 35%, #23262e, #16171c);
+  box-shadow: 0 4px 14px -4px rgba(0, 0, 0, 0.8), 0 0 14px -4px rgba(236, 106, 85, 0.5);
+}
+html[data-theme='dark'] .ks-orbit-count {
+  background: #16171c;
+  color: var(--color-accent-2);
+}
+html[data-theme='dark'] .ks-orbit-core {
+  background: radial-gradient(circle, rgba(27, 29, 36, 0.95) 60%, rgba(27, 29, 36, 0));
+}
+html[data-theme='dark'] .ks-orbit-core-value {
+  color: var(--color-accent-2);
+  text-shadow: 0 0 18px rgba(236, 106, 85, 0.5);
+}
 
 @layer base {
   body {
@@ -659,9 +675,9 @@ html[data-theme='dark'] .sprite-tile {
   display: grid;
   place-items: center;
   border-radius: 9999px;
-  background: radial-gradient(circle at 50% 35%, #23262e, #16171c);
+  background: radial-gradient(circle at 50% 35%, #f4e9cf, #e0cfa2);
   border: 2px solid var(--color-line-2);
-  box-shadow: 0 4px 14px -4px rgba(0, 0, 0, 0.8), 0 0 14px -4px rgba(236, 106, 85, 0.5);
+  box-shadow: 0 4px 14px -5px rgba(74, 54, 26, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.5);
   animation: ks-spin-rev 54s linear infinite;
   transition: transform 0.2s ease, border-color 0.2s ease;
 }
@@ -701,9 +717,9 @@ html[data-theme='dark'] .sprite-tile {
   transform: translateX(-50%);
   padding: 0 6px;
   border-radius: 9999px;
-  background: #16171c;
+  background: var(--color-surface);
   border: 1px solid var(--color-line-2);
-  color: var(--color-accent-2);
+  color: var(--color-accent);
   font-size: 10px;
   font-weight: 800;
   white-space: nowrap;
@@ -717,7 +733,7 @@ html[data-theme='dark'] .sprite-tile {
   justify-content: center;
   text-align: center;
   border-radius: 9999px;
-  background: radial-gradient(circle, rgba(27, 29, 36, 0.95) 60%, rgba(27, 29, 36, 0));
+  background: radial-gradient(circle, rgba(243, 233, 206, 0.96) 58%, rgba(243, 233, 206, 0));
 }
 .ks-orbit-core-pulse {
   position: absolute;
@@ -734,8 +750,8 @@ html[data-theme='dark'] .sprite-tile {
   font-size: clamp(18px, 4.5vw, 30px);
   font-weight: 900;
   line-height: 1;
-  color: var(--color-accent-2);
-  text-shadow: 0 0 18px rgba(236, 106, 85, 0.5);
+  color: var(--color-accent);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 .ks-orbit-core-label {
   margin-top: 4px;

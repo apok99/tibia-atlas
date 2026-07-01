@@ -348,6 +348,9 @@ const resources = {
         seeAll: 'See all',
         huntedCoreLabel: 'killed · 24h',
         allWorlds: 'all worlds',
+        huntedKicker: 'Live data · CipSoft',
+        huntedDesc:
+          'The creatures most hunted across every Tibia world in the last 24 hours. Real data, straight from the server stats, updated daily.',
         chapters: 'The chapters',
         chapMapDesc: 'Roam the world floor by floor and mark where each beast is hunted.',
         chapBestiaryDesc: 'A page for every creature, its lore translated into Spanish.',
@@ -838,6 +841,9 @@ const resources = {
         seeAll: 'Ver todo',
         huntedCoreLabel: 'muertas · 24h',
         allWorlds: 'todos los mundos',
+        huntedKicker: 'Datos en vivo · CipSoft',
+        huntedDesc:
+          'Las criaturas más cazadas en todos los mundos de Tibia en las últimas 24 horas. Datos reales, sacados de las estadísticas del servidor y actualizados cada día.',
         chapters: 'Los capítulos',
         chapMapDesc: 'Recorre el mundo piso por piso y marca dónde se caza cada bestia.',
         chapBestiaryDesc: 'Una ficha para cada criatura, con su lore traducido al español.',
