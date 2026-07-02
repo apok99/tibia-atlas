@@ -15,9 +15,9 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return pages
 }
 
-/** Open items in their album modal; everything else has a lore page. */
+/** Items have a dedicated item page; everything else has a lore page. */
 function entryTo(entry: EntryListItem): string {
-  return entry.type === 'item' ? `/items?open=${entry.slug}` : `/entry/${entry.slug}`
+  return entry.type === 'item' ? `/items/${entry.slug}` : `/entry/${entry.slug}`
 }
 
 /**

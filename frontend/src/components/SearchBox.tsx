@@ -6,9 +6,9 @@ import { useDebounce } from '../hooks/useDebounce'
 import { TypeIcon } from './TypeIcon'
 import type { SearchResult } from '../types'
 
-/** Where a search hit lives: items open their album modal, lore opens its page. */
+/** Where a search hit lives: items open their item page, lore opens its page. */
 const hrefFor = (r: SearchResult) =>
-  r.type === 'item' ? `/items?open=${r.slug}` : `/entry/${r.slug}`
+  r.type === 'item' ? `/items/${r.slug}` : `/entry/${r.slug}`
 
 /**
  * Hero search input with a live autocomplete dropdown. Suggestions come from the

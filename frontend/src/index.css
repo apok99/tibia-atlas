@@ -14,9 +14,10 @@
   --color-line: #c9b184;       /* aged rule */
   --color-line-2: #a98f5f;     /* darker rule / border */
 
-  --color-fg: #33271a;         /* dark sepia ink */
-  --color-fg-dim: #6a5535;     /* faded ink */
-  --color-fg-mute: #8a7550;    /* light ink / captions */
+  --color-fg: #2a1f12;         /* dark sepia ink */
+  --color-fg-dim: #574327;     /* faded ink */
+  --color-fg-mute: #756040;    /* light ink / captions */
+  --color-nav-link: #362713;   /* navbar chapter links — inkier than fg-dim */
 
   --color-accent: #9c3b2e;     /* wax-seal red */
   --color-accent-2: #b8503b;   /* brighter seal */
@@ -61,6 +62,7 @@ html[data-theme='dark'] {
   --color-fg: #e9e3d6;
   --color-fg-dim: #aaa394;
   --color-fg-mute: #76705f;
+  --color-nav-link: #aaa394;   /* unchanged at night — same as fg-dim */
 
   --color-accent: #d23d2f;
   --color-accent-2: #ec6a55;
@@ -142,7 +144,7 @@ html[data-theme='dark'] .ks-raid-badge {
   body {
     @apply text-fg antialiased;
     font-family: var(--font-display);
-    font-size: 17px;
+    font-size: 20.5px;
     background-color: var(--color-bg);
     /* Aged-paper wash: warm highlight top-centre, dusty falloff to the edges. */
     background-image:
@@ -232,6 +234,16 @@ html[data-theme='dark'] .ks-raid-badge {
   .small-caps {
     font-family: var(--font-title);
     @apply text-[11px] uppercase tracking-[0.14em];
+  }
+
+  /* Navbar chapter links — like .small-caps but a touch larger and inkier so
+     the bar reads clearly on parchment. Padding/state colours stay on the
+     element (active `text-accent` and `hover:` utilities override the base). */
+  .nav-link {
+    font-family: var(--font-title);
+    @apply font-medium uppercase tracking-[0.13em] transition;
+    font-size: 12.5px;
+    color: var(--color-nav-link);
   }
 
   /* Double-rule divider with a diamond node — a book-plate flourish. */
@@ -412,6 +424,56 @@ html[data-theme='dark'] .ks-raid-badge {
 .tm-del:hover { color: var(--color-accent-2); }
 .leaflet-container.tm-placing { cursor: crosshair; }
 
+/* ---- Route (how-to-get-there) start/destination pins ---- */
+.tm-route-pin {
+  transform: translate(-50%, -50%);
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: var(--rp, #2f6df0);
+  border: 2px solid #fff;
+  color: #fff;
+  font-family: var(--font-title, Georgia, serif);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+/* Floor-change badge (stairs / hole / teleport) — click to jump floors. */
+.tm-route-stair {
+  transform: translate(-50%, -50%);
+  padding: 2px 7px;
+  border-radius: 9999px;
+  border: 2px solid #fff;
+  color: #fff;
+  font-family: var(--font-title, Georgia, serif);
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+.tm-route-stair.is-down { background: #c0392b; }
+.tm-route-stair.is-up { background: #1f9d55; }
+.tm-route-stair.is-tp { background: #7c3aed; }
+.tm-route-stair:hover { filter: brightness(1.12); }
+
+/* Boat-leg badge at the midpoint of a sea crossing. */
+.tm-route-boat {
+  transform: translate(-50%, -50%);
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: #0f7c8c;
+  border: 2px solid #fff;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
 /* ---- City / zone name labels ---- */
 .tm-city {
   transform: translate(-50%, -50%);
@@ -489,6 +551,32 @@ html[data-theme='dark'] .ks-raid-badge {
 .tm-spawn-all img {
   width: 26px;
   height: 26px;
+}
+
+/* ---- Imported minimap POI markers (levitate spots, levers, depots…) ---- */
+.tm-poi {
+  width: 30px;
+  height: 30px;
+  transform: translate(-50%, -50%);
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--poi, var(--color-accent));
+  border: 2.5px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.75);
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+.tm-poi svg {
+  width: 17px;
+  height: 17px;
+  display: block;
+}
+.tm-poi:hover {
+  transform: translate(-50%, -50%) scale(1.15);
+  filter: brightness(1.12);
+  z-index: 500;
 }
 
 /* ---- Kill-stats dashboard "WOW" flourishes ---- */

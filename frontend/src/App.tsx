@@ -10,6 +10,7 @@ import { KillStatsPage } from './pages/KillStatsPage'
 import { QuestsPage } from './pages/QuestsPage'
 import { TimelinePage } from './pages/TimelinePage'
 import { ItemsPage } from './pages/ItemsPage'
+import { ItemDetailPage } from './pages/ItemDetailPage'
 import { WordlePage } from './pages/WordlePage'
 
 export default function App() {
@@ -22,6 +23,7 @@ export default function App() {
           <Route path="browse/:type" element={<BrowsePage />} />
           <Route path="quests" element={<QuestsPage />} />
           <Route path="items" element={<ItemsPage />} />
+          <Route path="items/:slug" element={<ItemDetailPage />} />
           <Route path="wordle" element={<WordlePage />} />
           <Route path="entry/:slug" element={<EntryPage />} />
           <Route path="history" element={<HistoryPage />} />

@@ -1,0 +1,6 @@
+# OpenTibia map data used only to generate routing data (large binaries).
+# Kept local — never committed. See tools/otbm/.
+*.otbm
+/tools/otbm/items.xml
+/tools/otbm/appearances.dat
+/tools/otbm/*.otbm

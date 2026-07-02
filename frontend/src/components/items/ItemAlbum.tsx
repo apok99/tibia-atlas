@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useItems, useItemFacets } from '../../hooks/useEntries'
 import { useDebounce } from '../../hooks/useDebounce'
 import type { EntryListItem } from '../../types'
 import { ItemCard } from './ItemCard'
-import { ItemDetailModal } from './ItemDetailModal'
 
 const PER_PAGE = 60
 
@@ -19,44 +18,17 @@ export function ItemAlbum({
   countIn: (category: string) => number
 }) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const { data: facets } = useItemFacets()
 
-  const [params, setParams] = useSearchParams()
   const [category, setCategory] = useState('')
   const [equippable, setEquippable] = useState(false)
   const [search, setSearch] = useState('')
-  const [openSlug, setOpenSlug] = useState<string | null>(null)
-  const [openCategory, setOpenCategory] = useState('')
-
-  // Deep link: ?open=<slug> (e.g. from the global search) opens that item's
-  // detail modal directly, even if it isn't on the current album page.
-  const openParam = params.get('open')
-  useEffect(() => {
-    if (openParam) {
-      setOpenSlug(openParam)
-      setOpenCategory('')
-    }
-  }, [openParam])
-
-  const closeModal = useCallback(() => {
-    setOpenSlug(null)
-    setParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete('open')
-        return next
-      },
-      { replace: true },
-    )
-  }, [setParams])
 
   // Stable callbacks so the memoized ItemCards don't all re-render when one is
-  // toggled or the modal opens (only the card whose `collected` flips re-renders).
+  // toggled (only the card whose `collected` flips re-renders).
   const handleToggle = useCallback((slug: string, category: string) => toggle(slug, category), [toggle])
-  const handleOpen = useCallback((slug: string, category: string) => {
-    setOpenSlug(slug)
-    setOpenCategory(category)
-  }, [])
+  const handleOpen = useCallback((slug: string) => navigate(`/items/${slug}`), [navigate])
   const q = useDebounce(search.trim(), 350)
 
   // Accumulate pages for an infinite "show more" list.
@@ -169,14 +141,6 @@ export function ItemAlbum({
         </div>
       )}
 
-      {openSlug && (
-        <ItemDetailModal
-          slug={openSlug}
-          collected={has(openSlug)}
-          onToggle={() => toggle(openSlug, openCategory)}
-          onClose={closeModal}
-        />
-      )}
     </div>
   )
 }

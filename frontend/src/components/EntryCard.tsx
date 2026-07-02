@@ -6,9 +6,9 @@ import type { EntryListItem } from '../types'
 export function EntryCard({ entry }: { entry: EntryListItem }) {
   const { t } = useTranslation()
 
-  // Items are draft catalogue entries with no public lore page; open their
-  // album modal instead of a 404ing /entry route.
-  const to = entry.type === 'item' ? `/items?open=${entry.slug}` : `/entry/${entry.slug}`
+  // Items are draft catalogue entries with no public lore page; send them to
+  // their dedicated item page instead of a 404ing /entry route.
+  const to = entry.type === 'item' ? `/items/${entry.slug}` : `/entry/${entry.slug}`
 
   return (
     <Link

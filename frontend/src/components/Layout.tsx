@@ -135,10 +135,10 @@ export function Layout() {
                     end={item.end}
                     onClick={() => setMenuOpen(false)}
                     className={({ isActive }) =>
-                      `small-caps rounded-[2px] px-3 py-2.5 font-medium transition ${
+                      `nav-link rounded-[2px] px-3 py-2.5 ${
                         isActive
                           ? 'bg-accent/12 text-accent'
-                          : 'text-fg-dim hover:bg-surface hover:text-fg'
+                          : 'hover:bg-surface hover:text-fg'
                       }`
                     }
                   >
@@ -192,8 +192,8 @@ function DesktopNav() {
     item.end ? pathname === item.to : pathname === item.to || pathname.startsWith(item.to + '/')
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
-    `small-caps rounded-[2px] px-3 py-2 font-medium transition ${
-      isActive ? 'text-accent' : 'text-fg-dim hover:text-fg'
+    `nav-link rounded-[2px] px-3 py-2 ${
+      isActive ? 'text-accent' : 'hover:text-fg'
     }`
 
   const moreActive = moreNav.some(isItemActive)
@@ -220,8 +220,8 @@ function DesktopNav() {
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
-          className={`small-caps flex cursor-pointer items-center gap-1 rounded-[2px] px-3 py-2 font-medium transition ${
-            moreActive || open ? 'text-accent' : 'text-fg-dim hover:text-fg'
+          className={`nav-link flex cursor-pointer items-center gap-1 rounded-[2px] px-3 py-2 ${
+            moreActive || open ? 'text-accent' : 'hover:text-fg'
           }`}
         >
           {t('nav.more')}
@@ -249,10 +249,10 @@ function DesktopNav() {
                   to={item.to}
                   end={item.end}
                   className={({ isActive }) =>
-                    `small-caps block px-4 py-2 font-medium transition ${
+                    `nav-link block px-4 py-2 ${
                       isActive
                         ? 'bg-accent/12 text-accent'
-                        : 'text-fg-dim hover:bg-surface-2 hover:text-fg'
+                        : 'hover:bg-surface-2 hover:text-fg'
                     }`
                   }
                 >
