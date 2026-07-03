@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useLibrary, useLibraryBook } from '../hooks/useEntries'
 import { useDebounce } from '../hooks/useDebounce'
@@ -64,15 +64,18 @@ export function HistoryPage() {
     setParams((prev) => {
       const n = new URLSearchParams(prev)
       if ('shelf' in next) {
-        next.shelf ? n.set('shelf', next.shelf) : n.delete('shelf')
+        if (next.shelf) n.set('shelf', next.shelf)
+        else n.delete('shelf')
         n.delete('q')
         n.delete('book')
       }
       if ('book' in next) {
-        next.book ? n.set('book', next.book) : n.delete('book')
+        if (next.book) n.set('book', next.book)
+        else n.delete('book')
       }
       if ('lore' in next) {
-        next.lore ? n.set('lore', '1') : n.delete('lore')
+        if (next.lore) n.set('lore', '1')
+        else n.delete('lore')
         n.delete('book')
       }
       return n

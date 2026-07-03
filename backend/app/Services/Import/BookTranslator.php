@@ -3,12 +3,13 @@
 namespace App\Services\Import;
 
 use App\Models\Book;
+use App\Models\BookTranslation;
 use Illuminate\Support\Facades\Http;
 
 /**
  * Generates Spanish translations of the imported Tibia books using the free
  * Google Translate (gtx) endpoint. Translations are machine-made (not official)
- * and stored as the `es` {@see \App\Models\BookTranslation}; the English
+ * and stored as the `es` {@see BookTranslation}; the English
  * original is always kept. Idempotent — skips books already translated.
  */
 class BookTranslator

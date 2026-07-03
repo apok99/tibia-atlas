@@ -109,13 +109,13 @@ function withLang(url: string, lang: 'es' | 'en'): string {
 }
 
 function defaultTagline(lang: string): string {
-  return lang === 'es' ? 'El archivo viviente del lore de Tibia' : 'The living archive of Tibian lore'
+  return lang === 'es' ? 'El atlas viviente del mundo de Tibia' : 'The living atlas of the Tibian world'
 }
 
 function defaultDescription(lang: string): string {
   return lang === 'es'
-    ? 'Atlas bilingüe del lore de Tibia: bestiario, personajes, ciudades, misiones, objetos, mapa, libros y la historia del mundo. Documentado y con fuentes citadas.'
-    : 'Bilingual archive of Tibia lore: bestiary, characters, cities, quests, items, map, books and the history of the world. Documented and fully sourced.'
+    ? 'El mapa interactivo de Tibia: encuentra dónde aparece cada criatura piso por piso, traza rutas entre ciudades y explora el mundo. Con wordle diario, bestiario y el lore de Tibia en español e inglés.'
+    : 'The interactive map of Tibia: find where every creature spawns floor by floor, chart routes between cities and explore the world. Plus a daily wordle, a bestiary and Tibia lore in Spanish and English.'
 }
 
 // ── JSON-LD builders ────────────────────────────────────────────────────────

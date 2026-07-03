@@ -33,7 +33,7 @@ class EntryController extends Controller
     {
         $entries = $this->read->listing(
             EntryListFilters::fromRequest($request),
-            $this->perPage($request, 24, 60),
+            $this->clamp($request, 'per_page', 24, 1, 60),
         );
 
         return EntryListResource::collection($entries);
@@ -44,7 +44,7 @@ class EntryController extends Controller
     {
         return response()->json($this->read->search(
             term: (string) $request->string('q'),
-            limit: min(max($request->integer('limit', 8), 1), 25),
+            limit: $this->clamp($request, 'limit', 8, 1, 25),
         ));
     }
 
@@ -52,8 +52,8 @@ class EntryController extends Controller
     public function topSearches(Request $request): JsonResponse
     {
         return response()->json($this->read->topSearches(
-            limit: min(max($request->integer('limit', 8), 1), 20),
-            days: min(max($request->integer('days', 30), 1), 365),
+            limit: $this->clamp($request, 'limit', 8, 1, 20),
+            days: $this->clamp($request, 'days', 30, 1, 365),
         ));
     }
 
@@ -84,7 +84,7 @@ class EntryController extends Controller
     /** The home-page "Trending" carousel (trailing 72h, with fallbacks). */
     public function trending(Request $request): AnonymousResourceCollection
     {
-        $entries = $this->read->trending(min(max($request->integer('count', 9), 1), 24));
+        $entries = $this->read->trending($this->clamp($request, 'count', 9, 1, 24));
 
         return EntryListResource::collection($entries);
     }
@@ -94,7 +94,7 @@ class EntryController extends Controller
     {
         $entries = $this->read->popular(
             $request->filled('type') ? (string) $request->string('type') : null,
-            $this->perPage($request, 12, 48),
+            $this->clamp($request, 'per_page', 12, 1, 48),
         );
 
         return EntryListResource::collection($entries);
@@ -104,7 +104,7 @@ class EntryController extends Controller
     public function random(Request $request): AnonymousResourceCollection
     {
         $entries = $this->read->random(
-            count: min(max($request->integer('count', 5), 1), 24),
+            count: $this->clamp($request, 'count', 5, 1, 24),
             exclude: $request->filled('exclude') ? (string) $request->string('exclude') : null,
             preferImages: $request->boolean('images'),
         );
@@ -143,11 +143,5 @@ class EntryController extends Controller
         $this->entries->delete($entry);
 
         return response()->noContent();
-    }
-
-    /** Clamp a client-supplied page size to a sane range. */
-    private function perPage(Request $request, int $default, int $max): int
-    {
-        return min(max($request->integer('per_page', $default), 1), $max);
     }
 }

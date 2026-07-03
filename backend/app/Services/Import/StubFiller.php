@@ -152,10 +152,10 @@ class StubFiller
     private function doFetchContent(string $title): ?array
     {
         $json = $this->http()->get(self::API, [
-            'action'    => 'parse',
-            'format'    => 'json',
-            'page'      => $title,
-            'prop'      => 'wikitext',
+            'action' => 'parse',
+            'format' => 'json',
+            'page' => $title,
+            'prop' => 'wikitext',
             'redirects' => 1,
         ])->json();
 
@@ -198,10 +198,10 @@ class StubFiller
     public function fetchCityLore(string $title): ?array
     {
         $json = $this->http()->get(self::API, [
-            'action'    => 'parse',
-            'format'    => 'json',
-            'page'      => $title,
-            'prop'      => 'wikitext',
+            'action' => 'parse',
+            'format' => 'json',
+            'page' => $title,
+            'prop' => 'wikitext',
             'redirects' => 1,
         ])->json();
 
@@ -249,8 +249,8 @@ class StubFiller
 
         return [
             'overview' => Str::limit($parts[0], 600, '…'),
-            'canon'    => $canon,
-            'meta'     => $meta,
+            'canon' => $canon,
+            'meta' => $meta,
         ];
     }
 
@@ -262,7 +262,7 @@ class StubFiller
         $chunk = preg_replace('/^\s*:+\s*\'\'.*$/m', '', $chunk) ?? $chunk;
 
         // Sub-section headings (=== Houses ===) → plain label lines.
-        $chunk = preg_replace('/^\s*={2,}\s*(.+?)\s*={2,}\s*$/m', "$1", $chunk) ?? $chunk;
+        $chunk = preg_replace('/^\s*={2,}\s*(.+?)\s*={2,}\s*$/m', '$1', $chunk) ?? $chunk;
 
         // Map-coord templates: drop generic "here/map" pointers outright, keep
         // meaningful place labels (Frodo's Hut, Games Hall…); then drop the rest.
@@ -328,28 +328,28 @@ class StubFiller
     private function extractFromInfobox(string $wikitext, string $type): ?array
     {
         return match (true) {
-            str_starts_with($type, 'object')      => $this->describeItem($wikitext),
-            str_starts_with($type, 'quest')       => $this->describeQuest($wikitext),
-            str_starts_with($type, 'spell')       => $this->describeSpell($wikitext),
-            str_starts_with($type, 'npc')         => $this->describeNpc($wikitext),
-            str_starts_with($type, 'creature')    => $this->describeCreature($wikitext),
-            str_starts_with($type, 'mount')       => $this->describeMount($wikitext),
-            str_starts_with($type, 'hunt')        => $this->describeHunt($wikitext),
+            str_starts_with($type, 'object') => $this->describeItem($wikitext),
+            str_starts_with($type, 'quest') => $this->describeQuest($wikitext),
+            str_starts_with($type, 'spell') => $this->describeSpell($wikitext),
+            str_starts_with($type, 'npc') => $this->describeNpc($wikitext),
+            str_starts_with($type, 'creature') => $this->describeCreature($wikitext),
+            str_starts_with($type, 'mount') => $this->describeMount($wikitext),
+            str_starts_with($type, 'hunt') => $this->describeHunt($wikitext),
             str_starts_with($type, 'achievement') => $this->describeAchievement($wikitext),
-            str_starts_with($type, 'corpse')      => $this->describeCorpse($wikitext),
-            str_starts_with($type, 'geography')   => $this->describeGeography($wikitext),
-            str_starts_with($type, 'building')    => $this->describeBuilding($wikitext),
-            default                               => null,
+            str_starts_with($type, 'corpse') => $this->describeCorpse($wikitext),
+            str_starts_with($type, 'geography') => $this->describeGeography($wikitext),
+            str_starts_with($type, 'building') => $this->describeBuilding($wikitext),
+            default => null,
         };
     }
 
     /** Items — Infobox Object */
     private function describeItem(string $w): ?array
     {
-        $notes      = $this->field($w, 'notes');
-        $type       = $this->field($w, 'primarytype') ?? $this->field($w, 'objectclass');
-        $name       = $this->field($w, 'name') ?? $this->field($w, 'actualname');
-        $droppedBy  = $this->field($w, 'droppedby');
+        $notes = $this->field($w, 'notes');
+        $type = $this->field($w, 'primarytype') ?? $this->field($w, 'objectclass');
+        $name = $this->field($w, 'name') ?? $this->field($w, 'actualname');
+        $droppedBy = $this->field($w, 'droppedby');
 
         if (! $notes && ! $type) {
             return null;
@@ -383,12 +383,12 @@ class StubFiller
     /** Quests — Infobox Quest */
     private function describeQuest(string $w): ?array
     {
-        $legend   = $this->field($w, 'legend');
-        $reward   = $this->field($w, 'reward');
+        $legend = $this->field($w, 'legend');
+        $reward = $this->field($w, 'reward');
         $location = $this->field($w, 'location');
-        $level    = $this->field($w, 'lvlrec') ?? $this->field($w, 'lvl');
-        $dangers  = $this->field($w, 'dangers');
-        $name     = $this->field($w, 'name');
+        $level = $this->field($w, 'lvlrec') ?? $this->field($w, 'lvl');
+        $dangers = $this->field($w, 'dangers');
+        $name = $this->field($w, 'name');
 
         if (! $legend && ! $reward) {
             return null;
@@ -398,7 +398,7 @@ class StubFiller
         if ($location) {
             $loc = $this->cleanWikitext($location);
             if ($loc) {
-                $overview .= ($overview ? ' ' : '') . "Located in {$loc}.";
+                $overview .= ($overview ? ' ' : '')."Located in {$loc}.";
             }
         }
 
@@ -408,13 +408,13 @@ class StubFiller
             $extra[] = "Recommended level: {$level}";
         }
         if ($reward) {
-            $extra[] = 'Reward: ' . $this->cleanWikitext($reward);
+            $extra[] = 'Reward: '.$this->cleanWikitext($reward);
         }
         if ($dangers) {
-            $extra[] = 'Dangers: ' . $this->cleanWikitext($dangers);
+            $extra[] = 'Dangers: '.$this->cleanWikitext($dangers);
         }
         if ($extra) {
-            $canon .= "\n\n" . implode('. ', $extra) . '.';
+            $canon .= "\n\n".implode('. ', $extra).'.';
         }
 
         return ($overview || $canon)
@@ -425,13 +425,13 @@ class StubFiller
     /** Spells — Infobox Spell */
     private function describeSpell(string $w): ?array
     {
-        $effect  = $this->field($w, 'effect');
-        $notes   = $this->field($w, 'notes');
-        $words   = $this->field($w, 'words');
-        $mana    = $this->field($w, 'mana');
-        $level   = $this->field($w, 'levelrequired');
-        $voc     = $this->field($w, 'voc');
-        $name    = $this->field($w, 'name');
+        $effect = $this->field($w, 'effect');
+        $notes = $this->field($w, 'notes');
+        $words = $this->field($w, 'words');
+        $mana = $this->field($w, 'mana');
+        $level = $this->field($w, 'levelrequired');
+        $voc = $this->field($w, 'voc');
+        $name = $this->field($w, 'name');
 
         $overview = $this->cleanWikitext($effect ?? '');
         if (! $overview && ! $notes) {
@@ -449,17 +449,17 @@ class StubFiller
             $meta[] = "requires level {$level}";
         }
         if ($voc) {
-            $meta[] = 'usable by ' . $this->cleanWikitext($voc);
+            $meta[] = 'usable by '.$this->cleanWikitext($voc);
         }
 
         $canon = $overview;
         if ($meta) {
-            $canon .= "\n\n" . ucfirst(implode(', ', $meta)) . '.';
+            $canon .= "\n\n".ucfirst(implode(', ', $meta)).'.';
         }
         if ($notes) {
             $n = $this->cleanWikitext($notes);
             if ($n && strlen($n) > 20) {
-                $canon .= "\n\n" . $n;
+                $canon .= "\n\n".$n;
             }
         }
 
@@ -469,22 +469,22 @@ class StubFiller
     /** NPCs — Infobox NPC */
     private function describeNpc(string $w): ?array
     {
-        $notes    = $this->field($w, 'notes');
-        $job      = $this->field($w, 'job');
-        $job2     = $this->field($w, 'job2');
-        $city     = $this->field($w, 'city');
+        $notes = $this->field($w, 'notes');
+        $job = $this->field($w, 'job');
+        $job2 = $this->field($w, 'job2');
+        $city = $this->field($w, 'city');
         $location = $this->field($w, 'location');
-        $name     = $this->field($w, 'name');
+        $name = $this->field($w, 'name');
 
         $jobTitle = implode(' / ', array_filter([$job, $job2]));
-        $parts    = [];
+        $parts = [];
 
         if ($jobTitle && ($name || $city)) {
             $where = $city ? " in {$city}" : '';
-            $parts[] = ($name ?? 'This NPC') . " is a {$jobTitle}{$where}.";
+            $parts[] = ($name ?? 'This NPC')." is a {$jobTitle}{$where}.";
         }
         if ($location) {
-            $parts[] = 'Location: ' . $this->cleanWikitext($location) . '.';
+            $parts[] = 'Location: '.$this->cleanWikitext($location).'.';
         }
         if ($notes) {
             $n = $this->cleanWikitext($notes);
@@ -509,11 +509,11 @@ class StubFiller
         }
 
         // No official Bestiary text — build a minimal factual stub from infobox metadata.
-        $name        = $this->field($w, 'name');
-        $primary     = $this->field($w, 'primarytype');
-        $class       = $this->field($w, 'creatureclass');
-        $sounds      = $this->field($w, 'sounds');
-        $isBoss      = strtolower($this->field($w, 'isboss') ?? '') === 'yes';
+        $name = $this->field($w, 'name');
+        $primary = $this->field($w, 'primarytype');
+        $class = $this->field($w, 'creatureclass');
+        $sounds = $this->field($w, 'sounds');
+        $isBoss = strtolower($this->field($w, 'isboss') ?? '') === 'yes';
 
         if (! $name) {
             return null;
@@ -521,8 +521,8 @@ class StubFiller
 
         $type = implode(' ', array_filter([$primary, $class ? "({$class})" : null]));
         $desc = $isBoss
-            ? "{$name} is a boss creature" . ($type ? " of the {$type} type" : '') . " in Tibia."
-            : "{$name} is a " . ($type ?: 'creature') . " in Tibia.";
+            ? "{$name} is a boss creature".($type ? " of the {$type} type" : '').' in Tibia.'
+            : "{$name} is a ".($type ?: 'creature').' in Tibia.';
 
         if ($sounds) {
             // {{Sound List|cry1|cry2|...}} — extract entries before stripping the template.
@@ -530,11 +530,11 @@ class StubFiller
                 $cries = array_filter(array_map('trim', explode('|', $sm[1])));
             } else {
                 $cleaned = $this->cleanWikitext($sounds);
-                $cries   = array_filter(array_map('trim', preg_split('/\||,|\n/', $cleaned) ?: []));
+                $cries = array_filter(array_map('trim', preg_split('/\||,|\n/', $cleaned) ?: []));
             }
             $cries = array_values(array_filter(array_slice($cries, 0, 3), fn ($l) => strlen($l) > 3));
             if ($cries) {
-                $desc .= ' Known utterances: "' . implode('", "', $cries) . '".';
+                $desc .= ' Known utterances: "'.implode('", "', $cries).'".';
             }
         }
 
@@ -546,7 +546,7 @@ class StubFiller
     {
         $notes = $this->field($w, 'notes');
         $speed = $this->field($w, 'speed');
-        $name  = $this->field($w, 'name');
+        $name = $this->field($w, 'name');
 
         if (! $notes && ! $speed) {
             return null;
@@ -571,10 +571,10 @@ class StubFiller
     /** Hunt locations — Infobox Hunt (location geography only; no game metrics) */
     private function describeHunt(string $w): ?array
     {
-        $name     = $this->field($w, 'name');
-        $city     = $this->field($w, 'city');
+        $name = $this->field($w, 'name');
+        $city = $this->field($w, 'city');
         $location = $this->field($w, 'location');
-        $image    = $this->field($w, 'image'); // Often the name of the primary creature
+        $image = $this->field($w, 'image'); // Often the name of the primary creature
 
         $parts = [];
         if ($name && $city) {
@@ -600,10 +600,10 @@ class StubFiller
     /** Corpses — Infobox Corpse */
     private function describeCorpse(string $w): ?array
     {
-        $name     = $this->field($w, 'name');
-        $liquid   = $this->field($w, 'liquid');
+        $name = $this->field($w, 'name');
+        $liquid = $this->field($w, 'liquid');
         $skinable = $this->field($w, 'skinable');
-        $notes    = $this->field($w, 'notes');
+        $notes = $this->field($w, 'notes');
 
         if (! $name) {
             return null;
@@ -612,7 +612,7 @@ class StubFiller
         $parts = [];
         $parts[] = "{$name} is the corpse left behind by a creature in Tibia.";
         if ($liquid) {
-            $parts[] = 'Contains: ' . $this->cleanWikitext($liquid) . '.';
+            $parts[] = 'Contains: '.$this->cleanWikitext($liquid).'.';
         }
         if ($skinable && strtolower(trim($skinable)) !== 'no' && trim($skinable) !== '?') {
             $parts[] = 'This corpse can be skinned to obtain creature products.';
@@ -632,11 +632,11 @@ class StubFiller
     /** Achievements — Infobox Achievement */
     private function describeAchievement(string $w): ?array
     {
-        $desc    = $this->field($w, 'description');
+        $desc = $this->field($w, 'description');
         $spoiler = $this->field($w, 'spoiler');
-        $name    = $this->field($w, 'name');
-        $points  = $this->field($w, 'points');
-        $grade   = $this->field($w, 'grade');
+        $name = $this->field($w, 'name');
+        $points = $this->field($w, 'points');
+        $grade = $this->field($w, 'grade');
 
         if (! $desc && ! $spoiler) {
             return null;
@@ -651,7 +651,7 @@ class StubFiller
         }
         if ($points || $grade) {
             $info = array_filter(["Grade {$grade}", "{$points} point(s)"]);
-            $parts[] = implode(', ', $info) . '.';
+            $parts[] = implode(', ', $info).'.';
         }
 
         $text = implode("\n\n", array_filter($parts));
@@ -668,30 +668,30 @@ class StubFiller
             return $geo;
         }
 
-        $name     = $this->field($w, 'name');
-        $type     = $this->field($w, 'type');
+        $name = $this->field($w, 'name');
+        $type = $this->field($w, 'type');
         $location = $this->field($w, 'location');
-        $city     = $this->field($w, 'city');
-        $street   = $this->field($w, 'street');
-        $beds     = $this->field($w, 'beds');
-        $size     = $this->field($w, 'size');
+        $city = $this->field($w, 'city');
+        $street = $this->field($w, 'street');
+        $beds = $this->field($w, 'beds');
+        $size = $this->field($w, 'size');
 
         $parts = [];
         $typeName = $type ?? 'building';
-        $where    = $city ? ", {$city}" : ($location ? ", {$this->cleanWikitext($location)}" : '');
+        $where = $city ? ", {$city}" : ($location ? ", {$this->cleanWikitext($location)}" : '');
 
         if ($name) {
             $parts[] = "{$name} is a {$typeName} in Tibia{$where}.";
         }
         if ($location && $city) {
-            $parts[] = 'Located at: ' . $this->cleanWikitext($location) . '.';
+            $parts[] = 'Located at: '.$this->cleanWikitext($location).'.';
         }
         if ($street) {
             $parts[] = "Address: {$street}.";
         }
         if ($size || $beds) {
             $info = array_filter([$size ? "{$size} sq tiles" : null, $beds ? "{$beds} beds" : null]);
-            $parts[] = implode(', ', $info) . '.';
+            $parts[] = implode(', ', $info).'.';
         }
 
         $text = implode("\n\n", array_filter($parts));
@@ -732,7 +732,7 @@ class StubFiller
     private function field(string $wikitext, string $name): ?string
     {
         // Stop at: newline then optional whitespace then | (next field) or }} (end of infobox).
-        $pattern = '/\|\s*' . preg_quote($name, '/') . '\s*=[ \t]*(.*?)(?=\n\s*(?:\||\}\}))/si';
+        $pattern = '/\|\s*'.preg_quote($name, '/').'\s*=[ \t]*(.*?)(?=\n\s*(?:\||\}\}))/si';
         if (preg_match($pattern, $wikitext, $m)) {
             $val = trim($m[1]);
 
@@ -785,9 +785,9 @@ class StubFiller
     /** Remove balanced {{ ... }} template blocks (handles nesting). */
     private function stripTemplates(string $w): string
     {
-        $out   = '';
+        $out = '';
         $depth = 0;
-        $len   = strlen($w);
+        $len = strlen($w);
         for ($i = 0; $i < $len; $i++) {
             if ($i + 1 < $len && $w[$i] === '{' && $w[$i + 1] === '{') {
                 $depth++;
@@ -836,8 +836,8 @@ class StubFiller
         $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5);
 
         $lines = array_map(fn ($l) => trim(preg_replace('/[ \t]+/', ' ', $l) ?? $l), explode("\n", $text));
-        $text  = implode("\n", $lines);
-        $text  = preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
+        $text = implode("\n", $lines);
+        $text = preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
 
         return trim($text);
     }

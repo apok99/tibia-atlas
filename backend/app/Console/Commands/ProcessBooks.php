@@ -89,6 +89,7 @@ class ProcessBooks extends Command
                 if (! $en || ! $en->text) {
                     $done++;
                     $this->line("  <fg=gray>omitido (sin texto EN): {$book->slug}</>");
+
                     continue;
                 }
 

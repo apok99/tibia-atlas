@@ -411,8 +411,8 @@ const EVENTS: TimelineEvent[] = [
     era: { es: 'El juego real', en: 'Real-world history' },
     title: { es: 'Nace Tibia Atlas', en: 'Tibia Atlas is born' },
     body: {
-      es: 'Tibia Atlas se lanza como el primer archivo de lore bilingüe (ES/EN) dedicado al universo de Tibia. Con entradas sobre criaturas, personajes, ciudades, misiones, eventos y libros del juego, el proyecto aspira a convertirse en la referencia definitiva del lore tibiano para la comunidad hispanohablante y más allá.',
-      en: 'Tibia Atlas launches as the first bilingual (ES/EN) lore archive dedicated to the Tibia universe. With entries covering creatures, characters, cities, quests, events and in-game books, the project aims to become the definitive reference for Tibian lore for the Spanish-speaking community and beyond.',
+      es: 'Tibia Atlas se lanza como el primer atlas de lore bilingüe (ES/EN) dedicado al universo de Tibia. Con entradas sobre criaturas, personajes, ciudades, misiones, eventos y libros del juego, el proyecto aspira a convertirse en la referencia definitiva del lore tibiano para la comunidad hispanohablante y más allá.',
+      en: 'Tibia Atlas launches as the first bilingual (ES/EN) lore atlas dedicated to the Tibia universe. With entries covering creatures, characters, cities, quests, events and in-game books, the project aims to become the definitive reference for Tibian lore for the Spanish-speaking community and beyond.',
     },
   },
 
@@ -469,7 +469,7 @@ const TYPE_META: Record<EventType, { colorClass: string; bgClass: string; dotCla
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function TimelinePage() {
-  const { t, i18n } = useTranslation()
+  const { i18n } = useTranslation()
   const lang = i18n.language.startsWith('es') ? 'es' : 'en'
   const [filter, setFilter] = useState<EventType | 'all'>('all')
 

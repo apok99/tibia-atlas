@@ -26,10 +26,10 @@ class LlmsController extends Controller
             $es = $lang === 'es';
             $out = "# Tibia Atlas\n\n";
             $out .= ($es
-                ? "> Archivo bilingüe del lore de Tibia: bestiario, personajes, ciudades, misiones, objetos, mapa, libros e historia. Contenido documentado y con fuentes. No afiliado a CipSoft.\n\n"
-                : "> Bilingual archive of Tibia lore: bestiary, characters, cities, quests, items, map, books and history. Documented, sourced content. Not affiliated with CipSoft.\n\n");
-            $out .= ($es ? "Sitio: " : "Site: ").self::SITE."\n";
-            $out .= "Sitemap: ".self::SITE."/sitemap.xml\n\n";
+                ? "> El atlas bilingüe de Tibia: mapa interactivo con los spawns de cada criatura piso por piso y rutas entre ciudades, wordle diario, bestiario, libros y el lore de Tibia. Contenido documentado y con fuentes. No afiliado a CipSoft.\n\n"
+                : "> The bilingual atlas of Tibia: an interactive map with every creature's spawns floor by floor and routes between cities, a daily wordle, a bestiary, books and Tibia lore. Documented, sourced content. Not affiliated with CipSoft.\n\n");
+            $out .= ($es ? 'Sitio: ' : 'Site: ').self::SITE."\n";
+            $out .= 'Sitemap: '.self::SITE."/sitemap.xml\n\n";
 
             foreach (EntryType::cases() as $type) {
                 $entries = Entry::published()->ofType($type)

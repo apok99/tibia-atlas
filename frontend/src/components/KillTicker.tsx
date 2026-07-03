@@ -1,4 +1,4 @@
-import { compact } from './CountUp'
+import { compact } from '../lib/format'
 
 export interface TickerItem {
   race: string

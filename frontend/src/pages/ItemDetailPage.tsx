@@ -366,7 +366,7 @@ function ComparePicker({
               >
                 <span className="sprite-tile grid h-8 w-8 shrink-0 place-items-center">
                   {i.primary_image && (
-                    <img src={i.primary_image} alt="" className="max-h-7 max-w-7 object-contain" />
+                    <img src={i.primary_image} alt="" loading="lazy" className="max-h-7 max-w-7 object-contain" />
                   )}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-sm text-fg">{i.name}</span>

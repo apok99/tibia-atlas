@@ -29,7 +29,7 @@
 </head>
 <body>
   <header>
-    <a href="{{ $site }}"><strong>Tibia Atlas</strong></a> — {{ $lang === 'es' ? 'El archivo viviente del lore de Tibia' : 'The living archive of Tibian lore' }}
+    <a href="{{ $site }}"><strong>Tibia Atlas</strong></a> — {{ $lang === 'es' ? 'El atlas viviente del mundo de Tibia' : 'The living atlas of the Tibian world' }}
   </header>
   <main>
     {!! $body !!}

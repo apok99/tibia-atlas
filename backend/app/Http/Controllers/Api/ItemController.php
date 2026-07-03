@@ -109,7 +109,7 @@ class ItemController extends Controller
                 $q->whereHas('translations', fn ($t) => $t->where('name', 'ilike', $term));
             })
             ->orderBy('id')
-            ->paginate(min(max($request->integer('per_page', 60), 1), 200))
+            ->paginate($this->clamp($request, 'per_page', 60, 1, 200))
             ->withQueryString();
 
         // Stable album order = by name; do it after pagination would be wrong, so
@@ -239,7 +239,7 @@ class ItemController extends Controller
     {
         $level = max(1, $request->integer('level', 1));
         $vocation = strtolower((string) $request->string('vocation'));
-        $altCount = min(max($request->integer('alts', 4), 0), 8);
+        $altCount = $this->clamp($request, 'alts', 4, 0, 8);
         // Obtainable-only by default; ?obtainable=0 shows aspirational relics too.
         $obtainableOnly = $request->boolean('obtainable', true);
 
@@ -368,9 +368,9 @@ class ItemController extends Controller
      * Keep only items whose `item_category` contains one of the given keywords
      * (case-insensitive), preserving the incoming power order.
      *
-     * @param  iterable<\App\Models\Entry>  $items
+     * @param  iterable<Entry>  $items
      * @param  list<string>  $keywords
-     * @return list<\App\Models\Entry>
+     * @return list<Entry>
      */
     private function filterByCategory(iterable $items, array $keywords): array
     {

@@ -36,14 +36,30 @@ class EntryListingQuery
                 ? $q->where('meta->rank', 'Boss')
                 : $q->where(fn ($w) => $w->where('meta->rank', '!=', 'Boss')->orWhereNull('meta->rank')))
             ->when($filters->q !== null, function ($q) use ($filters) {
-                $term = '%'.$filters->q.'%';
+                // Escape LIKE wildcards in user input so "50%" or "a_b" match
+                // literally, mirroring the autocomplete search.
+                $term = '%'.addcslashes($filters->q, '%_\\').'%';
                 $q->whereHas('translations', fn ($t) => $t
                     ->where('name', 'ilike', $term)
-                    ->orWhere('overview', 'ilike', $term));
+                    ->orWhere('overview', 'ilike', $term))
+                    // Rank name matches above overview-only matches, so a search
+                    // for "dragon" surfaces the actual dragons before creatures
+                    // that merely mention them in their lore. Applied before the
+                    // published_at order below, so relevance wins.
+                    ->orderByRaw(
+                        'exists (select 1 from entry_translations et where et.entry_id = entries.id and et.name ilike ?) desc',
+                        [$term],
+                    );
             })
             // Draft items have no published_at; keep them last, not first
-            // (Postgres sorts NULLs first on DESC by default).
+            // (Postgres sorts NULLs first on DESC by default). The `id`
+            // tiebreaker is essential: bulk-imported creatures share one
+            // published_at (405 in a single batch), and without a stable
+            // secondary sort Postgres returns those ties in an arbitrary order
+            // that differs per page — the same creature surfaces on several
+            // pages while others vanish.
             ->orderByRaw('published_at desc nulls last')
+            ->orderBy('id')
             ->paginate($perPage)
             ->withQueryString();
     }

@@ -131,11 +131,7 @@ html[data-theme='dark'] .ks-orbit-core-value {
   color: var(--color-accent-2);
   text-shadow: 0 0 18px rgba(236, 106, 85, 0.5);
 }
-/* Night: dark medallions for boss watch + raid watch. */
-html[data-theme='dark'] .ks-boss-sprite {
-  background: radial-gradient(circle at 50% 35%, #23262e, #14151a);
-  box-shadow: 0 6px 22px -6px rgba(0, 0, 0, 0.85);
-}
+/* Night: dark medallions for raid watch. */
 html[data-theme='dark'] .ks-raid-badge {
   background: radial-gradient(circle at 50% 35%, #23262e, #14151a);
 }
@@ -397,7 +393,9 @@ html[data-theme='dark'] .ks-raid-badge {
   border-radius: 4px;
   background: rgba(19, 20, 25, 0.9);
   border: 1px solid var(--color-line);
-  color: var(--color-fg);
+  /* Fixed cream — the chip ground is always dark (it sits on the minimap), so
+     the themed ink var would go dark-on-dark in the light atlas. */
+  color: #f4ecd8;
   font-size: 11px;
   font-weight: 700;
   line-height: 1.4;
@@ -424,14 +422,16 @@ html[data-theme='dark'] .ks-raid-badge {
 .tm-del:hover { color: var(--color-accent-2); }
 .leaflet-container.tm-placing { cursor: crosshair; }
 
-/* ---- Route (how-to-get-there) start/destination pins ---- */
+/* ---- Route (how-to-get-there) start/destination pins ----
+   Atlas ink palette over the minimap: wax-seal red, forest ink, slate ink —
+   always rimmed in parchment cream (never map-app blue / pure white). */
 .tm-route-pin {
   transform: translate(-50%, -50%);
   padding: 2px 8px;
   border-radius: 9999px;
-  background: var(--rp, #2f6df0);
-  border: 2px solid #fff;
-  color: #fff;
+  background: var(--rp, #9c3b2e);
+  border: 2px solid #f6ecd2;
+  color: #f6ecd2;
   font-family: var(--font-title, Georgia, serif);
   font-size: 10px;
   font-weight: 800;
@@ -446,8 +446,8 @@ html[data-theme='dark'] .ks-raid-badge {
   transform: translate(-50%, -50%);
   padding: 2px 7px;
   border-radius: 9999px;
-  border: 2px solid #fff;
-  color: #fff;
+  border: 2px solid #f6ecd2;
+  color: #f6ecd2;
   font-family: var(--font-title, Georgia, serif);
   font-size: 10px;
   font-weight: 800;
@@ -455,9 +455,10 @@ html[data-theme='dark'] .ks-raid-badge {
   cursor: pointer;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 }
-.tm-route-stair.is-down { background: #c0392b; }
-.tm-route-stair.is-up { background: #1f9d55; }
-.tm-route-stair.is-tp { background: #7c3aed; }
+.tm-route-stair svg, .tm-route-boat svg { width: 1.1em; height: 1.1em; vertical-align: -0.2em; margin-right: 1px; }
+.tm-route-stair.is-down { background: #9c3b2e; }
+.tm-route-stair.is-up { background: #4f7a3a; }
+.tm-route-stair.is-tp { background: #3f6b7a; }
 .tm-route-stair:hover { filter: brightness(1.12); }
 
 /* Boat-leg badge at the midpoint of a sea crossing. */
@@ -465,9 +466,10 @@ html[data-theme='dark'] .ks-raid-badge {
   transform: translate(-50%, -50%);
   padding: 2px 8px;
   border-radius: 9999px;
-  background: #0f7c8c;
-  border: 2px solid #fff;
-  color: #fff;
+  background: #3f6b7a;
+  border: 2px solid #f6ecd2;
+  color: #f6ecd2;
+  font-family: var(--font-title, Georgia, serif);
   font-size: 10px;
   font-weight: 800;
   white-space: nowrap;
@@ -580,27 +582,6 @@ html[data-theme='dark'] .ks-raid-badge {
 }
 
 /* ---- Kill-stats dashboard "WOW" flourishes ---- */
-.ks-hero {
-  background:
-    radial-gradient(120% 140% at 0% 0%, rgba(210, 61, 47, 0.22), transparent 55%),
-    radial-gradient(120% 140% at 100% 0%, rgba(216, 162, 58, 0.16), transparent 55%),
-    linear-gradient(180deg, #1c1e26 0%, #15161c 100%);
-}
-.ks-hero::after {
-  /* slow sweeping sheen */
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(110deg, transparent 30%, rgba(236, 106, 85, 0.06) 50%, transparent 70%);
-  background-size: 220% 100%;
-  animation: ks-sheen 9s ease-in-out infinite;
-  pointer-events: none;
-}
-@keyframes ks-sheen {
-  0%, 100% { background-position: 120% 0; }
-  50% { background-position: -120% 0; }
-}
-
 .ks-kpi {
   transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
 }
@@ -620,15 +601,6 @@ html[data-theme='dark'] .ks-raid-badge {
 }
 .ks-kpi:hover::before {
   opacity: 1;
-}
-
-.ks-podium {
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--glow) 30%, transparent),
-    0 14px 36px -18px color-mix(in srgb, var(--glow) 70%, transparent);
-}
-.ks-podium:hover {
-  transform: translateY(-2px);
 }
 
 .ks-pulse {
@@ -971,84 +943,9 @@ html[data-theme='dark'] .ks-raid-badge {
   50% { transform: scale(1.12); filter: brightness(1.4); }
 }
 
-/* ---- Boss Watch (rotating spotlight) ---- */
-.ks-boss-stage {
-  position: relative;
-  width: 120px;
-  height: 120px;
-  display: grid;
-  place-items: center;
-}
-.ks-boss-radar {
-  position: absolute;
-  inset: 0;
-  border-radius: 9999px;
-  background: conic-gradient(from 0deg, transparent 0deg, rgba(185, 127, 196, 0.28) 40deg, transparent 85deg);
-  animation: ks-spin 6s linear infinite;
-}
-.ks-boss-glow {
-  position: absolute;
-  inset: 12%;
-  border-radius: 9999px;
-  background: radial-gradient(circle, rgba(210, 61, 47, 0.28), transparent 70%);
-  animation: ks-core-pulse 2.8s ease-out infinite;
-}
-.ks-boss-sprite {
-  position: relative;
-  z-index: 2;
-  width: 88px;
-  height: 88px;
-  display: grid;
-  place-items: center;
-  border-radius: 9999px;
-  background: radial-gradient(circle at 50% 35%, #f4e9cf, #e0cfa2);
-  border: 2px solid var(--color-line-2);
-  box-shadow: 0 6px 22px -8px rgba(74, 54, 26, 0.5);
-  animation: ks-boss-pop 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.ks-boss-sprite img {
-  width: 64px;
-  height: 64px;
-  object-fit: contain;
-  image-rendering: pixelated;
-  filter: drop-shadow(0 0 10px rgba(210, 61, 47, 0.45));
-}
-.ks-boss-skull { font-size: 40px; }
-.ks-boss-info {
-  animation: ks-fade-in 0.5s ease both;
-}
-@keyframes ks-boss-pop {
-  from { transform: scale(0.6) rotate(-8deg); opacity: 0; }
-  to { transform: scale(1) rotate(0); opacity: 1; }
-}
 @keyframes ks-fade-in {
   from { opacity: 0; transform: translateX(10px); }
   to { opacity: 1; transform: translateX(0); }
-}
-.ks-boss-thumb {
-  width: 30px;
-  height: 30px;
-  display: grid;
-  place-items: center;
-  border-radius: 7px;
-  background: var(--color-bg-2);
-  border: 1px solid var(--color-line);
-  opacity: 0.5;
-  transition: all 0.18s ease;
-  overflow: hidden;
-}
-.ks-boss-thumb img { width: 26px; height: 26px; object-fit: contain; image-rendering: pixelated; }
-.ks-boss-thumb:hover { opacity: 0.9; transform: translateY(-2px); }
-.ks-boss-thumb.is-active {
-  opacity: 1;
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 1px var(--color-accent), 0 0 10px -2px var(--color-accent);
-}
-
-/* spawn temperature gauge */
-.ks-temp-fill {
-  transform-origin: left center;
-  animation: ks-bar-grow 1s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* rotating boss KPI */
@@ -1099,10 +996,6 @@ html[data-theme='dark'] .ks-raid-badge {
   margin-left: auto;
   color: var(--color-fg-mute);
   font-size: 10px;
-}
-.ks-squad-divider {
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--color-line-2), transparent);
 }
 .ks-squad-row {
   display: flex;
@@ -1185,110 +1078,6 @@ html[data-theme='dark'] .ks-raid-badge {
 }
 .ks-raid-more { opacity: 0.65; font-weight: 700; }
 
-/* ---- Discover carousel: spotlight "wow" cards ---- */
-.dc-card {
-  position: relative;
-  overflow: hidden;
-  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
-}
-/* Page rotation: fade the whole group in (opacity only — no jumpy per-card
-   slide), so an auto-rotate reads as a clean crossfade instead of a stutter. */
-.dc-rotate {
-  animation: dc-fade 0.45s ease both;
-}
-@keyframes dc-fade {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-/* warm corner glow, revealed on hover */
-.dc-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(120% 120% at 100% 0%, rgba(236, 106, 85, 0.14), transparent 55%);
-  opacity: 0;
-  transition: opacity 0.25s ease;
-  pointer-events: none;
-  z-index: 1;
-}
-.dc-card:hover {
-  transform: translateY(-4px);
-  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-line));
-  box-shadow: 0 16px 42px -16px rgba(210, 61, 47, 0.55);
-}
-.dc-card:hover::before { opacity: 1; }
-
-/* featured (large) card: slow diagonal sheen sweep */
-.dc-hero::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(110deg, transparent 35%, rgba(236, 106, 85, 0.07) 50%, transparent 65%);
-  background-size: 220% 100%;
-  animation: ks-sheen 9s ease-in-out infinite;
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* sprite plinth: dark slab + red key-light + a slowly sweeping conic ray */
-.dc-stage {
-  position: relative;
-  overflow: hidden;
-  background:
-    radial-gradient(circle at 50% 42%, rgba(210, 61, 47, 0.20), transparent 62%),
-    radial-gradient(circle at 50% 62%, rgba(0, 0, 0, 0.55), transparent 70%),
-    repeating-linear-gradient(0deg, #1a1c22 0 1px, #16181d 1px 2px);
-}
-.dc-sprite-wrap {
-  position: relative;
-  z-index: 1;
-  animation: dc-float 6s ease-in-out infinite;
-}
-.dc-sprite {
-  object-fit: contain;
-  image-rendering: pixelated;
-  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.7));
-  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.dc-card:hover .dc-sprite { transform: scale(1.13); }
-@keyframes dc-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
-}
-
-/* Rising fire embers behind the sprite. Pure CSS: a handful of glowing motes
-   drift upward with a little horizontal sway and flicker, then fade out. Each
-   mote's size / speed / delay / drift come from inline CSS vars so they don't
-   march in lockstep. */
-.dc-embers {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 0;
-}
-.dc-ember {
-  position: absolute;
-  bottom: -10px;
-  width: var(--s, 4px);
-  height: var(--s, 4px);
-  border-radius: 9999px;
-  background: radial-gradient(circle, rgba(255, 206, 130, 0.95), rgba(236, 106, 85, 0.7) 45%, rgba(210, 61, 47, 0) 75%);
-  opacity: 0;
-  will-change: transform, opacity;
-  animation: dc-ember-rise var(--d, 6s) ease-in var(--delay, 0s) infinite;
-}
-@keyframes dc-ember-rise {
-  0% { transform: translateY(0) translateX(0) scale(0.5); opacity: 0; }
-  12% { opacity: 0.9; }
-  55% { opacity: 0.85; }
-  78% { opacity: 0.4; transform: translateY(-115px) translateX(var(--dx, 0)) scale(1); }
-  100% { transform: translateY(-150px) translateX(var(--dx, 0)) scale(0.7); opacity: 0; }
-}
-.dc-card:hover .dc-ember {
-  animation-duration: calc(var(--d, 6s) * 0.62); /* embers leap up faster on hover */
-}
-
 /* ---- Most searched / viewed ---- */
 .ks-search-row {
   display: flex;
@@ -1349,81 +1138,6 @@ html[data-theme='dark'] .ks-raid-badge {
 
 @media (prefers-reduced-motion: reduce) {
   .ks-orbit-ring, .ks-orbit-sprite, .ks-orbit-core-pulse, .ks-orbit-radar,
-  .ks-hero::after, .ks-bar-fill, .ks-rank-row, .ks-ticker-track, .ks-orb,
-  .ks-boss-radar, .ks-boss-glow, .ks-boss-sprite, .ks-boss-info, .ks-search-row, .ks-search-trend,
-  .ks-raid-card, .ks-raid-badge, .ks-raid-mark,
-  .dc-rotate, .dc-hero::after, .dc-sprite-wrap, .dc-ember { animation: none; }
-  .dc-ember { display: none; }
-}
-
-/* ---- Draggable world globe (globe-home experiment) ---------------------- */
-.wg-wrap {
-  position: relative;
-  user-select: none;
-}
-/* Atmospheric halo bleeding out behind the sphere. */
-.wg-glow {
-  position: absolute;
-  inset: -16%;
-  border-radius: 9999px;
-  pointer-events: none;
-  background: radial-gradient(
-    circle at 50% 48%,
-    color-mix(in srgb, var(--color-accent) 42%, transparent),
-    transparent 66%
-  );
-  filter: blur(22px);
-  opacity: 0.5;
-}
-.wg-globe {
-  position: relative;
-  border-radius: 9999px;
-  overflow: hidden;
-  cursor: grab;
-  background: #0a140d;
-  box-shadow: 0 26px 70px -22px rgba(0, 0, 0, 0.65);
-  touch-action: none;
-}
-.wg-globe.is-grabbing {
-  cursor: grabbing;
-}
-.wg-band {
-  position: absolute;
-  top: 0;
-  left: 0;
-  display: flex;
-  will-change: transform;
-}
-.wg-grid {
-  display: grid;
-}
-.wg-tile {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  image-rendering: pixelated;
-  display: block;
-}
-/* Specular highlight + shaded side = spherical read. */
-.wg-shade {
-  position: absolute;
-  inset: 0;
-  border-radius: 9999px;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at 32% 27%, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0) 44%),
-    radial-gradient(circle at 70% 76%, rgba(0, 0, 0, 0.66), rgba(0, 0, 0, 0) 62%);
-}
-/* Limb darkening + a faint rim of light around the edge. */
-.wg-rim {
-  position: absolute;
-  inset: 0;
-  border-radius: 9999px;
-  pointer-events: none;
-  box-shadow:
-    inset 0 0 34px 8px rgba(0, 0, 0, 0.5),
-    inset 0 0 0 2px rgba(255, 245, 220, 0.14);
-}
-@media (prefers-reduced-motion: reduce) {
-  .wg-band { will-change: auto; }
+  .ks-bar-fill, .ks-rank-row, .ks-ticker-track, .ks-orb, .ks-search-row, .ks-search-trend,
+  .ks-raid-card, .ks-raid-badge, .ks-raid-mark { animation: none; }
 }

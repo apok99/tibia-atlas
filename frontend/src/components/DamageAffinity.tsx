@@ -223,7 +223,6 @@ export function DamageAffinity({ meta }: { meta: Record<string, unknown> }) {
           const isWeak = status === 'weak'
           const isResist = status === 'resistant'
           const isImmune = status === 'immune'
-          const isNeutral = status === 'neutral'
 
           const accent = isWeak ? WEAK : isResist ? RESIST : isImmune ? IMMUNE_GREY : null
           const iconTint = isImmune ? IMMUNE_GREY : el.color
@@ -259,7 +258,7 @@ export function DamageAffinity({ meta }: { meta: Record<string, unknown> }) {
               }}
               className={[
                 'relative flex flex-col items-center gap-1.5 rounded-[3px] border px-2 py-3 text-center transition',
-                isImmune ? 'opacity-60 grayscale' : '',
+                isImmune ? 'opacity-80' : '',
               ].join(' ')}
             >
               {(isWeak || isResist) && (
@@ -289,8 +288,8 @@ export function DamageAffinity({ meta }: { meta: Record<string, unknown> }) {
                 {t(`elements.${el.id}`)}
               </span>
               <span
-                className={`font-mono text-[11px] font-bold tabular-nums leading-none${isNeutral ? ' text-fg-mute' : ''}`}
-                style={isNeutral ? undefined : { color: accent ?? undefined }}
+                className={`font-mono text-[11px] font-bold tabular-nums leading-none${isWeak || isResist ? '' : ' text-fg-dim'}`}
+                style={isWeak || isResist ? { color: accent ?? undefined } : undefined}
               >
                 {value}
               </span>

@@ -1,6 +1,6 @@
 # Tibia Atlas
 
-> Bilingual (Spanish & English) archive of the lore of Tibia — the MMORPG by CipSoft. It documents creatures, characters, cities, organizations, quests, historical events and concepts with an editorial discipline that separates canon from interpretation and cites every source. Fan project; lore is documented, never invented. Not affiliated with CipSoft.
+> Bilingual (Spanish & English) atlas of Tibia — the MMORPG by CipSoft. At its heart is an interactive world map with every creature's spawns floor by floor and routes between cities, plus a daily wordle, a bestiary and the documented lore of Tibia. Content separates canon from interpretation and cites every source with editorial discipline. Fan project; lore is documented, never invented. Not affiliated with CipSoft.
 
 Each article is structured as: Overview, Canon (only what official sources support), Interpretations, Theories, Related Entities and Sources. Content is available in Spanish (`?lang=es`, default) and English (`?lang=en`).
 

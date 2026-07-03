@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
+import { Icon } from '../lib/icons'
 import type { BossRow } from '../hooks/useKillStats'
 
 function BossCard({ b, color, hot }: { b: BossRow; color: string; hot: boolean }) {
@@ -13,7 +14,9 @@ function BossCard({ b, color, hot }: { b: BossRow; color: string; hot: boolean }
       title={t('ks.raidWorlds', { a: b.worlds_active, c: b.cooldown })}
     >
       <span className="ks-raid-badge">
-        <span className="ks-raid-mark">{hot ? '🔥' : '💤'}</span>
+        <span className="ks-raid-mark" style={{ color }}>
+          <Icon name={hot ? 'flame' : 'moon'} />
+        </span>
         {b.image ? <img src={b.image} alt={b.race} loading="lazy" /> : <span className="ks-raid-skull">☠</span>}
       </span>
       <span className="ks-raid-name">{b.race}</span>

@@ -1,17 +1,21 @@
+import { lazy } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { HomePage } from './pages/HomePage'
-import { BrowsePage } from './pages/BrowsePage'
-import { EntryPage } from './pages/EntryPage'
-import { HistoryPage } from './pages/HistoryPage'
-import { SoundtrackPage } from './pages/SoundtrackPage'
-import { MapPage } from './pages/MapPage'
-import { KillStatsPage } from './pages/KillStatsPage'
-import { QuestsPage } from './pages/QuestsPage'
-import { TimelinePage } from './pages/TimelinePage'
-import { ItemsPage } from './pages/ItemsPage'
-import { ItemDetailPage } from './pages/ItemDetailPage'
-import { WordlePage } from './pages/WordlePage'
+
+// Every non-home page is code-split: heavy libraries (recharts, leaflet,
+// globe.gl/three) only download when a route that uses them is visited.
+const BrowsePage = lazy(() => import('./pages/BrowsePage').then((m) => ({ default: m.BrowsePage })))
+const EntryPage = lazy(() => import('./pages/EntryPage').then((m) => ({ default: m.EntryPage })))
+const HistoryPage = lazy(() => import('./pages/HistoryPage').then((m) => ({ default: m.HistoryPage })))
+const SoundtrackPage = lazy(() => import('./pages/SoundtrackPage').then((m) => ({ default: m.SoundtrackPage })))
+const MapPage = lazy(() => import('./pages/MapPage').then((m) => ({ default: m.MapPage })))
+const KillStatsPage = lazy(() => import('./pages/KillStatsPage').then((m) => ({ default: m.KillStatsPage })))
+const QuestsPage = lazy(() => import('./pages/QuestsPage').then((m) => ({ default: m.QuestsPage })))
+const TimelinePage = lazy(() => import('./pages/TimelinePage').then((m) => ({ default: m.TimelinePage })))
+const ItemsPage = lazy(() => import('./pages/ItemsPage').then((m) => ({ default: m.ItemsPage })))
+const ItemDetailPage = lazy(() => import('./pages/ItemDetailPage').then((m) => ({ default: m.ItemDetailPage })))
+const WordlePage = lazy(() => import('./pages/WordlePage').then((m) => ({ default: m.WordlePage })))
 
 export default function App() {
   return (

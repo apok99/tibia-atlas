@@ -1,0 +1,538 @@
+{
+  "_comment": "Curated spawn tiles for bosses absent from the OpenTibia world spawn file and the TibiaMaps/community marker sets (raid, quest and instanced bosses). slug -> {x,y,z,src}. Applied idempotently by `php artisan tibia:import-boss-locations` to bosses whose meta.spawns is still empty. Coordinates are absolute Tibia world coords sourced from TibiaWiki article 'Location' sections and TibiaMaps.io; each must land on an exported minimap tile (see tools check in the command).",
+  "kerberos": {
+    "x": 32044,
+    "y": 32548,
+    "z": 14,
+    "src": "TibiaMaps marker: Task boss: Kerberos"
+  },
+  "tormentor": {
+    "x": 32072,
+    "y": 31282,
+    "z": 10,
+    "src": "TibiaMaps marker: Task boss: Tormentor"
+  },
+  "zugurosh": {
+    "x": 33138,
+    "y": 31692,
+    "z": 11,
+    "src": "TibiaMaps marker: Zugurosh (exact spawn tile)"
+  },
+  "aftershock": {
+    "x": 32208,
+    "y": 31247,
+    "z": 14,
+    "src": "TibiaWiki {{Mapper Coords}}: Otherworld, {{Mapper Coords|125.208|122.15|14|"
+  },
+  "black-vixen": {
+    "x": 33442,
+    "y": 32051,
+    "z": 9,
+    "src": "TibiaWiki {{Mapper Coords}}: After an Earth Portal inside Cormaya's were-beasts cave, {{Mapper Coords|130.162|125.51|9|"
+  },
+  "bloodback": {
+    "x": 33166,
+    "y": 31977,
+    "z": 8,
+    "src": "TibiaWiki {{Mapper Coords}}: After an Earth Portal inside Edron's were-beasts cave, {{Mapper Coords|129.142|124.233|8|"
+  },
+  "bolfrim-creature": {
+    "x": 33303,
+    "y": 31773,
+    "z": 7,
+    "src": "TibiaWiki {{Mapper Coords}}: Stonehome ({{Mapper Coords|130.23|124.29|7|"
+  },
+  "bruise-payne": {
+    "x": 32679,
+    "y": 31114,
+    "z": 3,
+    "src": "TibiaWiki {{Mapper Coords}}: A bat-shaped area above northern Zao. To access it, enter the Magic Forcefield located in Yalahar's Alchemist Quarter, {{Mapper Coo"
+  },
+  "bullwark": {
+    "x": 33703,
+    "y": 31856,
+    "z": 7,
+    "src": "TibiaWiki {{Mapper Coords}}: Oramond Minotaur Camp, {{Mapper Coords|131.166|124.85|7|"
+  },
+  "delany-creature": {
+    "x": 32174,
+    "y": 31239,
+    "z": 6,
+    "src": "TibiaWiki {{Mapper Coords}}: South-west of Svargrond ({{Mapper Coords|125.174|122.7|6|"
+  },
+  "demodras": {
+    "x": 32769,
+    "y": 32290,
+    "z": 10,
+    "src": "TibiaWiki: inside the PoH Dragon Lair, floor -3 ({{Mapper Coords|128.1|126.34|10}}) — actual spawn, not the surface waypoint"
+  },
+  "dragonking-zyrtarch": {
+    "x": 33357,
+    "y": 31184,
+    "z": 10,
+    "src": "TibiaWiki {{Mapper Coords}}: Zao Temple Complex, {{Mapper Coords|130.77|121.208|10|"
+  },
+  "enraged-morshabaal": {
+    "x": 33118,
+    "y": 31701,
+    "z": 7,
+    "src": "TibiaWiki {{Mapper Coords}}: Morshabaal appears inside a teleporter that spawns at the stone circle in the northwest of Edron, {{Mapper Coords|129.94|123.213|7|"
+  },
+  "esmeralda": {
+    "x": 32758,
+    "y": 31245,
+    "z": 9,
+    "src": "TibiaWiki {{Mapper Coords}}: Yalahar#Inner City creatures, entry teleport can be found {{Mapper Coords|127.246|122.13|9|"
+  },
+  "fahim-the-wise": {
+    "x": 32814,
+    "y": 31120,
+    "z": 2,
+    "src": "TibiaWiki {{Mapper Coords}}: Magician Quarter (Yalahar) past the teleport on the top floor of the front left tower, which is located {{Mapper Coords|128.46|121."
+  },
+  "feroxa": {
+    "x": 33457,
+    "y": 31530,
+    "z": 11,
+    "src": "TibiaWiki {{Mapper Coords}}: Grimvale cave, behind the teleport, {{Mapper Coords|130.177|123.42|11|"
+  },
+  "feroxa-gloom-wolf": {
+    "x": 33457,
+    "y": 31530,
+    "z": 11,
+    "src": "TibiaWiki {{Mapper Coords}}: Behind the teleport, {{Mapper Coords|130.177|123.42|11|"
+  },
+  "feroxa-werewolf": {
+    "x": 33457,
+    "y": 31530,
+    "z": 11,
+    "src": "TibiaWiki {{Mapper Coords}}: Behind the teleport, {{Mapper Coords|130.177|123.42|11|"
+  },
+  "flameborn": {
+    "x": 32816,
+    "y": 31026,
+    "z": 7,
+    "src": "TibiaWiki {{Mapper Coords}}: Magician Quarter, Yalahar"
+  },
+  "foreshock": {
+    "x": 32208,
+    "y": 31247,
+    "z": 14,
+    "src": "TibiaWiki {{Mapper Coords}}: Otherworld, {{Mapper Coords|125.208|122.15|14|"
+  },
+  "furious-morshabaal": {
+    "x": 33118,
+    "y": 31701,
+    "z": 7,
+    "src": "TibiaWiki {{Mapper Coords}}: Morshabaal appears inside a teleporter that spawns at the stone circle in the northwest of Edron, {{Mapper Coords|129.94|123.213|7|"
+  },
+  "gazharagoth": {
+    "x": 33630,
+    "y": 32371,
+    "z": 5,
+    "src": "TibiaWiki {{Mapper Coords}}: Spawns every day at Server Save on top of the central mountain in Upper Roshamuul (+2 floor, {{Mapper Coords|131.94|126.115|5|"
+  },
+  "gelidrazah-the-frozen": {
+    "x": 32276,
+    "y": 31364,
+    "z": 4,
+    "src": "TibiaWiki {{Mapper Coords}}: On Okolnir, after starting the quest you can enter the teleport right here {{Mapper Coords|126.20|122.132|4|"
+  },
+  "glooth-fairy": {
+    "x": 33654,
+    "y": 31941,
+    "z": 9,
+    "src": "TibiaWiki {{Mapper Coords}}: Oramond, Rathleton New Sewers"
+  },
+  "grimrat": {
+    "x": 32898,
+    "y": 31773,
+    "z": 7,
+    "src": "TibiaWiki {{Mapper Coords}}: Orc Fortress near the entrance {{Mapper Coords|128.130|124.29|7|"
+  },
+  "hatebreeder": {
+    "x": 33098,
+    "y": 31101,
+    "z": 14,
+    "src": "TibiaWiki {{Mapper Coords}}: Razachai/Inner Sanctum, around {{Mapper Coords|129.74|121.125|14|"
+  },
+  "hemming": {
+    "x": 32992,
+    "y": 31443,
+    "z": 7,
+    "src": "TibiaWiki {{Mapper Coords}}: Vengoth/Werewolf Cave, behind the teleport which is located {{Mapper Coords|128.224|122.211|7|"
+  },
+  "necropharus": {
+    "x": 33046,
+    "y": 32439,
+    "z": 11,
+    "src": "TibiaWiki {{Mapper Coords}}: Halls of Sacrifice (Killing in the Name of... Quest, teleporter located {{Mapper Coords|129.22|126.183|11|"
+  },
+  "the-old-widow": {
+    "x": 32814,
+    "y": 32280,
+    "z": 8,
+    "src": "TibiaWiki {{Mapper Coords}}: Its task teleport is located on the Plains of Havoc, {{Mapper Coords|128.46|126.24|8|"
+  },
+  "tiquandas-revenge": {
+    "x": 32915,
+    "y": 32557,
+    "z": 7,
+    "src": "TibiaWiki {{Mapper Coords}}: Deep in the Tiquanda Jungle, has been seen {{Mapper Coords|128.147|127.45|7|"
+  },
+  "charged-anomaly": {
+    "x": 32208,
+    "y": 31247,
+    "z": 14,
+    "src": "TibiaWiki: same Otherworld rift as Aftershock/Foreshock"
+  },
+  "damage-resonance": {
+    "x": 32208,
+    "y": 31247,
+    "z": 14,
+    "src": "TibiaWiki: same Otherworld rift as Aftershock/Foreshock"
+  },
+  "great-timedisplaced-anomaly": {
+    "x": 32208,
+    "y": 31247,
+    "z": 14,
+    "src": "TibiaWiki: same Otherworld rift as Aftershock/Foreshock"
+  },
+  "feroxa-killable-werewolf": {
+    "x": 33457,
+    "y": 31530,
+    "z": 11,
+    "src": "TibiaWiki: same Grimvale werewolf cave as other Feroxa phases"
+  },
+  "ahau": {
+    "x": 34000,
+    "y": 31732,
+    "z": 9,
+    "src": "Client marker: Ahau teleport (Iksupan Undercity)"
+  },
+  "armenius-creature": {
+    "x": 32853,
+    "y": 31324,
+    "z": 7,
+    "src": "Client marker: NPC Armenius (Yalahar Trade Quarter)"
+  },
+  "bakragore": {
+    "x": 34106,
+    "y": 32053,
+    "z": 13,
+    "src": "Client marker: Bakragore lever room"
+  },
+  "darkfang": {
+    "x": 33056,
+    "y": 31909,
+    "z": 9,
+    "src": "Client marker: Portal to Darkfang (Edron were-beasts cave)"
+  },
+  "ekatrix": {
+    "x": 32708,
+    "y": 31859,
+    "z": 11,
+    "src": "Client marker: Teleport to Ekatrix"
+  },
+  "grand-master-oberon": {
+    "x": 33297,
+    "y": 31287,
+    "z": 9,
+    "src": "Client marker: Teleport to Grand Master Oberon (Falcon Bastion)"
+  },
+  "goshnars-greed": {
+    "x": 33627,
+    "y": 31422,
+    "z": 10,
+    "src": "Client marker: The Mirrored Nightmare (Goshnar's Greed) — Soul War/Zarganash"
+  },
+  "goshnars-hatred": {
+    "x": 33618,
+    "y": 31422,
+    "z": 10,
+    "src": "Client marker: Rotten Wasteland (Goshnar's Hatred) — Soul War/Zarganash"
+  },
+  "goshnars-malice": {
+    "x": 33615,
+    "y": 31422,
+    "z": 10,
+    "src": "Client marker: Claustrophobic Inferno (Goshnar's Malice) — Soul War/Zarganash"
+  },
+  "goshnars-spite": {
+    "x": 33621,
+    "y": 31422,
+    "z": 10,
+    "src": "Client marker: Ebb and Flow (Goshnar's Spite) — Soul War/Zarganash"
+  },
+  "goshnars-megalomania": {
+    "x": 33620,
+    "y": 31422,
+    "z": 10,
+    "src": "Soul War final arena, central Zarganash complex"
+  },
+  "goshnars-megalomania-annihilation": {
+    "x": 33620,
+    "y": 31422,
+    "z": 10,
+    "src": "Soul War final arena, central Zarganash complex"
+  },
+  "goshnars-megalomania-vulnerable": {
+    "x": 33620,
+    "y": 31422,
+    "z": 10,
+    "src": "Soul War final arena, central Zarganash complex"
+  },
+  "fatal-bug": {
+    "x": 32269,
+    "y": 32124,
+    "z": 9,
+    "src": "Client marker: Adventurer Group (Roost of the Graveborn); TibiaBuddy #32269,32125,9"
+  },
+  "fiona-firstdream": {
+    "x": 32269,
+    "y": 32124,
+    "z": 9,
+    "src": "Client marker: Adventurer Group boss room"
+  },
+  "grendel-greenlunch": {
+    "x": 32269,
+    "y": 32124,
+    "z": 9,
+    "src": "Client marker: Adventurer Group boss room"
+  },
+  "doctor-marrow": {
+    "x": 33356,
+    "y": 31985,
+    "z": 7,
+    "src": "Client marker: To Ingol (Doctor Marrow, deeper Ingol)"
+  },
+  "doctor-marrow-podzilla": {
+    "x": 33818,
+    "y": 31997,
+    "z": 6,
+    "src": "Podzilla quest, Candia island (agent-researched)"
+  },
+  "ferumbras-mortal-shell": {
+    "x": 32121,
+    "y": 32688,
+    "z": 7,
+    "src": "TibiaWiki: Ferumbras' Citadel on Kharos ({{Mapper Coords|125.121|127.176|7}})"
+  },
+  "ferumbras-essence": {
+    "x": 32121,
+    "y": 32688,
+    "z": 7,
+    "src": "TibiaWiki: Ferumbras' Citadel on Kharos ({{Mapper Coords|125.121|127.176|7}})"
+  },
+  "ferumbras-soul-splinter": {
+    "x": 32121,
+    "y": 32688,
+    "z": 7,
+    "src": "TibiaWiki: Ferumbras' Citadel on Kharos ({{Mapper Coords|125.121|127.176|7}})"
+  },
+  "destabilized-ferumbras": {
+    "x": 32121,
+    "y": 32688,
+    "z": 7,
+    "src": "TibiaWiki: Ferumbras' Citadel on Kharos ({{Mapper Coords|125.121|127.176|7}})"
+  },
+  "alptramun": {
+    "x": 33424,
+    "y": 32215,
+    "z": 7,
+    "src": "Feyrist / The Dream Scar (Dream Courts)"
+  },
+  "brother-chill": {
+    "x": 32479,
+    "y": 32780,
+    "z": 11,
+    "src": "Secret Library ice wing (tibiamaps 32479,32780,11)"
+  },
+  "brother-freeze": {
+    "x": 32479,
+    "y": 32780,
+    "z": 11,
+    "src": "Secret Library ice wing (same room as Brother Chill)"
+  },
+  "ghulosh-deathgaze": {
+    "x": 32479,
+    "y": 32780,
+    "z": 11,
+    "src": "Ghulosh's room, Secret Library"
+  },
+  "dragon-hoard": {
+    "x": 32479,
+    "y": 32780,
+    "z": 11,
+    "src": "Secret Library (Dragon Hoard)"
+  },
+  "cursed-gladiator": {
+    "x": 32222,
+    "y": 31080,
+    "z": 6,
+    "src": "Svargrond Arena (Greenhorn pit)"
+  },
+  "deathbringer": {
+    "x": 32222,
+    "y": 31080,
+    "z": 6,
+    "src": "Svargrond Arena"
+  },
+  "gnorre-chyllson": {
+    "x": 32222,
+    "y": 31080,
+    "z": 6,
+    "src": "Svargrond Arena"
+  },
+  "fallen-moohtah-master-ghar": {
+    "x": 32222,
+    "y": 31080,
+    "z": 6,
+    "src": "Svargrond Arena"
+  },
+  "arkhothep-creature": {
+    "x": 33146,
+    "y": 32816,
+    "z": 7,
+    "src": "Ankrahmun (TibiaWiki location)"
+  },
+  "arthei": {
+    "x": 32916,
+    "y": 31516,
+    "z": 7,
+    "src": "Vampire Castle, Vengoth (TibiaWiki location)"
+  },
+  "boreth": {
+    "x": 32916,
+    "y": 31516,
+    "z": 7,
+    "src": "Vengoth (TibiaWiki location)"
+  },
+  "bloom-of-doom": {
+    "x": 32916,
+    "y": 31516,
+    "z": 7,
+    "src": "Vengoth (TibiaWiki location)"
+  },
+  "zoralurk": {
+    "x": 32916,
+    "y": 31516,
+    "z": 7,
+    "src": "Vengoth / Zao (TibiaWiki location)"
+  },
+  "count-tofifti-creature": {
+    "x": 32629,
+    "y": 32769,
+    "z": 7,
+    "src": "Port Hope, near Grizzly Adams (TibiaWiki location)"
+  },
+  "craban-creature": {
+    "x": 33303,
+    "y": 31773,
+    "z": 7,
+    "src": "Around Stonehome (TibiaWiki location)"
+  },
+  "death-priest-shargon": {
+    "x": 33479,
+    "y": 31986,
+    "z": 7,
+    "src": "Oramond (TibiaWiki location)"
+  },
+  "horadron": {
+    "x": 33524,
+    "y": 32477,
+    "z": 7,
+    "src": "Roshamuul Prison (TibiaWiki location)"
+  },
+  "morgaroth": {
+    "x": 32095,
+    "y": 32583,
+    "z": 7,
+    "src": "Underground Goroma Volcano (TibiaWiki location)"
+  },
+  "minishabaal": {
+    "x": 33236,
+    "y": 32432,
+    "z": 7,
+    "src": "North of Darashia during Demonic Raid (TibiaWiki location)"
+  },
+  "apprentice-sheng": {
+    "x": 32097,
+    "y": 32219,
+    "z": 7,
+    "src": "Minotaur Hell, Rookgaard (TibiaWiki location)"
+  },
+  "denson-larika-creature": {
+    "x": 32309,
+    "y": 32794,
+    "z": 7,
+    "src": "Pirate tavern near Klaus, Liberty Bay (TibiaWiki location)"
+  },
+  "chayenne-creature": {
+    "x": 32783,
+    "y": 31605,
+    "z": 7,
+    "src": "Surface of Draconia (TibiaWiki location)"
+  },
+  "bane-lord": {
+    "x": 32750,
+    "y": 31600,
+    "z": 7,
+    "src": "Green Claw Swamp, Bewitched event area"
+  },
+  "channeling-earl-osam": {
+    "x": 33307,
+    "y": 31999,
+    "z": 7,
+    "src": "Cormaya cemetery (Grave Danger quest)"
+  },
+  "angry-king-chuck": {
+    "x": 33742,
+    "y": 31079,
+    "z": 7,
+    "src": "Orcsoberfest / Secluded Island (seasonal event)"
+  },
+  "fat-porker": {
+    "x": 33742,
+    "y": 31079,
+    "z": 7,
+    "src": "Orcsoberfest / Secluded Island (seasonal event)"
+  },
+  "fugue": {
+    "x": 32400,
+    "y": 32481,
+    "z": 7,
+    "src": "Bounac throne room (Order of the Lion)"
+  },
+  "a-shielded-astral-glyph": {
+    "x": 33137,
+    "y": 32352,
+    "z": 7,
+    "src": "Lion's Rock (Forgotten Knowledge Quest final area)"
+  },
+  "an-astral-glyph": {
+    "x": 33137,
+    "y": 32352,
+    "z": 7,
+    "src": "Lion's Rock (Forgotten Knowledge Quest final area)"
+  },
+  "an-observer-eye": {
+    "x": 33137,
+    "y": 32352,
+    "z": 7,
+    "src": "Lion's Rock (Forgotten Knowledge Quest, Replica Dungeon)"
+  },
+  "football-creature": {
+    "x": 33607,
+    "y": 31955,
+    "z": 7,
+    "src": "Rathleton Magistrate area (test-server creature)"
+  },
+  "_unmapped": "No defensible public-map tile (raid-only, random world-change, off-grid instance, or unclear location) — intentionally left without a pin: captured-versperoth, cave-spider (basic creature mis-ranked as boss), court-warlock, devovorga, devovorga-invincible, earth-overlord, energy-overlord, fire-overlord, faceless-bane, fernfang, fluffy, freegoiz, furyosa.",
+  "ferumbras": {
+    "x": 32121,
+    "y": 32688,
+    "z": 7,
+    "src": "TibiaWiki: Ferumbras' Citadel on Kharos ({{Mapper Coords|125.121|127.176|7}})"
+  }
+}

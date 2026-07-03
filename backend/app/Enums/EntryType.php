@@ -8,6 +8,7 @@ namespace App\Enums;
 enum EntryType: string
 {
     case Creature = 'creature';
+    case Npc = 'npc';
     case Character = 'character';
     case City = 'city';
     case Location = 'location';
@@ -26,6 +27,7 @@ enum EntryType: string
     {
         return match ($this) {
             self::Creature => ['es' => 'Criatura', 'en' => 'Creature'],
+            self::Npc => ['es' => 'NPC', 'en' => 'NPC'],
             self::Character => ['es' => 'Personaje', 'en' => 'Character'],
             self::City => ['es' => 'Ciudad', 'en' => 'City'],
             self::Location => ['es' => 'Lugar', 'en' => 'Location'],

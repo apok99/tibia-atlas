@@ -32,7 +32,7 @@ class BossRespawnQuery
      * Last-known kill date per world from accumulated history (improves as
      * snapshots pile up).
      *
-     * @return Collection<int, string>  keyed by world_id
+     * @return Collection<int, string> keyed by world_id
      */
     public function lastKillPerWorld(int $raceId): Collection
     {

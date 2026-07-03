@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\EntryStatus;
 use App\Enums\EntryType;
 use App\Support\ContentCache;
+use Database\Factories\EntryFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -19,7 +20,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 class Entry extends Model
 {
-    /** @use HasFactory<\Database\Factories\EntryFactory> */
+    /** @use HasFactory<EntryFactory> */
     use HasFactory, SoftDeletes;
 
     protected $fillable = [

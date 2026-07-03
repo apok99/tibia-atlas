@@ -33,7 +33,7 @@ export function PlayerBar() {
 
   return (
     <div className="sticky bottom-0 z-30 border-t border-line bg-bg-2/95 backdrop-blur-md">
-      <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-2.5">
+      <div className="mx-auto flex max-w-[86rem] items-center gap-4 px-4 py-2.5">
         {/* Track info */}
         <div className="flex min-w-0 items-center gap-3 sm:w-56">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded bg-accent/15 text-accent">

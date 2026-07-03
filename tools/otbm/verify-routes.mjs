@@ -19,7 +19,7 @@ for (let z = 0; z < 16; z++) {
 }
 const links = JSON.parse(fs.readFileSync(path.join(root, 'frontend/public/floor-links.json')))
 
-const PORTS = [['Thais', 32365, 32224], ['Carlin', 32343, 31792], ['Venore', 32947, 32081], ['Edron', 33211, 31830], ['PortHope', 32629, 32769], ['Ankrahmun', 33146, 32816], ['LibertyBay', 32309, 32794], ['Svargrond', 32278, 31146], ['Yalahar', 32805, 31234], ['Oramond', 33607, 31955]]
+const PORTS = [['AbDendriel', 32665, 31652], ['Ankrahmun', 33146, 32816], ['Carlin', 32343, 31792], ['Cormaya', 33307, 31999], ['Darashia', 33213, 32453], ['Edron', 33211, 31830], ['Farmine', 33030, 31500], ['Krailos', 33580, 31584], ['LibertyBay', 32309, 32794], ['Oramond', 33607, 31955], ['PortHope', 32629, 32769], ['Rookgaard', 32097, 32219], ['Roshamuul', 33524, 32477], ['Svargrond', 32278, 31146], ['Thais', 32365, 32224], ['Venore', 32947, 32081], ['Yalahar', 32805, 31234]]
 
 function snap(z, x, y, R = 25) {
   if (z < 0 || z > 15 || !walk[z] || !inB(x, y)) return null
@@ -75,8 +75,8 @@ const CASES = [
   ['Carlin→AbDendriel', 32343, 31792, 7, 32665, 31652, 7],
   ['Yalahar→GrimReaper', 32805, 31234, 7, 32784, 31025, 8],
   ['Venore→Thais depot', 32957, 32076, 7, 32369, 32241, 7],
-  ['Ankrahmun→Darashia', 33146, 32816, 7, 33236, 32432, 7],
-  ['Darashia→Ankrahmun', 33236, 32432, 7, 33146, 32816, 7],
+  ['Ankrahmun→Darashia', 33146, 32816, 7, 33213, 32453, 7],
+  ['Darashia→Ankrahmun', 33213, 32453, 7, 33146, 32816, 7],
   ['Thais→MountSternum', 32365, 32224, 7, 32494, 32072, 7],
 ]
 const BI = new Set([1]) // stairs + ladders are two-way; holes/teleports one-way

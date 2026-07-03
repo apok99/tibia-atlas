@@ -1,14 +1,15 @@
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { CountUp } from './CountUp'
+import { Icon } from '../lib/icons'
 import type { TopSearch } from '../hooks/useKillStats'
 
-const TYPE_GLYPH: Record<string, string> = {
-  creature: '🐾',
-  character: '👑',
-  city: '🏰',
-  quest: '📜',
-  item: '🛡️',
+const TYPE_ICON: Record<string, string> = {
+  creature: 'paw',
+  character: 'crown',
+  city: 'castle',
+  quest: 'scroll',
+  item: 'shield',
 }
 
 /**
@@ -40,7 +41,7 @@ export function TopSearched({ source, items }: { source: 'searches' | 'views'; i
                   {s.image ? (
                     <img src={s.image} alt="" loading="lazy" />
                   ) : (
-                    <span>{TYPE_GLYPH[s.type ?? ''] ?? '🔍'}</span>
+                    <Icon name={TYPE_ICON[s.type ?? ''] ?? 'search'} size={17} />
                   )}
                 </span>
                 <span className="ks-search-name capitalize">{label}</span>

@@ -40,7 +40,7 @@ return new class extends Migration
             DB::statement('CREATE EXTENSION IF NOT EXISTS pg_trgm');
             DB::statement('CREATE INDEX IF NOT EXISTS entry_translations_name_trgm_idx ON entry_translations USING gin (name gin_trgm_ops)');
             DB::statement('CREATE INDEX IF NOT EXISTS entry_translations_overview_trgm_idx ON entry_translations USING gin (overview gin_trgm_ops)');
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             // Most likely: the app DB role lacks privilege to CREATE EXTENSION.
             // Search degrades to a sequential scan — correct, just slower.
             Log::warning('pg_trgm search indexes skipped: '.$e->getMessage());

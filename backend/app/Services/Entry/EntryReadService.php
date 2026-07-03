@@ -97,6 +97,21 @@ class EntryReadService
     public function topSearches(int $limit, int $days): array
     {
         $locale = app()->getLocale();
+
+        // Popularity only drifts click by click — a short shared cache absorbs
+        // the widget's polling without making the ranking feel stale. Stored as
+        // plain arrays (json round-trip): the database cache driver can't
+        // restore Collections reliably.
+        return Cache::remember(
+            "top-searches:{$locale}:{$limit}:{$days}",
+            300,
+            fn () => json_decode(json_encode($this->buildTopSearches($limit, $days, $locale)), true),
+        );
+    }
+
+    /** @return array<string, mixed> */
+    private function buildTopSearches(int $limit, int $days, string $locale): array
+    {
         $terms = $this->searchTerms->topTerms($days, $limit);
 
         // Only show the "most searched" view once the log can fill the whole
@@ -148,7 +163,14 @@ class EntryReadService
      */
     public function trending(int $count): Collection
     {
-        $counts = $this->trending->recentViewCounts(self::TRENDING_WINDOW_HOURS, $count);
+        // The rolling GROUP BY over entry_views is the expensive part — cache it
+        // once for everyone (fetched at the max carousel size, sliced per
+        // request) and let the cheap indexed id-lookups run live.
+        $counts = collect(Cache::remember(
+            'trending:counts:'.self::TRENDING_WINDOW_HOURS.'h',
+            300,
+            fn () => $this->trending->recentViewCounts(self::TRENDING_WINDOW_HOURS, 24)->all(),
+        ));
 
         $entries = $this->trending->publishedByIds($counts->keys())
             ->each(fn (Entry $e) => $e->trend_views = (int) ($counts[$e->id] ?? 0))
@@ -219,7 +241,9 @@ class EntryReadService
         $locale = app()->getLocale();
 
         return Cache::remember(
-            ContentCache::key("glossary:{$locale}"),
+            // v2: payload gained an `image` field — the suffix retires any
+            // cached imageless copies that would otherwise outlive a deploy.
+            ContentCache::key("glossary:v2:{$locale}"),
             3600,
             fn () => $this->glossaryTransformer->items($this->glossary->publishedNames(), $locale),
         );

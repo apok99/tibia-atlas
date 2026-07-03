@@ -11,7 +11,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { CountUp, compact } from '../components/CountUp'
+import { CountUp } from '../components/CountUp'
+import { compact } from '../lib/format'
 import { CreatureOrbit } from '../components/CreatureOrbit'
 import { KillTicker } from '../components/KillTicker'
 import { WorldPulse } from '../components/WorldPulse'
@@ -28,6 +29,7 @@ import {
   type RankingRow,
   type SeriesPoint,
 } from '../hooks/useKillStats'
+import { chartTooltipStyle, useChartTheme } from '../hooks/useChartTheme'
 
 const RED = '#d23d2f'
 const CORAL = '#ec6a55'
@@ -46,14 +48,6 @@ const PALETTE = [
   '#c95b6e',
   '#8fb46b',
 ]
-
-const TOOLTIP_STYLE = {
-  background: '#1b1d24',
-  border: '1px solid #3d414c',
-  borderRadius: 8,
-  color: '#e9e3d6',
-  fontSize: 12,
-} as const
 
 /** Tiny gradient sparkline. */
 function Sparkline({ data, dataKey, color }: { data: SeriesPoint[]; dataKey: string; color: string }) {
@@ -165,6 +159,7 @@ function RotatingBossKpi({ bosses, label, color = VIOLET }: { bosses: BossRow[];
 /** Live players-online panel: big current count + history area (or region bars while sparse). */
 function OnlinePanel({ overview }: { overview: KillOverview }) {
   const { t } = useTranslation()
+  const chart = useChartTheme()
   const history = overview.online_history ?? []
   const enough = history.length >= 2
   return (
@@ -189,10 +184,10 @@ function OnlinePanel({ overview }: { overview: KillOverview }) {
                   <stop offset="100%" stopColor={GREEN} stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <CartesianGrid stroke="#2c2f38" vertical={false} />
-              <XAxis dataKey="time" tick={{ fill: '#76705f', fontSize: 10 }} stroke="#2c2f38" tickFormatter={(v) => String(v).slice(11)} minTickGap={28} />
-              <YAxis tick={{ fill: '#76705f', fontSize: 10 }} stroke="#2c2f38" width={40} tickFormatter={(v) => compact(Number(v))} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => [Number(v).toLocaleString(), t('ks.online')]} />
+              <CartesianGrid stroke={chart.grid} strokeOpacity={0.6} vertical={false} />
+              <XAxis dataKey="time" tick={{ fill: chart.tick, fontSize: 10 }} stroke={chart.axis} tickFormatter={(v) => String(v).slice(11)} minTickGap={28} />
+              <YAxis tick={{ fill: chart.tick, fontSize: 10 }} stroke={chart.axis} width={40} tickFormatter={(v) => compact(Number(v))} />
+              <Tooltip contentStyle={chartTooltipStyle(chart)} formatter={(v) => [Number(v).toLocaleString(), t('ks.online')]} />
               <Area type="monotone" dataKey="players_online" stroke={GREEN} strokeWidth={2.5} fill="url(#gOnline)" animationDuration={1400} />
             </AreaChart>
           </ResponsiveContainer>

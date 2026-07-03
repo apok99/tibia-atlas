@@ -71,7 +71,7 @@ class ImportSpawns extends Command
      */
     private function parse(string $path): array
     {
-        $reader = new XMLReader();
+        $reader = new XMLReader;
         $reader->open($path);
 
         $byName = [];

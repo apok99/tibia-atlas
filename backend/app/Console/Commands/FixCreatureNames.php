@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use App\Models\Entry;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Forces every creature's Spanish (es) translation name to match its English

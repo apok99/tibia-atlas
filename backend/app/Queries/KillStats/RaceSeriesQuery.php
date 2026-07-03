@@ -15,7 +15,7 @@ class RaceSeriesQuery
     use ResolvesTibiaIds;
 
     /**
-     * @return Collection<int, \stdClass>  rows of {period, players_killed, killed}
+     * @return Collection<int, \stdClass> rows of {period, players_killed, killed}
      */
     public function get(int $raceId, ?string $world, string $granularity): Collection
     {

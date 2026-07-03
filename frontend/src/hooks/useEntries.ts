@@ -73,6 +73,8 @@ export function useFacets(type?: string) {
       const { data } = await api.get<Facets>('/entries/facets', { params: { type } })
       return data
     },
+    // Facets only change on (rare) content edits.
+    staleTime: 5 * 60 * 1000,
   })
 }
 
@@ -134,6 +136,8 @@ export function useLibrary(filters: { q?: string; group?: string } = {}) {
     // Keep the current list on screen while it reloads (e.g. on a language
     // switch or a new search term) instead of flashing back to a loading state.
     placeholderData: keepPreviousData,
+    // The library only changes on (rare) imports.
+    staleTime: 5 * 60 * 1000,
   })
 }
 
@@ -172,6 +176,8 @@ export function useItems(
       return data
     },
     placeholderData: keepPreviousData,
+    // The catalogue only changes on (rare) imports.
+    staleTime: 5 * 60 * 1000,
   })
 }
 
@@ -184,6 +190,7 @@ export function useItemFacets() {
       const { data } = await api.get<ItemFacets>('/items/facets')
       return data
     },
+    staleTime: 5 * 60 * 1000,
   })
 }
 
@@ -197,6 +204,7 @@ export function useItemDetail(slug: string | undefined) {
       const { data } = await api.get<{ data: ItemDetail }>(`/items/${slug}`)
       return data.data
     },
+    staleTime: 5 * 60 * 1000,
   })
 }
 

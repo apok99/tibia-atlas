@@ -12,22 +12,24 @@ export function HomePage() {
     <div className="space-y-14">
       <Seo path="/" jsonLd={[websiteJsonLd(), organizationJsonLd()]} />
 
-      {/* Hero — text + search on the left, the framed map plate on the right. */}
-      <section className="grid items-start gap-10 lg:grid-cols-[1fr_minmax(0,32rem)]">
-        <div className="max-w-xl">
-          <p className="font-title text-xs uppercase tracking-[0.28em] text-accent">
+      {/* Hero — text + search on the left, the framed map plate on the right.
+          Two balanced columns so the copy and the map fill the width and sit
+          close together instead of drifting apart on the wide page. */}
+      <section className="grid items-center gap-8 lg:grid-cols-2 lg:gap-10">
+        <div>
+          <p className="font-title text-sm uppercase tracking-[0.3em] text-accent">
             <span aria-hidden="true">✦ </span>
             {t('home.atlasKicker')}
             <span aria-hidden="true"> ✦</span>
           </p>
-          <h1 className="mt-4 font-title text-4xl font-semibold leading-[1.08] text-fg sm:text-6xl">
+          <h1 className="mt-4 font-title text-5xl font-semibold leading-[1.05] text-fg sm:text-6xl xl:text-7xl">
             {t('home.heroTitle')}
           </h1>
-          <p className="mt-5 max-w-md text-lg italic leading-relaxed text-fg-dim">
+          <p className="mt-6 max-w-xl text-lg italic leading-relaxed text-fg-dim xl:text-xl">
             {t('home.heroLead')}
           </p>
 
-          <div className="mt-7 max-w-md">
+          <div className="mt-8 max-w-xl">
             <SearchBox placeholder={t('home.searchHero')} />
           </div>
 
