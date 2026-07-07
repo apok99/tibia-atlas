@@ -294,7 +294,9 @@ const FERRY_LINES: FerryLineDef[] = [
       { name: 'Roshamuul', x: 33524, y: 32477 },
       { name: 'Svargrond', x: 32278, y: 31146 },
       { name: 'Thais', x: 32365, y: 32224 },
-      { name: 'Venore', x: 32947, y: 32081 },
+      // Venore anchors on the open plaza east of the depot — (32947,32081) is a
+      // sealed 27-tile courtyard pocket that strands the snap.
+      { name: 'Venore', x: 32963, y: 32087 },
       { name: 'Yalahar', x: 32805, y: 31234 },
     ],
   },
@@ -338,7 +340,12 @@ const FERRY_LINES: FerryLineDef[] = [
   { name: 'Barca', icon: 'sailboat', stops: [{ name: 'Liberty Bay', x: 32347, y: 32858 }, { name: 'Meriana', x: 32132, y: 32912 }] },
   // Marapur (Moonfall): its "To Port Hope" dock marker pairs with Port Hope's harbour.
   { name: 'Barca', icon: 'sailboat', stops: [{ name: 'Port Hope', x: 32629, y: 32769 }, { name: 'Marapur', x: 33842, y: 32852 }] },
+  // Gray Island (the gateway to Quirefang/The Hive): sailed from the eastern
+  // harbours — modelled from Cormaya, the nearest one.
+  { name: 'Barca', icon: 'sailboat', stops: [{ name: 'Cormaya', x: 33307, y: 31999 }, { name: 'Gray Island', x: 33191, y: 31985 }] },
   // Kazordoon steamboat: Cormaya harbour ↔ the underground mountain lake docks.
+  // The Primal Ordeal update added a Gnomprona stop (the excavation under
+  // Marapur) — the map has its dock marker at f14.
   {
     name: 'Vapor',
     icon: 'ship',
@@ -346,6 +353,7 @@ const FERRY_LINES: FerryLineDef[] = [
       { name: 'Cormaya', x: 33309, y: 31996 },
       { name: 'Kazordoon minas', x: 32526, y: 32037, floor: 14 },
       { name: 'Kazordoon', x: 32555, y: 32068, floor: 10 },
+      { name: 'Gnomprona', x: 33517, y: 32857, floor: 14 },
     ],
   },
   // Magic carpet network (tower entrances).
@@ -411,15 +419,6 @@ const FERRY_LINES: FerryLineDef[] = [
       { name: 'Grey Beach (Otherworld)', x: 32160, y: 31296 },
     ],
   },
-  // Roshamuul Prison: the map's own entry teleport under western Roshamuul.
-  {
-    name: 'Portal de quest',
-    icon: 'sparkles',
-    stops: [
-      { name: 'Roshamuul (bajo el puente)', x: 33297, y: 32403, floor: 14 },
-      { name: 'Prisión de Roshamuul', x: 33464, y: 32799, floor: 8 },
-    ],
-  },
   // Demon Forge access pair east of Edron (f6 shrine ↔ f9 halls).
   {
     name: 'Portal de quest',
@@ -427,16 +426,357 @@ const FERRY_LINES: FerryLineDef[] = [
     stops: [
       { name: 'Santuario (este de Edron)', x: 33602, y: 31888, floor: 6 },
       { name: 'Demon Forge', x: 33532, y: 31820, floor: 9 },
+      { name: 'Demon Forge (salas)', x: 33507, y: 31842, floor: 8 },
     ],
   },
-  // Deep Otherworld: the map's portal hub (under Elvenbane) → the f11 halls where
-  // the breach broods / sparkions / reality reavers roam.
+  // Deep Otherworld: the beach connects to the lower halls via scripted portals
+  // (no t2 rows exist in the OTBM), so the hop is curated Grey Beach ↔ f11; the
+  // f11→f15 descent teleports are intra-plane and stitch the rest.
   {
     name: 'Portal de quest',
     icon: 'sparkles',
     stops: [
-      { name: 'Portal (bajo Elvenbane)', x: 32663, y: 31820, floor: 10 },
-      { name: 'Otherworld (profundo)', x: 32089, y: 31453, floor: 11 },
+      { name: 'Grey Beach', x: 32160, y: 31296 },
+      { name: 'Otherworld (profundo)', x: 32105, y: 31347, floor: 11 },
+    ],
+  },
+  // Zarganash (Soul War): its five sub-zones are joined by scripted soul portals —
+  // modelled as one portal network from the entry hall.
+  {
+    name: 'Portal de quest',
+    icon: 'sparkles',
+    stops: [
+      { name: 'Zarganash (entrada)', x: 33456, y: 31499, floor: 13 },
+      { name: 'Zarganash (salas este)', x: 33569, y: 31386, floor: 8 },
+      { name: 'Zarganash (salas centrales)', x: 33493, y: 31450, floor: 8 },
+      { name: 'Zarganash (profundo)', x: 33646, y: 31465, floor: 10 },
+      { name: 'Zarganash (anexo oeste)', x: 31955, y: 32329, floor: 8 },
+    ],
+  },
+  // Vengoth tower top (scripted lift) and Pits of Inferno entrance.
+  {
+    name: 'Portal de quest',
+    icon: 'sparkles',
+    stops: [
+      { name: 'Vengoth (castillo)', x: 32916, y: 31516 },
+      { name: 'Torre de Vengoth', x: 32943, y: 31463, floor: 3 },
+      { name: 'Torre de Vengoth (cima)', x: 32951, y: 31441, floor: 1 },
+      { name: 'Torres del este (Vengoth)', x: 32976, y: 31426, floor: 4 },
+    ],
+  },
+  // Vengoth portal chamber (In Service of Yalahar): the yielothax room under
+  // the castle is a sealed pocket entered via the quest's machine teleporter.
+  {
+    name: 'Portal de quest',
+    icon: 'sparkles',
+    stops: [
+      { name: 'Vengoth (castillo)', x: 32916, y: 31516 },
+      { name: 'Vengoth (sala del portal)', x: 32943, y: 31565, floor: 9 },
+    ],
+  },
+  {
+    name: 'Portal de quest',
+    icon: 'sparkles',
+    stops: [
+      { name: 'Plains of Havoc', x: 32835, y: 32280 },
+      { name: 'Pits of Inferno', x: 32884, y: 32311, floor: 12 },
+    ],
+  },
+  // Feyrist (dream peninsula NW of Roshamuul): entered through the Holy Shrine
+  // archways in the cities' temples (scripted, no t2 rows in the OTBM) —
+  // modelled from the Thais temple, the boat hub. Three of the four shrines
+  // exit in the village (f7); the energy shrine exits on the f4 plateau.
+  {
+    name: 'Santuario de Feyrist',
+    icon: 'sparkles',
+    stops: [
+      { name: 'Thais (templo)', x: 32369, y: 32241 },
+      { name: 'Feyrist (aldea)', x: 33540, y: 32208 },
+      { name: 'Feyrist (meseta)', x: 33528, y: 32300, floor: 4 },
+    ],
+  },
+  // Candia (the candy realm, west half of the peninsula): its only ways in/out
+  // are the giant donut gates on either side — scripted, like the shrines.
+  {
+    name: 'Portal de quest',
+    icon: 'sparkles',
+    stops: [
+      { name: 'Feyrist (puerta dónut)', x: 33574, y: 32222 },
+      { name: 'Candia', x: 33339, y: 32125 },
+    ],
+  },
+  // Gnomprona (Primal Ordeal): the steamboat reaches the gnome hub; from there
+  // scripted teleporters (no t2 rows) fan out to the three hunting grounds.
+  {
+    name: 'Portal de quest',
+    icon: 'sparkles',
+    stops: [
+      { name: 'Gnomprona (hub)', x: 33546, y: 32911, floor: 15 },
+      { name: 'Sparkling Pools', x: 33579, y: 32788, floor: 14 },
+      { name: 'Monster Graveyard', x: 33582, y: 32864, floor: 14 },
+      { name: 'Crystal Enigma', x: 33764, y: 32828, floor: 14 },
+    ],
+  },
+  // Warzones 1-2-3 (Bigfoot's Burden, under the Kazordoon mines): Gnomebase
+  // Alpha and the warzone interiors only have RETURN teleports in the OTBM —
+  // the entries are scripted, so the whole network is curated. Kazordoon is
+  // the walkable mainland anchor (the real gnome lift chamber is sealed).
+  {
+    name: 'Portal de quest',
+    icon: 'sparkles',
+    stops: [
+      { name: 'Kazordoon', x: 32555, y: 32068, floor: 10 },
+      { name: 'Gnomebase Alpha', x: 33001, y: 31900, floor: 9 },
+      { name: 'Warzone 1', x: 33076, y: 31901, floor: 10 },
+      { name: 'Warzone 2', x: 33060, y: 31931, floor: 11 },
+      { name: 'Warzone 3', x: 33060, y: 31898, floor: 12 },
+    ],
+  },
+  // Warzones 4-5-6: the map's own teleport pair joins Gnomegate (f11, walkable
+  // from the Kazordoon mines) with the f14 gnome camp east of Oramond; the
+  // three instance entrances there are scripted (only exit rows exist), so
+  // each warzone gets a stop anchored on its exit-teleport tile.
+  {
+    name: 'Portal de quest',
+    icon: 'sparkles',
+    stops: [
+      { name: 'Gnomegate', x: 32624, y: 31869, floor: 11 },
+      { name: 'Warzones 4-5-6 (campamento)', x: 33745, y: 32191, floor: 14 },
+      { name: 'Warzone 4', x: 33534, y: 32182, floor: 15 },
+      { name: 'Warzone 5', x: 33206, y: 32119, floor: 15 },
+      { name: 'Warzone 6', x: 33367, y: 32309, floor: 15 },
+    ],
+  },
+  // Warzones 8 and 9 (Grotto of the Lost / Dwelling of the Forgotten): real
+  // two-way teleport pairs from the Gnomegate f10 chamber into the Otherworld
+  // deep — cross-map, so they can't ride a quest plane. Warzone 7 (Antrum of
+  // the Fallen) needs no line: its teleport is local and the Gnomegate quest
+  // plane keeps it.
+  {
+    name: 'Portal de quest',
+    icon: 'sparkles',
+    stops: [
+      { name: 'Gnomegate (subsuelo)', x: 32651, y: 31823, floor: 10 },
+      { name: 'Grotto of the Lost (WZ 8)', x: 32143, y: 31448, floor: 14 },
+    ],
+  },
+  {
+    name: 'Portal de quest',
+    icon: 'sparkles',
+    stops: [
+      { name: 'Gnomegate (subsuelo)', x: 32663, y: 31819, floor: 10 },
+      { name: 'Dwelling of the Forgotten (WZ 9)', x: 32089, y: 31453, floor: 11 },
+    ],
+  },
+  // Deeper Banuta's lowest level (medusae / serpent spawns): reached ONLY via
+  // Banuta's sealed teleporter (The Ape City quest) — scripted, no t2 rows.
+  // The map's own 'Shortcut to Deeper Banuta' marker is the mainland anchor.
+  {
+    name: 'Portal de quest',
+    icon: 'sparkles',
+    stops: [
+      { name: 'Banuta (teletransportador)', x: 32853, y: 32669 },
+      { name: 'Deeper Banuta', x: 32754, y: 32506, floor: 11 },
+    ],
+  },
+  // Ankrahmun's Ancient Tombs. Owner-verified in-game: each tomb is entered ON
+  // FOOT through its own doorway in the desert — NOT by a portal from the city
+  // (the old single city-anchored line prescribed "boat to Ankrahmun, teleport
+  // to the pharaoh", departing from the dock; users rightly called it fake).
+  // The OTBM simply lacks the descent links under the doorways (links-only
+  // flood: every surface entrance walks, every wing below is sealed), so each
+  // tomb gets its OWN line anchored at its real entrance: routes now walk the
+  // desert to the tomb, then hop inside. The teleporter mazes within (kept by
+  // the tombs quest plane) stitch the rest. Wing coords come from the client
+  // markers ("<Pharaoh> (exact spawn tile)"); all 9 pharaoh tiles verified
+  // reachable through this grouping.
+  {
+    name: 'Entrada de tumba',
+    icon: 'door',
+    stops: [
+      { name: 'Mountain Tomb', x: 33133, y: 32568 },
+      { name: 'Tumba de Dipthrah', x: 33086, y: 32565, floor: 14 },
+      { name: 'Tumba de Dipthrah (fondo)', x: 33093, y: 32587, floor: 15 },
+      { name: 'Tumbas profundas (oeste)', x: 33049, y: 32503, floor: 13 },
+    ],
+  },
+  {
+    name: 'Entrada de tumba',
+    icon: 'door',
+    stops: [
+      { name: 'Oasis Tomb', x: 33133, y: 32640 },
+      { name: 'Tumba de Rahemos', x: 33127, y: 32819, floor: 13 },
+    ],
+  },
+  {
+    name: 'Entrada de tumba',
+    icon: 'door',
+    stops: [
+      { name: 'Ancient Ruins Tomb', x: 33208, y: 32591 },
+      { name: 'Tumba de Vashresamun', x: 33082, y: 32678, floor: 13 },
+      { name: 'Tumba de los escarabajos', x: 33245, y: 32516, floor: 11 },
+      { name: 'Tumbas profundas (este)', x: 33256, y: 32509, floor: 14 },
+    ],
+  },
+  {
+    name: 'Entrada de tumba',
+    icon: 'door',
+    stops: [
+      { name: 'Tarpit Tomb', x: 33233, y: 32704 },
+      { name: 'Tumba de Morguthis', x: 33186, y: 32662, floor: 13 },
+      { name: 'Tumba de Morguthis (fondo)', x: 33172, y: 32694, floor: 14 },
+      { name: 'Tumbas profundas (centro)', x: 33319, y: 32635, floor: 13 },
+    ],
+  },
+  {
+    name: 'Entrada de tumba',
+    icon: 'door',
+    stops: [
+      { name: 'Stone Tomb', x: 33282, y: 32743 },
+      { name: 'Tumba de Thalas', x: 33362, y: 32750, floor: 13 },
+      { name: 'Tumba de Thalas (fondo)', x: 33396, y: 32839, floor: 14 },
+    ],
+  },
+  {
+    name: 'Entrada de tumba',
+    icon: 'door',
+    stops: [
+      { name: 'Shadow Tomb', x: 33255, y: 32833 },
+      { name: 'Tumba de Mahrdis', x: 33119, y: 32969, floor: 13 },
+      { name: 'Tumbas del sur', x: 33219, y: 32878, floor: 13 },
+      { name: 'Tumbas del sur (nivel inferior)', x: 33218, y: 32865, floor: 14 },
+    ],
+  },
+  // Library Tomb: the pyramid inside the city (Ashmunrah) — also serves the
+  // under-city crypts (plaguethrowers) right below it.
+  {
+    name: 'Entrada de tumba',
+    icon: 'door',
+    stops: [
+      { name: 'Library Tomb', x: 33142, y: 32838 },
+      { name: 'Criptas de Ankrahmun', x: 33141, y: 32833, floor: 10 },
+      { name: 'Tumba de Ashmunrah', x: 33179, y: 32884, floor: 11 },
+      { name: 'Tumbas profundas (interior)', x: 33123, y: 32753, floor: 13 },
+    ],
+  },
+  {
+    name: 'Entrada de tumba',
+    icon: 'door',
+    stops: [
+      { name: 'Peninsula Tomb', x: 33027, y: 32869 },
+      { name: 'Tumba de Omruc', x: 33202, y: 32998, floor: 14 },
+      { name: 'Cueva de los shapers', x: 32967, y: 32849, floor: 13 },
+    ],
+  },
+  {
+    name: 'Entrada de tumba',
+    icon: 'door',
+    stops: [
+      { name: 'Horestis Tomb', x: 33060, y: 32734 },
+      { name: 'Horestis Tomb (medio)', x: 33025, y: 32704, floor: 9 },
+      { name: 'Horestis Tomb (profundo)', x: 33028, y: 32736, floor: 13 },
+    ],
+  },
+  // Drefia's southern wings (grim reapers f10/f11) and the werehyaena pocket
+  // under Darashia's mountains — sealed sub-dungeons, anchored at Darashia.
+  {
+    name: 'Portal de quest',
+    icon: 'sparkles',
+    stops: [
+      { name: 'Darashia', x: 33213, y: 32453 },
+      { name: 'Cueva werehyaena (bolsillo)', x: 33213, y: 32488, floor: 10 },
+      // Darashia's sealed hunting grounds (lua-entered). The wyrm-hill nests
+      // need no stops: they're LEVITATE ledges (t=5 edges cover them).
+      { name: "Lion's Rock (santuario)", x: 33118, y: 32245, floor: 9 },
+      { name: 'Guarida de werelions', x: 33113, y: 32378, floor: 10 },
+      { name: 'Guarida werehyaena (norte)', x: 33160, y: 32334, floor: 9 },
+      { name: 'Catacumbas del este', x: 33382, y: 32322, floor: 13 },
+      { name: 'Catacumbas del este (fondo)', x: 33427, y: 32381, floor: 15 },
+      { name: 'Catacumbas del este (fondo sur)', x: 33438, y: 32431, floor: 15 },
+      // NOTE: Drefia gets NO curated stops. Its ruins, crypts and the wyrm
+      // lair are genuinely WALKABLE from the desert (rope up the scorpion
+      // mountain at 33049,32428 → f6 crossing → ledge → down; wiki-confirmed
+      // route). Earlier curated hops here faked teleports that don't exist
+      // in-game and hijacked the real path — the deep pockets that remain
+      // sealed in the data (grim reaper lever dungeons, flooded deathling
+      // caves, tower tops) now get honest PARTIAL routes instead.
+    ],
+  },
+  // Quirefang / The Hive: Gray Island's hive borer (scripted, no t2 rows)
+  // drills to the outpost isle and the Hive island itself. The hive interior
+  // is a honeycomb of scripted pores — one anchor per chamber cluster; the
+  // deepling sea floor and the Quirefang depths ride the same network.
+  {
+    name: 'Portal de quest',
+    icon: 'sparkles',
+    stops: [
+      { name: 'Gray Island', x: 33191, y: 31985 },
+      { name: 'Hive Outpost', x: 33467, y: 31322 },
+      { name: 'The Hive', x: 33527, y: 31261 },
+      { name: 'The Hive (cúpula este)', x: 33595, y: 31213, floor: 4 },
+      { name: 'The Hive (cúpula este, alto)', x: 33608, y: 31226, floor: 1 },
+      { name: 'The Hive (cúpula este, cámaras)', x: 33561, y: 31221, floor: 2 },
+      { name: 'The Hive (cúpula oeste)', x: 33484, y: 31199, floor: 2 },
+      { name: 'The Hive (cúpula oeste, alto)', x: 33511, y: 31172, floor: 6 },
+      { name: 'The Hive (túneles, norte)', x: 33522, y: 31202, floor: 8 },
+      { name: 'The Hive (túneles, sur)', x: 33505, y: 31264, floor: 8 },
+      { name: 'The Hive (túneles, este)', x: 33549, y: 31204, floor: 8 },
+      { name: 'The Hive (nido)', x: 33567, y: 31228, floor: 9 },
+      { name: 'Fondo marino (deeplings)', x: 33459, y: 31342, floor: 11 },
+      { name: 'Fondo marino (noroeste)', x: 33418, y: 31150, floor: 8 },
+      { name: 'Fondo marino (grutas)', x: 33407, y: 31163, floor: 10 },
+      { name: 'Profundidades de Quirefang', x: 33543, y: 31367, floor: 15 },
+      { name: 'Profundidades de Quirefang (este)', x: 33566, y: 31399, floor: 14 },
+    ],
+  },
+  // Kilmaresh beyond Issavi's walls: the countryside gates, the Rascacoon
+  // ways, the Iks cave systems, Iksupan's undercity and spore caverns, and
+  // the Soul War tower (Goshnar's Cruelty) are all scripted-entry pockets —
+  // one curated network anchored at Issavi (the magic carpet stop).
+  {
+    name: 'Portal de quest',
+    icon: 'sparkles',
+    stops: [
+      { name: 'Issavi', x: 33946, y: 31516 },
+      { name: 'Kilmaresh (noroeste)', x: 33788, y: 31335 },
+      { name: 'Camino a Rascacoon', x: 33829, y: 31376, floor: 8 },
+      { name: 'Cuevas iks (este)', x: 33993, y: 31770, floor: 8 },
+      { name: 'Cuevas iks (sureste)', x: 34051, y: 31813, floor: 8 },
+      { name: 'Cuevas iks (sur)', x: 33979, y: 31841, floor: 8 },
+      { name: 'Cuevas iks (galerías)', x: 34071, y: 31754, floor: 9 },
+      { name: 'Iksupan Undercity', x: 33887, y: 31662, floor: 14 },
+      { name: 'Iksupan Undercity (este)', x: 34009, y: 31664, floor: 14 },
+      { name: 'Iksupan Undercity (oeste)', x: 33812, y: 31675, floor: 14 },
+      { name: 'Undercity (frontera este)', x: 34115, y: 31901, floor: 14 },
+      { name: 'Cavernas de esporas', x: 34002, y: 31817, floor: 15 },
+      { name: "Goshnar's Cruelty (torre)", x: 33843, y: 31833, floor: 3 },
+      { name: "Goshnar's Cruelty (torre, medio)", x: 33854, y: 31839, floor: 4 },
+      { name: "Goshnar's Cruelty (torre, alto)", x: 33849, y: 31848, floor: 5 },
+      { name: 'Taints (túneles)', x: 33806, y: 31790, floor: 8 },
+      { name: 'Taints (profundo)', x: 33889, y: 31829, floor: 14 },
+      { name: 'Kilmaresh (suroeste, f14)', x: 33720, y: 31946, floor: 14 },
+      { name: 'Kilmaresh (suroeste, fondo)', x: 33734, y: 31938, floor: 15 },
+    ],
+  },
+  // Ferumbras' citadel seal dungeons (spectres/grimeleeches/vexclaws): the
+  // citadel f14 halls walk in from the desert; the seal wings are sealed.
+  // The Kha'zeel east caves (choking fears / retching horrors) and Cobra
+  // Bastion's interior live on the same massif — the desert surface east of
+  // x≈33336 isn't walkable in the data, so they anchor here (the citadel
+  // walk-in IS the real under-mountain approach), not on a city portal.
+  {
+    name: 'Portal de quest',
+    icon: 'sparkles',
+    stops: [
+      { name: 'Ciudadela de Ferumbras', x: 33420, y: 32678, floor: 14 },
+      { name: 'Sellos de la Ciudadela (f14)', x: 33397, y: 32836, floor: 14 },
+      { name: 'Sellos de la Ciudadela (f12)', x: 33453, y: 32782, floor: 12 },
+      { name: 'Cuevas del este (Ankrahmun)', x: 33415, y: 32567, floor: 8 },
+      { name: 'Cuevas del este (profundo)', x: 33443, y: 32576, floor: 9 },
+      { name: 'Cuevas del este (sur)', x: 33446, y: 32631, floor: 9 },
+      { name: 'Cuevas del este (sur, fondo)', x: 33458, y: 32617, floor: 10 },
+      { name: 'Cuevas del este (f11)', x: 33447, y: 32606, floor: 11 },
+      { name: 'Cobra Bastion', x: 33398, y: 32650, floor: 2 },
     ],
   },
 ]
@@ -463,9 +803,16 @@ export type RouteLeg =
       floor: number
       toFloor: number
       dir: 'up' | 'down' | 'teleport'
-      tool?: 'rope' | 'shovel'
+      tool?: 'rope' | 'shovel' | 'levitate'
     }
-export type RoutePlan = { legs: RouteLeg[]; totalTiles: number }
+export type RoutePlan = {
+  legs: RouteLeg[]
+  totalTiles: number
+  // Present when the goal was unreachable: the route guides as far as the
+  // network gets, and this reports where the trail goes cold + how far (in
+  // straight-line tiles) the target still is from that point.
+  partial?: { x: number; y: number; floor: number; remaining: number }
+}
 
 // --- Floor-change links (stairs / holes / ladders / teleports) ---------------
 // Baked offline into public/floor-links.json as compact rows
@@ -483,7 +830,9 @@ export type RoutePlan = { legs: RouteLeg[]; totalTiles: number }
 // Link kinds baked into floor-links.json:
 //   t=0 down (holes, trapdoors, grates), t=1 up (stairs/ladders, two-way),
 //   t=2 teleport (EXCLUDED, see below), t=3 rope spot (up, needs a rope),
-//   t=4 stone pile (down, needs a shovel).
+//   t=4 stone pile (down, needs a shovel), t=5 levitate ledge (two-way,
+//   needs the Levitate spell; generated from cliff faces whose BOTH sides
+//   are client-walked — real players hop them with exani hur).
 type TEdge = {
   sx: number
   sy: number
@@ -491,7 +840,7 @@ type TEdge = {
   tx: number
   ty: number
   dir: 'up' | 'down' | 'teleport'
-  tool?: 'rope' | 'shovel'
+  tool?: 'rope' | 'shovel' | 'levitate'
 }
 let edgesByFloor: Map<number, TEdge[]> | null = null
 let linksPromise: Promise<void> | null = null
@@ -520,12 +869,47 @@ function loadLinks(): Promise<void> {
       [33380, 33810, 31140, 31520, 8, 15], // Zarganash (east, incl. northern halls)
       [31890, 32060, 32240, 32390, 8, 15], // Zarganash (west annex)
       [32020, 32220, 31240, 31500, 4, 15], // Otherworld / Grey Beach + descent chain
-      [33280, 33560, 32390, 32860, 8, 15], // Roshamuul Prison + its antechamber
+      [33270, 33660, 32300, 32860, 8, 15], // Roshamuul Prison: antechamber (f9-f14 under Roshamuul) + all wings
       [33440, 33660, 31600, 31940, 6, 15], // Demon Forge halls east of Edron
+      [33330, 33740, 32040, 32310, 0, 15], // Feyrist + Candia (dream peninsula; Prison keeps its overlap rows via shared-plane test)
+      [32560, 32760, 31700, 31900, 9, 13], // Gnomegate (keeps the local WZ7/f10-chamber teleports)
+      [32700, 32880, 32420, 32700, 8, 11], // Deeper Banuta (two local f11 pairs join the medusa/serpent-spawn wings)
+      [32960, 32970, 32588, 32600, 7, 7], // Banuta east barrier (two-way 3-tile forcefield hop → hydra caves NE)
+      [32670, 32730, 31585, 31650, 10, 12], // Hellgate deep teleport (NE of Ab'Dendriel → the undead complex up to the tower isle)
+      // Ankrahmun: the Ancient Tombs' interiors are stitched by their own
+      // teleporter mazes (t2 rows f8-f15); the two REAL map portals are
+      // two-way pyramid pairs — desert (33205,32531 f7↔f8) and a city
+      // pyramid top (33195,32851 f4↔f8) — kept via the micro-planes below.
+      // y down to 33020: Omruc's wing (y~32950-33015) has 4 of its own rows,
+      // including the exit teleport at (33187,33015,f14).
+      [32950, 33470, 32450, 33020, 8, 15], // Ankrahmun tombs underground (incl. the Mahrdis + Omruc wings)
+      [33020, 33055, 32415, 32445, 9, 12], // Drefia crypts: its three REAL teleport rows (local lever hops)
+      [33380, 33700, 31140, 31410, 8, 15], // Quirefang / The Hive (deepling f11 pairs + the f12↔f15 hop)
+      [33700, 34304, 31250, 31950, 0, 15], // Kilmaresh (its quest-shortcut teleport network, 32 rows)
+      [33550, 33790, 31440, 31540, 10, 14], // Zarganash halls → Goshnar taint approach (Soul War passage)
+      [33200, 33210, 32526, 32536, 7, 8], // pyramid portal (desert, into the tomb network)
+      [33188, 33200, 32842, 32856, 4, 8], // pyramid portal (city top f4, into the under-city crypts)
+      [33390, 33400, 32655, 32668, 6, 6], // Cobra Bastion gate (5-tile f6 hop; its stairs are all real links)
     ]
-    const planeOf = (x: number, y: number, z: number) =>
-      QUEST_PLANES.findIndex(([x0, x1, y0, y1, z0, z1]) => x >= x0 && x <= x1 && y >= y0 && y <= y1 && z >= z0 && z <= z1)
+    // A teleport is kept iff ONE plane contains BOTH of its ends ("shared
+    // plane"), not "first matching plane of each end is the same" — planes may
+    // overlap (micro entrance planes sit inside zone planes, Prison overlaps
+    // the Ankrahmun tombs), and first-match semantics silently dropped rows
+    // whose ends resolved to different overlapping boxes.
+    const inPlane = (p: [number, number, number, number, number, number], x: number, y: number, z: number) =>
+      x >= p[0] && x <= p[1] && y >= p[2] && y <= p[3] && z >= p[4] && z <= p[5]
+    const sharedPlane = (x: number, y: number, z: number, dx: number, dy: number, dz: number) =>
+      QUEST_PLANES.some((p) => inPlane(p, x, y, z) && inPlane(p, dx, dy, dz))
+    // Owner-verified in-game correction: the Drefia wyrm sanctum (f10, behind
+    // the Medusa Shield Quest doors) is NOT reachable by dropping from the
+    // northern rotworm caves — if it were, the quest doors would be pointless.
+    // The OT map keeps a dozen such f9→f10 drops open across the northern
+    // sector; the real approach is through Drefia's pentagon only (its f9
+    // drops sit south of the rect, at y≥32410).
+    const excludedLink = (x: number, y: number, z: number, dz: number) =>
+      z === 9 && dz === 10 && x >= 32980 && x <= 33080 && y >= 32300 && y <= 32400
     for (const [x, y, z, dx, dy, dz, t] of raw) {
+      if (excludedLink(x, y, z, dz)) continue
       // Teleports (t=2) are EXCLUDED from routing: in this map they're almost all
       // quest/event mechanics (Demon Helmet chain, boss rooms, warzone gates) —
       // technically real, but "take a boat to Darashia, climb the mountain and use
@@ -533,19 +917,20 @@ function loadLinks(): Promise<void> {
       // areas honestly report "no route" instead. Exception: intra-plane teleports
       // (see QUEST_PLANES above).
       if (t === 2) {
-        const pa = planeOf(x, y, z)
-        if (pa < 0 || pa !== planeOf(dx, dy, dz)) continue
+        if (!sharedPlane(x, y, z, dx, dy, dz)) continue
         add(z, { sx: x, sy: y, toFloor: dz, tx: dx, ty: dy, dir: 'teleport' })
         continue
       }
       const dir = t === 0 || t === 4 ? 'down' : 'up'
-      const tool = t === 3 ? 'rope' : t === 4 ? 'shovel' : undefined
+      const tool = t === 3 ? 'rope' : t === 4 ? 'shovel' : t === 5 ? 'levitate' : undefined
       add(z, { sx: x, sy: y, toFloor: dz, tx: dx, ty: dy, dir, tool })
       // Reverse edge for two-way stairs/ladders: from the upper floor (dz) back
       // down to z (dz = z - 1 for an up link, so the reverse is a "down").
       // Rope spots (t=3) and shovel piles (t=4) stay ONE-WAY: you can't drop
-      // through a ceiling hole nor climb back up a dug pit.
+      // through a ceiling hole nor climb back up a dug pit. Levitate ledges
+      // (t=5) are two-way — exani hur works up and down.
       if (t === 1) add(dz, { sx: dx, sy: dy, toFloor: z, tx: x, ty: y, dir: 'down' })
+      if (t === 5) add(dz, { sx: dx, sy: dy, toFloor: z, tx: x, ty: y, dir: 'down', tool: 'levitate' })
     }
     edgesByFloor = m
   })()
@@ -607,7 +992,9 @@ function loadFerries(): Promise<void> {
 type FloorNav = {
   fg: FloorGrid
   linkAt: Map<number, TEdge[]>
-  portAt: Map<number, FerryStop> | null
+  // A cell can host stops of SEVERAL lines (shared hubs like Vengoth castle or
+  // Kazordoon are one tile serving multiple curated lines), so this maps to a list.
+  portAt: Map<number, FerryStop[]> | null
 }
 const navCache = new Map<number, Promise<FloorNav>>()
 function floorNav(floor: number): Promise<FloorNav> {
@@ -633,10 +1020,15 @@ function floorNav(floor: number): Promise<FloorNav> {
     }
     await loadFerries()
     const stops = ferryStopsByFloor!.get(floor)
-    let portAt: Map<number, FerryStop> | null = null
+    let portAt: Map<number, FerryStop[]> | null = null
     if (stops && stops.length) {
       portAt = new Map()
-      for (const stop of stops) portAt.set((stop.y - Y_MIN) * fg.W + (stop.x - X_MIN), stop)
+      for (const stop of stops) {
+        const key = (stop.y - Y_MIN) * fg.W + (stop.x - X_MIN)
+        const arr = portAt.get(key)
+        if (arr) arr.push(stop)
+        else portAt.set(key, [stop])
+      }
     }
     return { fg, linkAt, portAt }
   })()
@@ -660,6 +1052,13 @@ type Arrival = {
 }
 
 const HOP = 45 // tile-equivalent cost of one stair/boat transfer
+// A rope spot or a stone pile is NOT as cheap as a staircase: you carry the
+// tool, stand on the one exact tile, use it — and the hop is one-way (you
+// can't climb back down a ceiling hole or undo a dig). Players only take them
+// when they save serious walking. At the same price as stairs the planner
+// prescribed shovel+rope gymnastics (dig two floors, rope straight back up)
+// to shave ~30 tiles off the real staircase crossing into Drefia.
+const TOOL_HOP = 3 * HOP // rope / shovel / levitate transfer
 const FLOOR_PENALTY = 30 // heuristic cost per floor still to change
 
 // Plan a route across floors and landmasses. A bounded best-first (A*) search over
@@ -747,6 +1146,13 @@ async function planRouteOnce(
   gScore.set(startKey, 0)
   hpush({ prio: heur(start.floor, start.x, start.y), g: 0, key: startKey, floor: start.floor, x: start.x, y: start.y, transport: null, prevKey: null })
 
+  // Best-effort fallback: remember the visited tile that gets CLOSEST to the
+  // goal, so an unreachable target still yields a partial route plus a "the
+  // trail goes cold here" report instead of a bare failure.
+  const closeness = (f: number, x: number, y: number) =>
+    Math.max(Math.abs(x - goal.x), Math.abs(y - goal.y)) + Math.abs(f - goal.floor) * FLOOR_PENALTY
+  let best = { d: closeness(start.floor, start.x, start.y), key: startKey, x: start.x, y: start.y, floor: start.floor }
+
   let goalKey: string | null = null
   let regions = 0
   while (heap.length) {
@@ -785,7 +1191,8 @@ async function planRouteOnce(
     let reachedGoal = false
     const relax = (nf: number, nx: number, ny: number, walked: number, transport: Transport) => {
       const nk = `${nf}:${nx}:${ny}`
-      const ng = cur.g + walked + HOP
+      const hop = transport.kind === 'link' && transport.e.tool ? TOOL_HOP : HOP
+      const ng = cur.g + walked + hop
       if (ng < (gScore.get(nk) ?? Infinity)) {
         gScore.set(nk, ng)
         hpush({ prio: ng + heur(nf, nx, ny), g: ng, key: nk, floor: nf, x: nx, y: ny, transport, prevKey: cur.key })
@@ -799,16 +1206,20 @@ async function planRouteOnce(
       const es = nav.linkAt.get(c0)
       if (es) for (const e of es) relax(e.toFloor, e.tx, e.ty, d, { kind: 'link', e })
       if (nav.portAt) {
-        const fromStop = nav.portAt.get(c0)
-        if (fromStop) {
-          for (const toStop of ferryStopsByLine![fromStop.line]) {
-            if (toStop === fromStop) continue
-            relax(toStop.floor, toStop.x, toStop.y, d, { kind: 'boat', fromStop, toStop })
+        const fromStops = nav.portAt.get(c0)
+        if (fromStops) {
+          for (const fromStop of fromStops) {
+            for (const toStop of ferryStopsByLine![fromStop.line]) {
+              if (toStop === fromStop) continue
+              relax(toStop.floor, toStop.x, toStop.y, d, { kind: 'boat', fromStop, toStop })
+            }
           }
         }
       }
       const cx = c0 % W
       const cy = (c0 - cx) / W
+      const bd = closeness(cur.floor, cx + X_MIN, cy + Y_MIN)
+      if (bd < best.d) best = { d: bd, key: cur.key, x: cx + X_MIN, y: cy + Y_MIN, floor: cur.floor }
       for (let dy = -1; dy <= 1; dy++) {
         const ny = cy + dy
         if (ny < 0 || ny >= H) continue
@@ -831,11 +1242,16 @@ async function planRouteOnce(
     }
   }
 
-  if (!goalKey) return null
+  // Goal unreachable → best-effort partial route: guide the player to the
+  // closest point the network reaches and mark where the trail goes cold.
+  const partial = !goalKey
+  if (partial && !info.has(best.key)) return null
+  const endKey = goalKey ?? best.key
+  const dest: Pt = partial ? { x: best.x, y: best.y } : { x: goal.x, y: goal.y }
 
-  // Rebuild the node chain start → goal.
+  // Rebuild the node chain start → goal (or → the trail-lost point).
   const chain: { floor: number; x: number; y: number; transport: Transport | null }[] = []
-  let ck: string | null = goalKey
+  let ck: string | null = endKey
   while (ck) {
     const n: NodeInfo = info.get(ck)!
     chain.push({ floor: n.floor, x: n.x, y: n.y, transport: n.transport })
@@ -856,7 +1272,7 @@ async function planRouteOnce(
     const nextTr = isLast ? null : chain[i + 1].transport!
     const entry: Pt = { x: node.x, y: node.y }
     const exit: Pt = isLast
-      ? { x: goal.x, y: goal.y }
+      ? dest
       : nextTr!.kind === 'link'
         ? { x: nextTr!.e.sx, y: nextTr!.e.sy }
         : { x: nextTr!.fromStop.x, y: nextTr!.fromStop.y }
@@ -899,11 +1315,21 @@ async function planRouteOnce(
     }
   }
 
-  return { legs, totalTiles }
+  const plan: RoutePlan = { legs, totalTiles }
+  if (partial)
+    plan.partial = {
+      x: best.x,
+      y: best.y,
+      floor: best.floor,
+      remaining: Math.max(Math.abs(best.x - goal.x), Math.abs(best.y - goal.y)),
+    }
+  return plan
 }
 
 // Public entry point. One hard-walls pass: a clean route that never crosses water
-// or a wall, or null when there genuinely isn't one in the data.
+// or a wall. When the goal is unreachable it returns the best PARTIAL route
+// (marked via plan.partial) so the player still gets guided as far as the data
+// goes; null only when not even a partial leg could be materialised.
 export async function planRoute(
   start: { x: number; y: number; floor: number },
   goal: { x: number; y: number; floor: number },

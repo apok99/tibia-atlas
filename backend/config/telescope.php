@@ -20,6 +20,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Dashboard IP Allowlist (non-local environments)
+    |--------------------------------------------------------------------------
+    |
+    | Comma-separated client IPs allowed through the viewTelescope gate when
+    | APP_ENV is not local. Empty means the dashboard is closed to everyone
+    | (nginx Basic Auth is the outer layer; this is the inner one).
+    |
+    */
+
+    'allowed_ips' => env('TELESCOPE_ALLOWED_IPS', ''),
+
+    /*
+    |--------------------------------------------------------------------------
     | Telescope Domain
     |--------------------------------------------------------------------------
     |

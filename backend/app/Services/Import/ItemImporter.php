@@ -238,8 +238,29 @@ class ItemImporter
         $pageid = $json['parse']['pageid'] ?? null;
         $resolved = $json['parse']['title'] ?? $title;
 
-        if (! is_string($wikitext) || ! preg_match('/\{\{\s*Infobox[ _]Object\b/i', $wikitext)) {
+        if (! is_string($wikitext)) {
             return $empty;
+        }
+        $parsed = $this->parseObjectWikitext($wikitext);
+        if ($parsed === null) {
+            return $empty;
+        }
+
+        return ['pageid' => $pageid, 'title' => $resolved] + $parsed;
+    }
+
+    /**
+     * Parse an object page's raw wikitext ({{Infobox Object}}) into params +
+     * structured meta. Public so bulk backfills can batch-fetch wikitext (50
+     * pages per API call) and still reuse the exact import parsing. Returns
+     * null when the text carries no object infobox.
+     *
+     * @return ?array{params: array<string,string>, meta: array<string,mixed>, overview: ?string, canon: ?string}
+     */
+    public function parseObjectWikitext(string $wikitext): ?array
+    {
+        if (! preg_match('/\{\{\s*Infobox[ _]Object\b/i', $wikitext)) {
+            return null;
         }
 
         // Single-line infobox params we care about.
@@ -247,13 +268,19 @@ class ItemImporter
             'name', 'actualname', 'itemid', 'objectclass', 'primarytype', 'secondarytype',
             'slot', 'hands', 'weapontype', 'levelrequired', 'vocrequired',
             'attack', 'defense', 'defensemod', 'armor', 'imbueslots',
+            'atk_mod', 'hit_mod', 'attrib', 'resist', 'charges',
+            'fire_attack', 'earth_attack', 'energy_attack', 'ice_attack',
+            'death_attack', 'holy_attack', 'drown_attack', 'physical_attack',
             'range', 'manacost', 'damagetype', 'damagerange', 'weight', 'marketable',
             'value', 'npcvalue', 'buyfrom', 'sellto', 'droppedby',
             'flavortext', 'notes',
         ];
         $params = [];
         foreach ($keys as $key) {
-            if (! preg_match('/(?im)^\s*\|\s*'.preg_quote($key, '/').'\s*=\s*(.*)$/', $wikitext, $m)) {
+            // [^\S\n] = whitespace but NOT newline: with a plain \s* an EMPTY
+            // param ("| notes =" as the infobox's last line) lets the match
+            // spill onto the next line and capture the template's closing "}}".
+            if (! preg_match('/(?im)^[^\S\n]*\|[^\S\n]*'.preg_quote($key, '/').'[^\S\n]*=[^\S\n]*(.*)$/', $wikitext, $m)) {
                 continue;
             }
             $val = trim($m[1]);
@@ -270,13 +297,68 @@ class ItemImporter
         $notes = $this->cleanWikitext($params['notes'] ?? '');
 
         return [
-            'pageid' => $pageid,
-            'title' => $resolved,
             'params' => $params,
             'meta' => $this->buildItemMeta($params),
             'overview' => ($flavor ?: $notes) ?: null,
             'canon' => ($flavor && $notes) ? $notes : null,
         ];
+    }
+
+    /**
+     * Fetch raw wikitext for up to 50 titles in ONE MediaWiki query call,
+     * resolving normalisation and redirects, keyed back by the REQUESTED title.
+     * Missing pages are simply absent from the result.
+     *
+     * @param  list<string>  $titles
+     * @return array<string, string>
+     */
+    public function fetchWikitextBatch(array $titles): array
+    {
+        $json = $this->http()
+            ->get(self::API, [
+                'action' => 'query',
+                'format' => 'json',
+                'prop' => 'revisions',
+                'rvprop' => 'content',
+                'rvslots' => 'main',
+                'redirects' => 1,
+                'titles' => implode('|', array_slice($titles, 0, 50)),
+            ])
+            ->json();
+
+        // The API answers under final titles; walk each requested title through
+        // the normalized (case/underscores) and redirects maps to find its page.
+        $forward = [];
+        foreach ((array) data_get($json, 'query.normalized', []) as $n) {
+            $forward[$n['from']] = $n['to'];
+        }
+        foreach ((array) data_get($json, 'query.redirects', []) as $r) {
+            $forward[$r['from']] = $r['to'];
+        }
+
+        $byTitle = [];
+        foreach ((array) data_get($json, 'query.pages', []) as $page) {
+            // NB: the content key is literally "*" — don't data_get() through
+            // it, Laravel would treat it as a wildcard.
+            $text = data_get($page, 'revisions.0.slots.main')['*'] ?? null;
+            if (isset($page['title']) && is_string($text)) {
+                $byTitle[$page['title']] = $text;
+            }
+        }
+
+        $out = [];
+        foreach ($titles as $title) {
+            $resolved = $title;
+            // Follow the mapping at most twice: normalized → redirected.
+            for ($i = 0; $i < 2 && isset($forward[$resolved]); $i++) {
+                $resolved = $forward[$resolved];
+            }
+            if (isset($byTitle[$resolved])) {
+                $out[$title] = $byTitle[$resolved];
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -286,6 +368,11 @@ class ItemImporter
     private function buildItemMeta(array $p): array
     {
         $category = $this->cleanWikitext($p['primarytype'] ?? '') ?: 'Miscellaneous';
+        // secondarytype refines the category — e.g. Distance Weapons split into
+        // Bows / Crossbows / Throwing Weapons. The loadout configurator relies
+        // on it to give paladins separate bow and crossbow cards. (Items imported
+        // before this existed are covered by tibia:backfill-item-subtypes.)
+        $subcategory = $this->cleanWikitext($p['secondarytype'] ?? '');
         $objectClass = $this->cleanWikitext($p['objectclass'] ?? '');
 
         $meta = [
@@ -294,6 +381,7 @@ class ItemImporter
             // re-processes any item still on an older version.
             'detail' => 2,
             'item_category' => $category,
+            'item_subcategory' => $subcategory ?: null,
             'object_class' => $objectClass ?: null,
         ];
 
@@ -302,7 +390,7 @@ class ItemImporter
         }
 
         // Numeric combat/defence stats.
-        foreach (['attack', 'defense', 'armor', 'levelrequired', 'imbueslots', 'manacost', 'range'] as $key) {
+        foreach (['attack', 'defense', 'armor', 'levelrequired', 'imbueslots', 'manacost', 'range', 'charges'] as $key) {
             if (isset($p[$key]) && preg_match('/-?\d+/', str_replace(',', '', $p[$key]), $m)) {
                 $dst = match ($key) {
                     'levelrequired' => 'level',
@@ -340,6 +428,37 @@ class ItemImporter
             $meta['marketable'] = strtolower(trim($p['marketable'])) === 'yes';
         }
 
+        // Modern-gear modifiers: flat attack bonus and hit% ("atk_mod = 6",
+        // "hit_mod = +5").
+        foreach (['atk_mod', 'hit_mod'] as $key) {
+            if (isset($p[$key]) && preg_match('/[+-]?\d+/', $p[$key], $m)) {
+                $meta[$key] = (int) $m[0];
+            }
+        }
+        // Elemental weapon damage lives in per-element params (Sanguine Blade:
+        // "attack = 8" + "fire_attack = 46"); without this the modern element
+        // weapons look laughably weak next to a plain 50-attack blade.
+        $elementAttack = 0;
+        $elementType = null;
+        foreach (['fire', 'earth', 'energy', 'ice', 'death', 'holy', 'drown', 'physical'] as $element) {
+            if (isset($p[$element.'_attack']) && preg_match('/\d+/', $p[$element.'_attack'], $m) && (int) $m[0] > 0) {
+                $elementAttack += (int) $m[0];
+                $elementType ??= $element;
+            }
+        }
+        if ($elementAttack > 0) {
+            $meta['element_attack'] = $elementAttack;
+            $meta['element_attack_type'] = $elementType;
+        }
+        // Skill bonuses: "magic level +2, speed +15" → {"magic level": 2, ...}.
+        if ($bonuses = $this->parseBonusList($p['attrib'] ?? '')) {
+            $meta['bonuses'] = $bonuses;
+        }
+        // Elemental resistances: "energy +8%, ice -2%" → {"energy": 8, "ice": -2}.
+        if ($resists = $this->parseBonusList($p['resist'] ?? '')) {
+            $meta['resists'] = $resists;
+        }
+
         // Worth + where to trade it.
         $value = $this->cleanWikitext($p['value'] ?? '');
         if ($value !== '' && $value !== '--') {
@@ -372,6 +491,30 @@ class ItemImporter
         }
 
         return $meta;
+    }
+
+    /**
+     * Parse a comma-separated "name +N[%]" list (the wiki `attrib` and `resist`
+     * fields) into a name → signed-int map. Entries without a signed number
+     * (e.g. "faster regeneration") are skipped.
+     *
+     * @return array<string, int>
+     */
+    private function parseBonusList(string $raw): array
+    {
+        $raw = $this->cleanWikitext($raw);
+        if ($raw === '' || $raw === '--') {
+            return [];
+        }
+
+        $out = [];
+        foreach (explode(',', $raw) as $part) {
+            if (preg_match('/^\s*(.+?)\s*([+-]\s*\d+)\s*%?\s*$/', trim($part), $m)) {
+                $out[strtolower($m[1])] = (int) preg_replace('/\s+/', '', $m[2]);
+            }
+        }
+
+        return $out;
     }
 
     /**

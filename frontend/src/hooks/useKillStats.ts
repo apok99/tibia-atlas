@@ -89,9 +89,10 @@ export interface BossRow {
 }
 
 /** Boss roster. type='raid' → rare world bosses; type='daily' → daily-cooldown bosses. */
-export function useBosses(type: 'raid' | 'daily' = 'raid', limit = 24) {
+export function useBosses(type: 'raid' | 'daily' = 'raid', limit = 24, enabled = true) {
   return useQuery({
     queryKey: ['killstats', 'bosses', type, limit],
+    enabled,
     queryFn: async () =>
       (await api.get<{ latest: string | null; data: BossRow[] }>('/killstats/bosses', { params: { type, limit } })).data.data,
     staleTime: 60 * 1000,
@@ -153,6 +154,11 @@ export interface EntryKillStats {
     exp_7d: number | null
     level_24h: number | null
     level_7d: number | null
+  } | null
+  popularity: {
+    rank: number
+    total: number
+    top_percent: number
   } | null
   series: SeriesPoint[]
 }

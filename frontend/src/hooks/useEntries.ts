@@ -17,6 +17,8 @@ import type {
 interface EntryFilters {
   type?: string
   q?: string
+  /** How `q` matches names: anywhere in the text (default) or only as a prefix. */
+  q_mode?: 'starts' | 'contains'
   featured?: boolean
   classification?: string
   boss?: '0' | '1'

@@ -34,7 +34,7 @@ class BookController extends Controller
         }
 
         if ($q !== '') {
-            $term = '%'.$q.'%';
+            $term = '%'.addcslashes($q, '%_\\').'%';
             $query->where(function ($w) use ($term) {
                 $w->where('author', 'ilike', $term)
                     ->orWhereHas('translations', fn ($t) => $t

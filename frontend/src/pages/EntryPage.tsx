@@ -7,20 +7,13 @@ import { RecommendedReading } from '../components/RecommendedReading'
 import { TypeIcon } from '../components/TypeIcon'
 import { LoreText } from '../components/LoreText'
 import { CreatureKillStats } from '../components/CreatureKillStats'
+import { CreatureLoot } from '../components/CreatureLoot'
 import { DamageAffinity } from '../components/DamageAffinity'
 import { BossRespawn } from '../components/BossRespawn'
 import { Lightbox } from '../components/Lightbox'
-import { Seo, articleJsonLd, breadcrumbJsonLd } from '../lib/seo'
+import { Seo, articleJsonLd, breadcrumbJsonLd, entrySeoTitle, entrySeoDescription } from '../lib/seo'
 import { useState } from 'react'
 import type { EntryListItem } from '../types'
-
-/** Trim a lore paragraph into a clean ~160-char meta description. */
-function metaExcerpt(text: string | null | undefined, max = 160): string {
-  if (!text) return ''
-  const clean = text.replace(/\s+/g, ' ').trim()
-  if (clean.length <= max) return clean
-  return clean.slice(0, max - 1).replace(/\s+\S*$/, '') + '…'
-}
 
 export function EntryPage() {
   const { slug } = useParams<{ slug: string }>()
@@ -47,7 +40,7 @@ export function EntryPage() {
 
   // Internal bookkeeping fields that must never appear in the stat block.
   // immune_to / weak_to get their own visual DamageAffinity panel below.
-  const hiddenMeta = ['imported_from', 'wiki_pageid', 'auto_stub', 'artwork', 'note', 'character_kind', 'location', 'importance_rank', 'immune_to', 'weak_to']
+  const hiddenMeta = ['imported_from', 'wiki_pageid', 'auto_stub', 'artwork', 'origin_image', 'note', 'character_kind', 'location', 'importance_rank', 'immune_to', 'weak_to']
   const metaEntries = Object.entries(entry.meta ?? {}).filter(
     ([k, v]) => !hiddenMeta.includes(k) && v !== null && v !== '' && typeof v !== 'object',
   )
@@ -55,20 +48,31 @@ export function EntryPage() {
   // Textual spawn locations from TibiaWiki ("Plains of Havoc, Hellgate, …").
   const location = typeof entry.meta?.location === 'string' ? entry.meta.location : null
 
-  const seoDesc = metaExcerpt(lead || entry.content.canon)
+  const name = entry.name ?? entry.slug ?? ''
+  const lng = uiLang || 'es'
+  // Keyword-first title + description (spawn/loot/stats) so the page matches
+  // how players actually search, not just the bare entity name.
+  const seoTitle = entrySeoTitle(name, entry.type, lng)
+  const seoDesc = entrySeoDescription({
+    name,
+    type: entry.type,
+    lang: lng,
+    lead: lead || entry.content.canon,
+    location,
+  })
   const browsePath = `/browse/${entry.type}`
 
   return (
     <div className="space-y-6">
       <Seo
-        title={entry.name ?? entry.slug}
+        title={seoTitle}
         description={seoDesc}
         path={`/entry/${entry.slug}`}
         image={entry.primary_image ?? undefined}
         type="article"
         jsonLd={[
           articleJsonLd({
-            headline: entry.name ?? entry.slug ?? '',
+            headline: name,
             description: seoDesc,
             path: `/entry/${entry.slug}`,
             image: entry.primary_image,
@@ -192,6 +196,8 @@ export function EntryPage() {
           )}
 
           {entry.type === 'creature' && <DamageAffinity meta={entry.meta} />}
+
+          {entry.type === 'creature' && <CreatureLoot items={entry.loot} />}
 
           {entry.type === 'creature' && entry.slug && (
             <CreatureKillStats slug={entry.slug} />

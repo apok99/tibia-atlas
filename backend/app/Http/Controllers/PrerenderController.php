@@ -37,6 +37,11 @@ class PrerenderController extends Controller
         if (count($segments) === 2 && $segments[0] === 'entry') {
             return $this->entry($segments[1], $lang);
         }
+        // /items/{slug} — item detail (stats, price, droppers). Items are a
+        // reference catalogue kept as drafts, so this reads them directly.
+        if (count($segments) === 2 && $segments[0] === 'items') {
+            return $this->item($segments[1], $lang);
+        }
         if (count($segments) >= 1 && $segments[0] === 'browse') {
             return $this->browse($segments[1] ?? null, $lang);
         }
@@ -62,7 +67,8 @@ class PrerenderController extends Controller
         $typeLabel = $entry->type->labels()[$lang] ?? $entry->type->labels()['en'];
 
         $lead = $tr?->overview ?: $tr?->canon ?: '';
-        $description = $this->excerpt($lead);
+        $location = is_string(data_get($entry->meta, 'location')) ? data_get($entry->meta, 'location') : null;
+        $description = $this->entryDescription($name, $entry->type->value, $lang, $lead, $location);
         $canonical = self::SITE.'/entry/'.$entry->slug;
         $image = $entry->primary_image ?: self::SITE.'/logo.png';
 
@@ -72,6 +78,12 @@ class PrerenderController extends Controller
         $body .= '<h1>'.e($name).'</h1>';
         if ($entry->primary_image) {
             $body .= '<img src="'.e($entry->primary_image).'" alt="'.e($name).'" width="160" height="160">';
+        }
+        // "Where it spawns" — the site's differentiator, and the phrasing that
+        // matches "dónde aparece X" searches. Prominent, above the lore.
+        if ($entry->type === EntryType::Creature && $location) {
+            $body .= '<h2>'.($lang === 'es' ? 'Dónde aparece' : 'Where it spawns').'</h2>';
+            $body .= '<p>'.e(($lang === 'es' ? $name.' aparece en: ' : $name.' spawns in: ').$location).'</p>';
         }
         $body .= $this->section($lang === 'es' ? 'Resumen' : 'Overview', $tr?->overview);
         $body .= $this->section($lang === 'es' ? 'Canon' : 'Canon', $tr?->canon);
@@ -141,7 +153,119 @@ class PrerenderController extends Controller
 
         return $this->view([
             'lang' => $lang,
-            'title' => $name.' · Tibia Atlas',
+            'title' => $this->entryTitle($name, $entry->type->value, $lang),
+            'ogTitle' => $name,
+            'description' => $description,
+            'canonical' => $canonical,
+            'image' => $image,
+            'ogType' => 'article',
+            'jsonLd' => $jsonLd,
+            'body' => $body,
+        ]);
+    }
+
+    // ── Item detail ───────────────────────────────────────────────────────────
+
+    private function item(string $slug, string $lang): mixed
+    {
+        // Items are a reference catalogue kept as drafts (see ItemController),
+        // so no published() scope here — same as the public item API.
+        $item = Entry::query()
+            ->ofType(EntryType::Item)
+            ->with(['translations', 'sources'])
+            ->where('slug', $slug)
+            ->first();
+
+        if (! $item) {
+            return $this->staticPage('items', $lang, status: 404);
+        }
+
+        $tr = $item->translation($lang);
+        $name = $tr?->name ?? $item->slug;
+        $meta = $item->meta ?? [];
+        $category = data_get($meta, 'item_category');
+        $canonical = self::SITE.'/items/'.$item->slug;
+        $image = $item->primary_image ?: self::SITE.'/logo.png';
+
+        $droppers = array_values(array_filter((array) data_get($meta, 'dropped_by', [])));
+        $es = $lang === 'es';
+
+        $description = $es
+            ? $name.' en Tibia'.($category ? " ({$category})" : '').': estadísticas, precio de mercado, NPCs que lo compran y venden'.($droppers ? ', y las '.count($droppers).' criaturas que lo sueltan' : '').'.'
+            : $name.' in Tibia'.($category ? " ({$category})" : '').': stats, market price, NPCs that buy and sell it'.($droppers ? ', and the '.count($droppers).' creatures that drop it' : '').'.';
+        $description = $this->excerpt($description);
+
+        $body = '<article>';
+        $body .= '<p><a href="'.e(self::SITE.'/items').'">'.($es ? 'Objeto' : 'Item').'</a></p>';
+        $body .= '<h1>'.e($name).'</h1>';
+        if ($item->primary_image) {
+            $body .= '<img src="'.e($item->primary_image).'" alt="'.e($name).'" width="64" height="64">';
+        }
+        if ($tr?->overview) {
+            $body .= '<p><em>'.e($tr->overview).'</em></p>';
+        }
+        if ($tr?->canon) {
+            $body .= '<p>'.e($tr->canon).'</p>';
+        }
+
+        // Stat block from the curated item attributes players compare on.
+        $statKeys = ['item_category', 'equip_slot', 'level', 'vocations', 'attack', 'defense', 'armor', 'damage_range', 'weight', 'imbue_slots', 'value', 'npc_value'];
+        $stats = collect($statKeys)
+            ->mapWithKeys(fn ($k) => [$k => data_get($meta, $k)])
+            ->reject(fn ($v) => is_null($v) || $v === '' || $v === [])
+            ->map(fn ($v) => is_array($v) ? implode(', ', $v) : (string) $v);
+        if ($stats->isNotEmpty()) {
+            $body .= '<h2>'.($es ? 'Estadísticas' : 'Stats').'</h2><dl>';
+            foreach ($stats as $k => $v) {
+                $body .= '<dt>'.e(Str::headline((string) $k)).'</dt><dd>'.e($v).'</dd>';
+            }
+            $body .= '</dl>';
+        }
+
+        // Dropped by — link the ones we document, list the rest as text.
+        if ($droppers) {
+            $published = Entry::query()->ofType(EntryType::Creature)->published()
+                ->whereHas('translations', fn ($t) => $t->where('locale', 'en')->whereIn('name', $droppers))
+                ->with(['translations' => fn ($t) => $t->where('locale', 'en')])
+                ->get()
+                ->mapWithKeys(fn ($c) => [$c->translations->first()?->name => $c->slug])
+                ->filter();
+
+            $body .= '<h2>'.($es ? 'Lo sueltan' : 'Dropped by').'</h2><ul>';
+            foreach ($droppers as $d) {
+                $body .= isset($published[$d])
+                    ? '<li><a href="'.e(self::SITE.'/entry/'.$published[$d]).'">'.e($d).'</a></li>'
+                    : '<li>'.e($d).'</li>';
+            }
+            $body .= '</ul>';
+        }
+        $body .= '</article>';
+
+        $jsonLd = [
+            [
+                '@context' => 'https://schema.org',
+                '@type' => 'Product',
+                'name' => $name,
+                'description' => $description,
+                'image' => $image,
+                'category' => $category,
+                'url' => $canonical,
+                'brand' => ['@type' => 'Brand', 'name' => 'Tibia'],
+            ],
+            [
+                '@context' => 'https://schema.org',
+                '@type' => 'BreadcrumbList',
+                'itemListElement' => [
+                    ['@type' => 'ListItem', 'position' => 1, 'name' => 'Tibia Atlas', 'item' => self::SITE],
+                    ['@type' => 'ListItem', 'position' => 2, 'name' => $es ? 'Objetos' : 'Items', 'item' => self::SITE.'/items'],
+                    ['@type' => 'ListItem', 'position' => 3, 'name' => $name, 'item' => $canonical],
+                ],
+            ],
+        ];
+
+        return $this->view([
+            'lang' => $lang,
+            'title' => $this->entryTitle($name, 'item', $lang),
             'ogTitle' => $name,
             'description' => $description,
             'canonical' => $canonical,
@@ -220,7 +344,7 @@ class PrerenderController extends Controller
         // The home page doubles as the site map for crawlers: link every hub.
         if ($slug === '') {
             $body .= '<nav><ul>';
-            foreach (['browse/creature', 'browse/character', 'browse/city', 'browse/organization', 'browse/quest', 'browse/event', 'browse/location', 'items', 'map', 'history', 'timeline', 'quests', 'killstats', 'soundtrack', 'wordle'] as $href) {
+            foreach (['browse/creature', 'browse/character', 'browse/city', 'browse/organization', 'browse/quest', 'browse/event', 'browse/location', 'items', 'map', 'history', 'quests', 'killstats', 'soundtrack', 'wordle'] as $href) {
                 $body .= '<li><a href="'.e(self::SITE.'/'.$href).'">'.e($href).'</a></li>';
             }
             $body .= '</ul></nav>';
@@ -253,6 +377,8 @@ class PrerenderController extends Controller
                 '@context' => 'https://schema.org',
                 '@type' => 'WebSite',
                 'name' => 'Tibia Atlas',
+                'alternateName' => ['Atlas de Tibia', 'Wiki de Tibia en español', 'Guía de Tibia en español', 'Mapa de Tibia'],
+                'description' => 'La guía de Tibia en español: mapa interactivo, bestiario, loot, items y lore.',
                 'url' => self::SITE,
                 'inLanguage' => ['es', 'en'],
                 'potentialAction' => [
@@ -283,10 +409,10 @@ class PrerenderController extends Controller
 
         return [
             '' => [
-                'title' => 'Tibia Atlas — '.($es ? 'El atlas viviente del mundo de Tibia' : 'The living atlas of the Tibian world'),
-                'h1' => 'Tibia Atlas',
+                'title' => 'Tibia Atlas — '.($es ? 'Mapa, bestiario y guía de Tibia en español' : 'Interactive map, bestiary and guide to Tibia'),
+                'h1' => $es ? 'Tibia Atlas — la guía de Tibia en español' : 'Tibia Atlas — the atlas of Tibia',
                 'description' => $es
-                    ? 'El mapa interactivo de Tibia: encuentra dónde aparece cada criatura piso por piso, traza rutas entre ciudades y explora el mundo. Con wordle diario, bestiario y el lore de Tibia en español e inglés.'
+                    ? 'La guía de Tibia en español: mapa interactivo con dónde aparece cada criatura piso por piso, rutas entre ciudades, bestiario, loot, precios de items y el lore de Tibia. Con wordle diario.'
                     : 'The interactive map of Tibia: find where every creature spawns floor by floor, chart routes between cities and explore the world. Plus a daily wordle, a bestiary and Tibia lore in Spanish and English.',
             ],
             'items' => [
@@ -303,11 +429,6 @@ class PrerenderController extends Controller
                 'title' => ($es ? 'La Biblioteca de Tibia' : 'The Library of Tibia').' · Tibia Atlas',
                 'h1' => $es ? 'La Biblioteca de Tibia' : 'The Library of Tibia',
                 'description' => $es ? 'Todos los libros leíbles del juego, transcritos y organizados por estantería.' : 'Every readable in-game book, transcribed and organised by shelf.',
-            ],
-            'timeline' => [
-                'title' => ($es ? 'Cronología de Tibia' : 'Timeline of Tibia').' · Tibia Atlas',
-                'h1' => $es ? 'Cronología de Tibia' : 'Timeline of Tibia',
-                'description' => $es ? 'La historia completa del universo de Tibia, desde la creación hasta hoy.' : 'The complete history of the Tibia universe, from creation to today.',
             ],
             'quests' => [
                 'title' => ($es ? 'Misiones por nivel recomendado' : 'Quests by recommended level').' · Tibia Atlas',
@@ -359,6 +480,52 @@ class PrerenderController extends Controller
         $clean = trim(preg_replace('/\s+/', ' ', $text));
 
         return Str::limit($clean, $max, '…');
+    }
+
+    /**
+     * Keyword-first title/description copy, mirrored from the frontend
+     * frontend/src/lib/seo.tsx (entrySeoTitle/entrySeoDescription) so humans
+     * and crawlers see the same tags. Edit both together.
+     */
+    private function typeTitleSuffix(string $type, string $lang): string
+    {
+        $es = $lang === 'es';
+
+        return match ($type) {
+            'creature' => $es ? 'dónde aparece, loot y stats' : 'spawn, loot and stats',
+            'npc' => $es ? 'NPC de Tibia: ubicación e historia' : 'Tibia NPC: location and story',
+            'character' => $es ? 'historia y lore en Tibia' : 'story and lore in Tibia',
+            'city' => $es ? 'guía de la ciudad de Tibia' : 'guide to the Tibian city',
+            'location' => $es ? 'el lugar en el mundo de Tibia' : 'the place in the world of Tibia',
+            'organization' => $es ? 'la organización en el lore de Tibia' : 'the organization in Tibia lore',
+            'quest' => $es ? 'guía de la misión de Tibia' : 'Tibia quest guide',
+            'event' => $es ? 'en la historia de Tibia' : "in Tibia's history",
+            'item' => $es ? 'stats, precio y quién lo suelta' : 'stats, price and droppers',
+            'concept' => $es ? 'en el lore de Tibia' : 'in Tibia lore',
+            default => '',
+        };
+    }
+
+    private function entryTitle(string $name, string $type, string $lang): string
+    {
+        $suffix = $this->typeTitleSuffix($type, $lang);
+
+        return ($suffix ? $name.': '.$suffix : $name).' · Tibia Atlas';
+    }
+
+    private function entryDescription(string $name, string $type, string $lang, ?string $lead, ?string $location): string
+    {
+        $es = $lang === 'es';
+        $prefix = '';
+        if ($type === 'creature' && $location) {
+            $prefix = $es ? "{$name} en Tibia: aparece en {$location}." : "{$name} in Tibia: spawns in {$location}.";
+        }
+        $body = trim($prefix.' '.trim((string) $lead));
+        if ($body !== '') {
+            return $this->excerpt($body);
+        }
+
+        return $es ? "{$name} en el atlas de Tibia en español." : "{$name} in the Tibia atlas.";
     }
 
     /** @param array<string, mixed> $data */

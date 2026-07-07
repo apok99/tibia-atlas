@@ -99,22 +99,25 @@ class KillStatsService
         return KillStatsCache::remember('entry:'.rawurlencode($slug), function () use ($slug) {
             $race = $this->creature->raceForSlug($slug);
             if (! $race) {
-                return ['linked' => false, 'race' => null, 'latest' => null, 'series' => []];
+                return ['linked' => false, 'race' => null, 'latest' => null, 'popularity' => null, 'series' => []];
             }
 
             $expEach = is_numeric($race->exp_each) ? (int) $race->exp_each : null;
 
             $latest = null;
+            $popularity = null;
             $latestDate = $this->creature->latestDate($race->id);
             if ($latestDate) {
                 $row = $this->creature->totalsOn($race->id, $latestDate);
                 $latest = $this->creatureTransformer->latest($latestDate, $row, $expEach);
+                $popularity = $this->creatureTransformer->popularity($this->creature->popularityOn($race->id, $latestDate));
             }
 
             return [
                 'linked' => true,
                 'race' => $race->name,
                 'latest' => $latest,
+                'popularity' => $popularity,
                 'series' => $this->points->collection($this->creature->dailySeries($race->id), KillPointTransformer::DAY),
             ];
         });

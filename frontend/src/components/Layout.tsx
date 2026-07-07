@@ -1,10 +1,11 @@
 import { Suspense, useEffect, useRef, useState } from 'react'
 import { NavLink, Link, Outlet, useLocation } from 'react-router-dom'
-import { useTranslation } from 'react-i18next'
+import { Trans, useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from './LanguageSwitcher'
 import { ThemeToggle } from './ThemeToggle'
 import { PlayerBar } from './PlayerBar'
 import { SearchBox } from './SearchBox'
+import { CookieBanner } from './CookieBanner'
 
 type NavItem = { to: string; key: string; end?: boolean }
 
@@ -15,23 +16,40 @@ const primaryNav: NavItem[] = [
   { to: '/', key: 'nav.home', end: true },
   { to: '/map', key: 'nav.map' },
   { to: '/wordle', key: 'nav.wordle' },
+  { to: '/altar', key: 'nav.altar' },
   { to: '/browse/creature', key: 'nav.bestiary' },
-  { to: '/history', key: 'nav.library' },
 ]
 
 const moreNav: NavItem[] = [
-  { to: '/browse/npc', key: 'nav.npcs' },
-  { to: '/browse/character', key: 'nav.characters' },
-  { to: '/browse/city', key: 'nav.cities' },
   { to: '/items', key: 'nav.items' },
-  { to: '/quests', key: 'nav.quests' },
-  { to: '/timeline', key: 'nav.timeline' },
   { to: '/killstats', key: 'nav.killstats' },
   { to: '/soundtrack', key: 'nav.soundtrack' },
 ]
 
 // Flat list for the mobile menu (shows everything at once).
 const allNav: NavItem[] = [...primaryNav, ...moreNav]
+
+// Footer link columns, grouped like the site's mental model: explore the world,
+// read its lore, play with the data. Headings reuse the nav labels.
+const footerCols: { heading: string; links: NavItem[] }[] = [
+  {
+    heading: 'nav.explore',
+    links: [
+      { to: '/map', key: 'nav.map' },
+      { to: '/browse/creature', key: 'nav.bestiary' },
+    ],
+  },
+  {
+    heading: 'nav.play',
+    links: [
+      { to: '/wordle', key: 'nav.wordle' },
+      { to: '/altar', key: 'nav.altar' },
+      { to: '/items', key: 'nav.items' },
+      { to: '/killstats', key: 'nav.killstats' },
+      { to: '/soundtrack', key: 'nav.soundtrack' },
+    ],
+  },
+]
 
 /** Small ink compass-rose — the brand mark. */
 function CompassRose({ className = '' }: { className?: string }) {
@@ -50,23 +68,44 @@ export function Layout() {
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
   const location = useLocation()
+  const year = new Date().getFullYear()
+  const headerRef = useRef<HTMLElement>(null)
+
+  // Publish the header's real height as --header-h so fixed overlays that sit
+  // below it (the immersive map, the mobile-nav scrim) track it responsively —
+  // the bar grows taller once the brand subtitle appears at the sm breakpoint.
+  useEffect(() => {
+    const el = headerRef.current
+    if (!el) return
+    const apply = () =>
+      document.documentElement.style.setProperty('--header-h', `${el.offsetHeight}px`)
+    apply()
+    const ro = new ResizeObserver(apply)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // The map is a full-screen immersive canvas: it renders its own floating chrome
+  // over a fixed, full-bleed atlas, so the page shell drops its padding, footer
+  // and body scroll for that route.
+  const immersive = location.pathname === '/map' || location.pathname === '/'
 
   // Close the mobile menu whenever the route changes.
   useEffect(() => {
     setMenuOpen(false)
   }, [location.pathname])
 
-  // Lock body scroll while the mobile menu is open.
+  // Lock body scroll while the mobile menu is open or the immersive map is shown.
   useEffect(() => {
-    document.body.style.overflow = menuOpen ? 'hidden' : ''
+    document.body.style.overflow = menuOpen || immersive ? 'hidden' : ''
     return () => {
       document.body.style.overflow = ''
     }
-  }, [menuOpen])
+  }, [menuOpen, immersive])
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-30 border-b border-line-2 bg-bg/92 backdrop-blur-md">
+      <header ref={headerRef} className="sticky top-0 z-30 border-b border-line-2 bg-bg/92 backdrop-blur-md">
         {/* Gilt double-rule at the very top — the edge of a bound page. */}
         <div className="h-px w-full bg-gold/70" />
         <div className="h-px w-full bg-gold/30" />
@@ -152,7 +191,7 @@ export function Layout() {
         )}
       </header>
 
-      <main className="mx-auto w-full max-w-[86rem] flex-1 px-4 py-8">
+      <main className={immersive ? 'flex-1' : 'mx-auto w-full max-w-[86rem] flex-1 px-4 py-8'}>
         {/* Route pages are lazy chunks; keep the chrome visible while one loads. */}
         <Suspense fallback={null}>
           <Outlet />
@@ -161,16 +200,81 @@ export function Layout() {
 
       <PlayerBar />
 
-      <footer className="mt-8 border-t border-line-2 px-4 py-8 text-center">
-        <CompassRose className="mx-auto mb-3 h-7 w-7 text-fg-mute" />
-        <p className="font-title text-xs uppercase tracking-[0.18em] text-fg-dim">Tibia Atlas</p>
-        <p className="mx-auto mt-2 max-w-md text-sm italic text-fg-mute">
-          {t('footer.signature')}
-        </p>
-        <p className="mt-3 text-[11px] text-fg-mute/80">
-          {t('footer.disclaimer')}
-        </p>
+      <CookieBanner />
+
+      {!immersive && (
+      <footer className="mt-16 border-t border-line-2 bg-bg-2/30">
+        {/* Gilt double-rule — echoes the top edge of a bound page. */}
+        <div className="h-px w-full bg-gold/50" />
+        <div className="h-px w-full bg-gold/20" />
+
+        <div className="mx-auto max-w-[86rem] px-4 py-12">
+          <div className="grid gap-x-8 gap-y-10 sm:grid-cols-2 md:grid-cols-[1.6fr_1fr_1fr]">
+            {/* Brand block */}
+            <div className="max-w-xs">
+              <Link to="/" className="flex items-center gap-3">
+                <CompassRose className="h-8 w-8 shrink-0 text-fg" />
+                <span className="font-title text-[1.05rem] font-semibold tracking-[0.08em] text-fg">
+                  TIBIA <span className="text-accent">ATLAS</span>
+                </span>
+              </Link>
+              <p className="mt-4 text-sm italic leading-relaxed text-fg-mute">
+                {t('footer.signature')}
+              </p>
+            </div>
+
+            {/* Link columns */}
+            {footerCols.map((col) => (
+              <nav key={col.heading} aria-label={t(col.heading)}>
+                <p className="font-title text-[11px] uppercase tracking-[0.18em] text-fg-dim">
+                  {t(col.heading)}
+                </p>
+                <ul className="mt-3 space-y-2">
+                  {col.links.map((item) => (
+                    <li key={item.to}>
+                      <Link to={item.to} className="nav-link text-sm text-fg-mute hover:text-accent">
+                        {t(item.key)}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+            ))}
+          </div>
+        </div>
+
+        {/* Legal / bottom bar — CipSoft and Tibia are links (fansite-programme rule). */}
+        <div className="border-t border-line">
+          <div className="mx-auto flex max-w-[86rem] flex-col gap-3 px-4 py-5 text-[11px] text-fg-mute/80 sm:flex-row sm:items-center sm:justify-between">
+            <p className="max-w-2xl leading-relaxed">
+              <Trans
+                i18nKey="footer.disclaimer"
+                components={[
+                  <a
+                    href="https://www.cipsoft.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline decoration-fg-mute/40 underline-offset-2 hover:text-fg"
+                  />,
+                  <a
+                    href="https://www.tibia.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline decoration-fg-mute/40 underline-offset-2 hover:text-fg"
+                  />,
+                ]}
+              />
+            </p>
+            <div className="flex shrink-0 items-center gap-4">
+              <Link to="/about" className="underline underline-offset-2 hover:text-fg">
+                {t('footer.about')}
+              </Link>
+              <span className="text-fg-mute/60">© {year} Tibia Atlas</span>
+            </div>
+          </div>
+        </div>
       </footer>
+      )}
     </div>
   )
 }

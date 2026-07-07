@@ -23,6 +23,7 @@ class BackfillDamageMods extends Command
         {--limit=0 : Max creatures to process (0 = all)}
         {--sleep=300 : Milliseconds to wait between wiki requests}
         {--only= : Only this creature slug}
+        {--missing : Only creatures without meta.damage_mods}
         {--dry-run : Show what would change without writing}';
 
     protected $description = 'Backfill meta.damage_mods (element damage %) from TibiaWiki without touching lore/translations';
@@ -37,6 +38,9 @@ class BackfillDamageMods extends Command
         $query = Entry::where('type', 'creature')->with('translations');
         if ($only) {
             $query->where('slug', $only);
+        }
+        if ($this->option('missing')) {
+            $query->whereRaw("NOT (meta ?? 'damage_mods')");
         }
         $entries = $query->orderBy('id')->get();
 

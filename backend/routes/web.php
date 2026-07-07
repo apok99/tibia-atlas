@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Route;
 // XML sitemaps (index + per-section), generated from the database.
 Route::get('/sitemap.xml', [SitemapController::class, 'index']);
 Route::get('/sitemap-{section}.xml', [SitemapController::class, 'section'])
-    ->where('section', 'pages|lore');
+    ->where('section', 'pages|lore|items');
 
 // Full Markdown index for AI assistants (curated /llms.txt is a static file).
 Route::get('/llms-full.txt', [LlmsController::class, 'full']);

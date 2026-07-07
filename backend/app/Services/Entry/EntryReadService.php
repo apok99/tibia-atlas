@@ -274,6 +274,77 @@ class EntryReadService
         $this->viewTracker->record($request, $entry);
         $entry->load(['translations', 'sources', 'relatedEntries.translations']);
 
+        if ($entry->type->value === 'creature') {
+            $entry->setAttribute('loot', $this->resolveLoot($entry));
+        }
+
         return $entry;
+    }
+
+    /**
+     * The catalogue items this creature drops. There is no creature→item link in
+     * the schema; instead each item records the creature NAMES that drop it in
+     * `meta.dropped_by` (from TibiaWiki). So we reverse that: find every item
+     * whose drop list contains this creature's English name and resolve each to
+     * a lightweight { slug, name, image, value } tile. Ordered by worth so the
+     * notable drops lead and vials/junk sink to the bottom.
+     *
+     * @return list<array{slug: string, name: string, image: string|null, value: int|null}>
+     */
+    private function resolveLoot(Entry $creature): array
+    {
+        $enName = optional($creature->translations->first(fn ($t) => $t->locale->value === 'en'))->name
+            ?? optional($creature->translations->first())->name;
+
+        if (! $enName) {
+            return [];
+        }
+
+        $locale = app()->getLocale();
+
+        return Entry::query()
+            ->ofType('item')
+            ->whereRaw("meta->'dropped_by' @> ?::jsonb", [json_encode([$enName])])
+            ->with('translations')
+            ->get(['id', 'slug', 'primary_image', 'meta'])
+            ->map(function (Entry $item) use ($locale) {
+                $tr = $item->translations->first(fn ($t) => $t->locale->value === $locale)
+                    ?? $item->translations->first(fn ($t) => $t->locale->value === 'en')
+                    ?? $item->translations->first();
+
+                return [
+                    'slug' => $item->slug,
+                    'name' => $tr?->name ?? $item->slug,
+                    'image' => $item->primary_image,
+                    'value' => $this->itemWorth($item->meta ?? []),
+                ];
+            })
+            // Valuable drops first; unpriced items fall to the end, then A→Z so
+            // the order is stable across requests.
+            ->sort(fn ($a, $b) => (($b['value'] ?? -1) <=> ($a['value'] ?? -1))
+                ?: strnatcasecmp($a['name'], $b['name']))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Best gp estimate for ranking a drop: the NPC sell price when known,
+     * otherwise the top of the wiki value range ("1,000 - 10,000" → 10000).
+     */
+    private function itemWorth(array $meta): ?int
+    {
+        $npc = data_get($meta, 'npc_value');
+        if (is_numeric($npc)) {
+            return (int) $npc;
+        }
+
+        $value = data_get($meta, 'value');
+        if (is_string($value) && preg_match_all('/\d[\d,]*/', $value, $m)) {
+            $nums = array_map(fn ($n) => (int) str_replace(',', '', $n), $m[0]);
+
+            return $nums ? max($nums) : null;
+        }
+
+        return null;
     }
 }

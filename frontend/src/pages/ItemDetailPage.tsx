@@ -7,7 +7,7 @@ import { useCollection } from '../hooks/useCollection'
 import { useDebounce } from '../hooks/useDebounce'
 import { statChips, VocationDots } from '../components/items/itemStats'
 import { ItemDetailSkeleton } from '../components/Skeleton'
-import { Seo } from '../lib/seo'
+import { Seo, entrySeoTitle } from '../lib/seo'
 import type { Dropper as DropperT, ItemDetail, NpcDeal } from '../types'
 
 /** How many NPCs / droppers to show before a "show all (N)" toggle. */
@@ -21,7 +21,7 @@ const DROP_LIMIT = 24
  * each numeric stat highlighted.
  */
 export function ItemDetailPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { slug = '' } = useParams()
   const [params, setParams] = useSearchParams()
   const collection = useCollection()
@@ -45,11 +45,22 @@ export function ItemDetailPage() {
   const navigate = useNavigate()
   const navigateSwap = () => navigate(`/items/${vs}?vs=${slug}`, { replace: true })
 
-  const title = a.data?.name ?? t('items.title')
+  const es = (i18n.language || 'es').slice(0, 2) === 'es'
+  const name = a.data?.name ?? null
+  // Keyword-first title/description matching how players search items
+  // ("<item> tibia precio / loot / stats"), with real detail when loaded.
+  const seoTitle = name ? entrySeoTitle(name, 'item', es ? 'es' : 'en') : t('items.title')
+  const cat = a.data?.item?.category
+  const droppers = a.data?.dropped_by?.length ?? 0
+  const seoDesc = name
+    ? es
+      ? `${name} en Tibia${cat ? ` (${cat})` : ''}: estadísticas, precio de mercado, NPCs que lo compran y venden${droppers ? `, y las ${droppers} criaturas que lo sueltan` : ''}.`
+      : `${name} in Tibia${cat ? ` (${cat})` : ''}: stats, market price, NPCs that buy and sell it${droppers ? `, and the ${droppers} creatures that drop it` : ''}.`
+    : t('items.intro')
 
   return (
     <div>
-      <Seo title={title} description={a.data?.overview ?? t('items.intro')} path={`/items/${slug}`} />
+      <Seo title={seoTitle} description={seoDesc} path={`/items/${slug}`} image={a.data?.image ?? undefined} type="article" />
 
       {/* Top bar: back to album + compare controls. */}
       <div className="mb-5 flex flex-wrap items-center gap-3">

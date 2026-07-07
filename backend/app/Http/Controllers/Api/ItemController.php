@@ -25,30 +25,41 @@ class ItemController extends Controller
     private const SLOTS = ['head', 'neck', 'body', 'weapon', 'offhand', 'legs', 'finger', 'feet', 'ammo'];
 
     /**
-     * Which gear each vocation actually fights with, by slot. The baked-in
-     * `power` stat alone can't tell a usable-by-all greataxe apart from the wand
-     * a mage is meant to hold, so without this the configurator hands a sorcerer
-     * a two-handed sword and a knight a fishing rod. Values are matched as
-     * case-insensitive substrings of the item's `item_category`; a vocation
-     * absent from a slot map has no restriction (e.g. armour, rings, amulets are
-     * shared by everyone). A slot whose filter matches nothing is dropped rather
-     * than back-filled with off-style gear.
+     * The weapon cards each vocation gets. A single "weapon" card always
+     * crowned whichever type happened to carry the biggest number (axes for
+     * knights, one bow for paladins), so vocations that master several weapon
+     * styles get one card per style instead: knights see their best sword, axe
+     * AND club; paladins their best bow AND crossbow. `match` values are
+     * case-insensitive substrings of the item's `item_category`; `kind` routes
+     * distance weapons through distanceKind() (bow vs crossbow vs throwing).
+     * A card whose filter matches nothing is dropped rather than back-filled
+     * with off-style gear.
      */
-    private const STYLES = [
-        'weapon' => [
-            'knight' => ['sword', 'axe', 'club'],
-            'paladin' => ['distance'],
-            'sorcerer' => ['wand'],
-            'druid' => ['rod'],
-            'monk' => ['fist'],
+    private const WEAPON_CARDS = [
+        'knight' => [
+            ['slot' => 'weapon_sword', 'match' => ['sword']],
+            ['slot' => 'weapon_axe', 'match' => ['axe']],
+            ['slot' => 'weapon_club', 'match' => ['club']],
         ],
-        'offhand' => [
-            // Knights hold a shield; mages hold a spellbook. Paladins and monks
-            // are handled by SLOT_VOCATIONS below — they get no offhand at all.
-            'knight' => ['shield'],
-            'sorcerer' => ['spellbook'],
-            'druid' => ['spellbook'],
+        'paladin' => [
+            ['slot' => 'weapon_bow', 'kind' => 'bow'],
+            ['slot' => 'weapon_crossbow', 'kind' => 'crossbow'],
         ],
+        'sorcerer' => [['slot' => 'weapon', 'match' => ['wand']]],
+        'druid' => [['slot' => 'weapon', 'match' => ['rod']]],
+        'monk' => [['slot' => 'weapon', 'match' => ['fist']]],
+    ];
+
+    /**
+     * What each vocation holds in the offhand: knights a shield, mages a
+     * spellbook. Paladins and monks are handled by SLOT_VOCATIONS below — they
+     * get no offhand at all. Matched as case-insensitive substrings of
+     * `item_category`, like WEAPON_CARDS.
+     */
+    private const OFFHAND_STYLES = [
+        'knight' => ['shield'],
+        'sorcerer' => ['spellbook'],
+        'druid' => ['spellbook'],
     ];
 
     /**
@@ -66,19 +77,54 @@ class ItemController extends Controller
     ];
 
     /**
-     * What counts as real build gear (vs. un-farmable decoration). An item
-     * qualifies if it has a farm source (a creature drops it or an NPC sells it)
-     * OR it carries a level/vocation requirement — the mark of actual equipment.
-     * That requirement clause is what lets through the token-exchange end-game
-     * sets (Sanguine, the Soul tabards, the Soul* boots) which have no drop yet
-     * are the genuine best-in-slot, while still excluding pure collector relics
-     * (Golden/Winged/Horned Helmet) that have no source, no level and no vocation.
+     * What one point of each wiki skill bonus is worth to each vocation, in
+     * "armor points" — the common currency of score(). This is what lets a
+     * Yalahari Mask (armor 5, magic level +2) beat a Demon Helmet (armor 10,
+     * nothing else) for a mage, instead of ranking gear by raw armor alone.
+     * A skill absent from a vocation's map is worth 0 to it (a knight gains
+     * nothing from distance fighting).
+     */
+    private const SKILL_WEIGHTS = [
+        'knight' => ['sword fighting' => 5, 'axe fighting' => 5, 'club fighting' => 5, 'shielding' => 3, 'magic level' => 2],
+        'paladin' => ['distance fighting' => 6, 'shielding' => 2, 'magic level' => 4],
+        'sorcerer' => ['magic level' => 8, 'shielding' => 2],
+        'druid' => ['magic level' => 8, 'shielding' => 2],
+        'monk' => ['fist fighting' => 6, 'shielding' => 3, 'magic level' => 3],
+    ];
+
+    /**
+     * What counts as gear you can realistically go and buy. Two conditions:
+     *
+     * 1. Purchasable — tradeable on the in-game Market (`marketable`) or sold
+     *    by an NPC. This drops the charged event variants ("bow of mayhem
+     *    (heavily charged)"), test-server copies and quest-bound untradeables.
+     * 2. Actually circulating — a steady market supply exists. Three ways in:
+     *    some creature drops it, an NPC sells it, or the wiki records a
+     *    CONCRETE price range for it (players tracking real trades — the mark
+     *    of a liquid market) AND it is real requirement-bearing equipment.
+     *    That clause is what admits the marketable quest rewards everyone
+     *    farms (Yalahari Mask: "60,000 - 150,000", level 80, mages) while still
+     *    excluding both the "Negotiable"-priced ghosts nobody ever lists
+     *    (Magic Longsword, Warlord Sword, Slayer of Mayhem) and the priced
+     *    collector relics with no requirements at all (Golden/Winged/Horned
+     *    Helmet, Golden Boots, Ring of the Sky). Finally, marketable gear with
+     *    a level 250+ requirement is trusted outright: the modern boss-token
+     *    sets (Sanguine/Grand Sanguine lvl 500-600, the Soul set lvl 400,
+     *    Moonsilver lvl 800+) list as "Negotiable" with no drop yet ARE the
+     *    liquid end-game market — while every discontinued relic predates such
+     *    requirements (lvl 100-140).
+     *
+     * `?obtainable=0` lifts the filter.
      */
     private const OBTAINABLE_SQL =
-        "(jsonb_array_length(coalesce(meta->'dropped_by', '[]'::jsonb)) > 0".
+        "(((meta->>'marketable')::boolean is true".
+        " or jsonb_array_length(coalesce(meta->'npc_buy', '[]'::jsonb)) > 0)".
+        " and (jsonb_array_length(coalesce(meta->'dropped_by', '[]'::jsonb)) > 0".
         " or jsonb_array_length(coalesce(meta->'npc_buy', '[]'::jsonb)) > 0".
-        " or coalesce((meta->>'level')::int, 0) > 0".
-        " or coalesce(meta->'vocations', '[]'::jsonb) <> '[]'::jsonb)";
+        " or coalesce((meta->>'level')::int, 0) >= 250".
+        " or ((meta->>'value') ~ '^[0-9]'".
+        " and (coalesce((meta->>'level')::int, 0) > 0".
+        " or coalesce(meta->'vocations', '[]'::jsonb) <> '[]'::jsonb))))";
 
     /**
      * Paginated item list for the album, filterable by category / equip slot /
@@ -105,7 +151,7 @@ class ItemController extends Controller
                 [json_encode([(string) $request->string('vocation')])]
             ))
             ->when($request->filled('q'), function ($q) use ($request) {
-                $term = '%'.$request->string('q').'%';
+                $term = '%'.addcslashes((string) $request->string('q'), '%_\\').'%';
                 $q->whereHas('translations', fn ($t) => $t->where('name', 'ilike', $term));
             })
             ->orderBy('id')
@@ -179,9 +225,15 @@ class ItemController extends Controller
                 'vocations' => data_get($meta, 'vocations', []),
                 'level' => data_get($meta, 'level'),
                 'attack' => data_get($meta, 'attack'),
+                'element_attack' => data_get($meta, 'element_attack'),
+                'element_attack_type' => data_get($meta, 'element_attack_type'),
+                'atk_mod' => data_get($meta, 'atk_mod'),
+                'hit_mod' => data_get($meta, 'hit_mod'),
                 'defense' => data_get($meta, 'defense'),
                 'defense_mod' => data_get($meta, 'defense_mod'),
                 'armor' => data_get($meta, 'armor'),
+                'bonuses' => data_get($meta, 'bonuses'),
+                'resists' => data_get($meta, 'resists'),
                 'power' => data_get($meta, 'power'),
                 'weight' => data_get($meta, 'weight'),
                 'hands' => data_get($meta, 'hands'),
@@ -239,7 +291,7 @@ class ItemController extends Controller
     {
         $level = max(1, $request->integer('level', 1));
         $vocation = strtolower((string) $request->string('vocation'));
-        $altCount = $this->clamp($request, 'alts', 4, 0, 8);
+        $altCount = $this->clamp($request, 'alts', 5, 0, 8);
         // Obtainable-only by default; ?obtainable=0 shows aspirational relics too.
         $obtainableOnly = $request->boolean('obtainable', true);
 
@@ -274,43 +326,44 @@ class ItemController extends Controller
             );
         }
 
-        // Pull every usable equip item once, strongest first, then bucket by slot.
-        $items = $query
-            ->orderByRaw("coalesce((meta->>'power')::int, 0) desc")
-            ->orderBy('id')
-            ->get();
+        // Pull every usable equip item once, then rank each slot by the
+        // vocation-aware score. On ties, the higher level requirement wins:
+        // level-gated gear carries the better secondary stats (Elite Draken
+        // Mail over the requirement-free Dragon Scale Mail at the same armor).
+        $items = $query->orderBy('id')->get();
+
+        $scores = [];
+        foreach ($items as $item) {
+            $scores[$item->id] = $this->score($item, $vocation);
+        }
 
         $bySlot = [];
         foreach (self::SLOTS as $slot) {
             $bySlot[$slot] = [];
         }
         foreach ($items as $item) {
+            // Few-charge protection jewellery (Stone Skin Amulet ×5, Might
+            // Ring ×20) is a situational consumable you pocket, not the piece
+            // you WEAR — its huge per-charge resists would otherwise crown
+            // every neck/ring slot. High-charge pieces (Prismatic Necklace,
+            // ×750) behave like permanent gear and stay.
+            $charges = (int) data_get($item->meta, 'charges', 0);
+            if ($charges > 0 && $charges < 100) {
+                continue;
+            }
+
             $slot = data_get($item->meta, 'equip_slot');
             if (isset($bySlot[$slot])) {
                 $bySlot[$slot][] = $item;
             }
         }
-
-        // Re-rank feet. Boots barely differ in armor (almost every pair is 2–4),
-        // so ranking by armor alone lets a no-bonus prestige rare (Golden Boots,
-        // armor 4) win on every vocation, while ranking by level alone hands a
-        // low-level player a weak high-requirement boot over Golden's solid armor.
-        // So: prefer boots made *for* the chosen vocation (their set bonuses beat
-        // the flat armor stat), then highest armor, then tier (level) as the
-        // tie-break. Net effect — each vocation gets its own end-game boots once
-        // those unlock, but Golden Boots still wins at low level, where no
-        // vocation boot is available yet.
-        $vocFirst = $vocation !== '';
-        usort($bySlot['feet'], function ($a, $b) use ($vocFirst) {
-            $sa = $vocFirst && data_get($a->meta, 'vocations', []) !== [] ? 1 : 0;
-            $sb = $vocFirst && data_get($b->meta, 'vocations', []) !== [] ? 1 : 0;
-
-            return [$sb, (int) data_get($b->meta, 'armor', 0), (int) data_get($b->meta, 'level', 0), $a->id]
-                <=> [$sa, (int) data_get($a->meta, 'armor', 0), (int) data_get($a->meta, 'level', 0), $b->id];
-        });
+        foreach ($bySlot as &$list) {
+            usort($list, fn ($a, $b) => [$scores[$b->id], (int) data_get($b->meta, 'level', 0), $a->id]
+                <=> [$scores[$a->id], (int) data_get($a->meta, 'level', 0), $b->id]);
+        }
+        unset($list);
 
         $result = [];
-        $twoHandedWeapon = false;
         foreach (self::SLOTS as $slot) {
             // Skip slots this vocation doesn't use at all (e.g. ammo for non-paladins).
             $only = self::SLOT_VOCATIONS[$slot] ?? null;
@@ -318,50 +371,216 @@ class ItemController extends Controller
                 continue;
             }
 
-            // A two-handed weapon (greatsword, bow, monk fist weapon…) leaves no
-            // free hand, so don't crown an offhand item alongside it. SLOTS lists
-            // 'weapon' before 'offhand', so the flag is set by the time we get here.
-            if ($slot === 'offhand' && $twoHandedWeapon) {
+            // The weapon slot expands into one card per fighting style (knight:
+            // sword/axe/club, paladin: bow/crossbow) so every style the vocation
+            // masters gets a suggestion, not just the one with the biggest number.
+            if ($slot === 'weapon') {
+                $cards = self::WEAPON_CARDS[$vocation] ?? [['slot' => 'weapon']];
+                foreach ($cards as $card) {
+                    $list = $this->filterWeapons($bySlot['weapon'], $card);
+                    if ($list) {
+                        $result[] = $this->slotPayload($card['slot'], $list, $altCount, $scores);
+                    }
+                }
+
                 continue;
             }
 
             $list = $bySlot[$slot];
 
-            // Weapon/offhand: keep only gear in this vocation's fighting style,
-            // so the suggestion is the right *kind* of item, not just the one
-            // with the biggest number. Empty after filtering → skip the slot.
-            $styles = $vocation !== '' ? (self::STYLES[$slot][$vocation] ?? null) : null;
+            // Offhand: keep only gear in this vocation's style (shield vs
+            // spellbook), so the suggestion is the right *kind* of item.
+            $styles = $slot === 'offhand' && $vocation !== '' ? (self::OFFHAND_STYLES[$vocation] ?? null) : null;
             if ($styles !== null) {
                 $list = $this->filterByCategory($list, $styles);
             }
 
-            // Paladins fight with bows and crossbows, not one-handed throwing
-            // weapons (spears, throwing stars). Both share the "Distance Weapons"
-            // category, so split them by hands: bows/crossbows are two-handed.
-            if ($slot === 'weapon' && $vocation === 'paladin') {
-                $list = array_values(array_filter(
-                    $list,
-                    fn ($i) => str_contains(strtolower((string) data_get($i->meta, 'hands')), 'two')
-                ));
+            if ($list) {
+                $result[] = $this->slotPayload($slot, $list, $altCount, $scores);
             }
-
-            if (! $list) {
-                continue;
-            }
-            $best = array_shift($list);
-
-            if ($slot === 'weapon') {
-                $twoHandedWeapon = str_contains(strtolower((string) data_get($best->meta, 'hands')), 'two');
-            }
-
-            $result[] = [
-                'slot' => $slot,
-                'best' => new EntryListResource($best),
-                'alternatives' => EntryListResource::collection(array_slice($list, 0, $altCount)),
-            ];
         }
 
         return $result;
+    }
+
+    /**
+     * Rank an item for a vocation, in "armor points". Unlike the baked-in
+     * `power` stat (raw armor/attack only — which crowned a Magic Plate Armor
+     * over every modern set piece), this folds in everything the wiki knows:
+     *
+     *  - core numbers: armor; weapons add attack (+ the modern atk/hit mods),
+     *    a bit of defense, and the wand/rod damage tables;
+     *  - skill bonuses, weighted per vocation (SKILL_WEIGHTS) — magic level for
+     *    mages, distance fighting for paladins, melee skills for knights;
+     *  - elemental resistances (physical protection counts extra — everything
+     *    hits physically);
+     *  - imbuement slots (each is a big damage/leech upgrade a player WILL use);
+     *  - speed, worth a nudge on anything.
+     */
+    private function score(Entry $item, string $vocation): float
+    {
+        $meta = $item->meta ?? [];
+        $slot = data_get($meta, 'equip_slot');
+        $isWeapon = $slot === 'weapon' || $slot === 'ammo';
+
+        $s = (float) data_get($meta, 'armor', 0);
+
+        if ($isWeapon) {
+            $s += (float) data_get($meta, 'attack', 0);
+            // Elemental damage (Sanguine Blade: attack 8 + fire 46) counts as
+            // attack — it's the bulk of a modern weapon's hit.
+            $s += (float) data_get($meta, 'element_attack', 0);
+            $s += (float) data_get($meta, 'atk_mod', 0);
+            $s += 0.8 * (float) data_get($meta, 'hit_mod', 0);
+            $s += 0.3 * (float) data_get($meta, 'defense', 0);
+            $s += 0.6 * (float) data_get($meta, 'damage_max', 0);
+        } elseif ($slot === 'offhand') {
+            // Shields block with defense; spellbooks are stat-sticks whose
+            // value lives in their bonuses, so defense barely counts there.
+            $isSpellbook = str_contains(strtolower((string) data_get($meta, 'item_category', '')), 'spellbook');
+            $s += ($isSpellbook ? 0.3 : 1.0) * (float) data_get($meta, 'defense', 0);
+        }
+
+        // On armor, +1 of your main skill is a rare prize worth several armor
+        // points. On a weapon it competes against raw attack, where +1 skill
+        // ≈ +1 attack — so weapon skill bonuses are scaled way down.
+        $weights = self::SKILL_WEIGHTS[$vocation] ?? [];
+        $skillScale = $isWeapon ? 0.3 : 1.0;
+        // Knight gear boosts all three melee skills at once ("axe/club/sword
+        // fighting +4"), but a knight fights with ONE of them — count the best
+        // once instead of summing the trio.
+        $meleeBest = 0;
+        foreach ((array) data_get($meta, 'bonuses', []) as $skill => $points) {
+            if (in_array($skill, ['sword fighting', 'axe fighting', 'club fighting'], true)) {
+                $meleeBest = max($meleeBest, $points);
+
+                continue;
+            }
+            $s += ($weights[$skill] ?? 0) * $skillScale * $points;
+            if ($skill === 'speed') {
+                $s += 0.15 * $points;
+            }
+        }
+        $s += ($weights['sword fighting'] ?? 0) * $skillScale * $meleeBest;
+
+        // Physical protection counts extra (everything hits physically);
+        // drowning counts nothing (underwater breathing, not combat).
+        foreach ((array) data_get($meta, 'resists', []) as $element => $pct) {
+            $s += match ($element) {
+                'physical' => 0.8,
+                'drowning' => 0.0,
+                default => 0.5,
+            } * $pct;
+        }
+
+        $s += 2.5 * (int) data_get($meta, 'imbue_slots', 0);
+
+        return $s;
+    }
+
+    /**
+     * Build one slot card from a power-ordered candidate list: first item is
+     * the suggestion, the next `$altCount` are the alternatives.
+     *
+     * Many items come in stat-identical recolours (the four elemental -soul
+     * tabards, the -heart cuirasses); without dedup they fill every alternative
+     * slot with copies of the winner and push genuinely different gear out of
+     * sight. So alternatives keep only the first item of each stat signature.
+     *
+     * @param  list<Entry>  $list  non-empty, strongest first
+     * @param  array<int, float>  $scores  vocation-aware score per entry id
+     * @return array{slot: string, best: mixed, alternatives: mixed}
+     */
+    private function slotPayload(string $slot, array $list, int $altCount, array $scores): array
+    {
+        $best = array_shift($list);
+
+        $seen = [$this->statSignature($best, $scores) => true];
+        $alternatives = [];
+        foreach ($list as $item) {
+            if (count($alternatives) === $altCount) {
+                break;
+            }
+            $sig = $this->statSignature($item, $scores);
+            if (! isset($seen[$sig])) {
+                $seen[$sig] = true;
+                $alternatives[] = $item;
+            }
+        }
+
+        return [
+            'slot' => $slot,
+            'best' => new EntryListResource($best),
+            'alternatives' => EntryListResource::collection($alternatives),
+        ];
+    }
+
+    /**
+     * The stats that make two items interchangeable in a build. Includes the
+     * vocation score so two items that merely LOOK alike on raw numbers but
+     * differ in bonuses (one has magic level, the other distance) stay distinct.
+     *
+     * @param  array<int, float>  $scores
+     */
+    private function statSignature(Entry $item, array $scores): string
+    {
+        $meta = $item->meta ?? [];
+
+        return implode('|', [
+            (string) round($scores[$item->id] ?? 0, 2),
+            data_get($meta, 'level', ''),
+            data_get($meta, 'armor', ''),
+            data_get($meta, 'attack', ''),
+            data_get($meta, 'defense', ''),
+            data_get($meta, 'damage_range', ''),
+        ]);
+    }
+
+    /**
+     * Narrow the weapon-slot candidates to one WEAPON_CARDS entry: by category
+     * keywords (`match`) or by distance kind (`kind`); a card with neither
+     * (unknown vocation) passes everything through.
+     *
+     * @param  list<Entry>  $items
+     * @param  array{slot: string, match?: list<string>, kind?: string}  $card
+     * @return list<Entry>
+     */
+    private function filterWeapons(array $items, array $card): array
+    {
+        if (isset($card['kind'])) {
+            return array_values(array_filter($items, fn ($i) => $this->distanceKind($i) === $card['kind']));
+        }
+        if (isset($card['match'])) {
+            return $this->filterByCategory($items, $card['match']);
+        }
+
+        return $items;
+    }
+
+    /**
+     * Bow or crossbow? `item_subcategory` (the wiki's secondarytype) is
+     * authoritative; rows imported before that field existed fall back to the
+     * name — checking "crossbow"/"arbalest" before "bow", since every crossbow
+     * name contains "bow". Throwing weapons (spears, stars) match neither and
+     * stay out of both cards — paladins don't hunt with them.
+     */
+    private function distanceKind(Entry $item): ?string
+    {
+        $sub = strtolower((string) data_get($item->meta, 'item_subcategory', ''));
+        if ($sub !== '') {
+            if (str_contains($sub, 'crossbow')) {
+                return 'crossbow';
+            }
+
+            return str_contains($sub, 'bow') ? 'bow' : null;
+        }
+
+        $slug = strtolower($item->slug);
+        if (str_contains($slug, 'crossbow') || str_contains($slug, 'arbalest')) {
+            return 'crossbow';
+        }
+
+        return str_contains($slug, 'bow') ? 'bow' : null;
     }
 
     /**

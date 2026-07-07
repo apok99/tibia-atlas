@@ -12,6 +12,8 @@ class EntryListFilters
 {
     public function __construct(
         public readonly ?string $q = null,
+        /** 'contains' (default) or 'starts' — whether q matches anywhere or only name prefixes. */
+        public readonly string $qMode = 'contains',
         public readonly ?string $type = null,
         public readonly bool $featuredOnly = false,
         public readonly ?string $classification = null,
@@ -22,6 +24,7 @@ class EntryListFilters
     {
         return new self(
             q: $request->filled('q') ? (string) $request->string('q') : null,
+            qMode: $request->string('q_mode')->toString() === 'starts' ? 'starts' : 'contains',
             type: $request->filled('type') ? (string) $request->string('type') : null,
             featuredOnly: $request->boolean('featured'),
             classification: $request->filled('classification') ? (string) $request->string('classification') : null,

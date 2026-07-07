@@ -109,13 +109,73 @@ function withLang(url: string, lang: 'es' | 'en'): string {
 }
 
 function defaultTagline(lang: string): string {
-  return lang === 'es' ? 'El atlas viviente del mundo de Tibia' : 'The living atlas of the Tibian world'
+  // Home <title> is the single most important tag for the target query
+  // ("tibia en español"), so it leads with the words people actually search.
+  return lang === 'es'
+    ? 'Mapa, bestiario y guía de Tibia en español'
+    : 'Interactive map, bestiary and guide to Tibia'
 }
 
 function defaultDescription(lang: string): string {
   return lang === 'es'
-    ? 'El mapa interactivo de Tibia: encuentra dónde aparece cada criatura piso por piso, traza rutas entre ciudades y explora el mundo. Con wordle diario, bestiario y el lore de Tibia en español e inglés.'
+    ? 'La guía de Tibia en español: mapa interactivo con dónde aparece cada criatura piso por piso, rutas entre ciudades, bestiario, loot, precios de items y el lore de Tibia. Con wordle diario.'
     : 'The interactive map of Tibia: find where every creature spawns floor by floor, chart routes between cities and explore the world. Plus a daily wordle, a bestiary and Tibia lore in Spanish and English.'
+}
+
+// ── Type-aware, keyword-first SEO copy ────────────────────────────────────────
+// Titles/descriptions lead with the words players actually search ("dónde
+// aparece", "loot", "stats", "precio"). Kept in sync with the server-rendered
+// mirror in backend/app/Http/Controllers/PrerenderController.php — edit both.
+
+const TYPE_TITLE_SUFFIX: Record<string, { es: string; en: string }> = {
+  creature: { es: 'dónde aparece, loot y stats', en: 'spawn, loot and stats' },
+  npc: { es: 'NPC de Tibia: ubicación e historia', en: 'Tibia NPC: location and story' },
+  character: { es: 'historia y lore en Tibia', en: 'story and lore in Tibia' },
+  city: { es: 'guía de la ciudad de Tibia', en: 'guide to the Tibian city' },
+  location: { es: 'el lugar en el mundo de Tibia', en: 'the place in the world of Tibia' },
+  organization: { es: 'la organización en el lore de Tibia', en: 'the organization in Tibia lore' },
+  quest: { es: 'guía de la misión de Tibia', en: 'Tibia quest guide' },
+  event: { es: 'en la historia de Tibia', en: "in Tibia's history" },
+  item: { es: 'stats, precio y quién lo suelta', en: 'stats, price and droppers' },
+  concept: { es: 'en el lore de Tibia', en: 'in Tibia lore' },
+}
+
+/** Keyword-rich page title for a lore entry (site suffix added by <Seo>). */
+export function entrySeoTitle(name: string, type: string, lang: string): string {
+  const s = TYPE_TITLE_SUFFIX[type]
+  const suffix = s ? (lang === 'es' ? s.es : s.en) : ''
+  return suffix ? `${name}: ${suffix}` : name
+}
+
+/** Trim/clean to a ~160-char meta description, keeping whole words. */
+function clampDesc(text: string, max = 160): string {
+  const clean = text.replace(/\s+/g, ' ').trim()
+  if (clean.length <= max) return clean
+  return clean.slice(0, max - 1).replace(/\s+\S*$/, '') + '…'
+}
+
+/**
+ * Keyword-rich meta description for a lore entry. For creatures with a known
+ * spawn, it leads with "aparece en …" (matching "dónde aparece X" searches)
+ * then folds in the lore; everything else just uses the lore excerpt.
+ */
+export function entrySeoDescription(opts: {
+  name: string
+  type: string
+  lang: string
+  lead?: string | null
+  location?: string | null
+}): string {
+  const { name, type, lang, lead, location } = opts
+  const es = lang === 'es'
+  let prefix = ''
+  if (type === 'creature' && location) {
+    prefix = es ? `${name} en Tibia: aparece en ${location}.` : `${name} in Tibia: spawns in ${location}.`
+  }
+  const body = [prefix, (lead ?? '').trim()].filter(Boolean).join(' ')
+  if (body) return clampDesc(body)
+  // Last-resort fallback so no entry ships an empty description.
+  return es ? `${name} en el atlas de Tibia en español.` : `${name} in the Tibia atlas.`
 }
 
 // ── JSON-LD builders ────────────────────────────────────────────────────────
@@ -126,6 +186,10 @@ export function websiteJsonLd(): JsonLd {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
     name: SITE.name,
+    // Names people actually type — helps search engines tie those queries to
+    // the site and surface it as an answer for "wiki/guía/mapa de Tibia".
+    alternateName: ['Atlas de Tibia', 'Wiki de Tibia en español', 'Guía de Tibia en español', 'Mapa de Tibia'],
+    description: 'La guía de Tibia en español: mapa interactivo, bestiario, loot, items y lore.',
     url: SITE.url,
     inLanguage: ['es', 'en'],
     potentialAction: {

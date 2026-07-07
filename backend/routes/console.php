@@ -23,6 +23,21 @@ Schedule::command('tibia:etl-creatures')
     ->dailyAt('05:30')
     ->withoutOverlapping();
 
+// TibiaData has no per-element damage percentages, so creatures the ETL just
+// created land without meta.damage_mods and the entry page can only show the
+// weak/immune labels. Sweep the gaps from TibiaWiki right after the sync.
+Schedule::command('tibia:backfill-damage --missing')
+    ->dailyAt('06:00')
+    ->withoutOverlapping();
+
+// New entries land with an off-site sprite URL (tibia.fandom.com). Mirror any
+// that aren't local yet onto our own public disk so the site never hotlinks
+// fandom at render time. Cheap after the initial bulk run — it only touches the
+// day's new/refreshed images. Runs after the creature sync + damage backfill.
+Schedule::command('tibia:mirror-images')
+    ->dailyAt('06:30')
+    ->withoutOverlapping();
+
 // The raw view log only feeds the trailing-window "trending" calc (72h) and the
 // all-time counter is denormalized on the entry, so anything older than 90 days
 // is dead weight. Prune daily to keep the table from growing unbounded.

@@ -1,9 +1,11 @@
 <?php
 
+use App\Http\Controllers\Api\AltarController;
 use App\Http\Controllers\Api\BookController;
 use App\Http\Controllers\Api\EntryController;
 use App\Http\Controllers\Api\ItemController;
 use App\Http\Controllers\Api\KillStatsController;
+use App\Http\Controllers\Api\MapRouteController;
 use App\Http\Controllers\Api\WordleController;
 use App\Http\Middleware\SetLocale;
 use Illuminate\Support\Facades\Route;
@@ -43,7 +45,18 @@ Route::middleware([SetLocale::class, 'throttle:public'])->group(function () {
     });
 
     // Record that a search result was actually opened (search-popularity log).
-    Route::post('/search/click', [EntryController::class, 'logSearchClick']);
+    // Tighter throttle than reads: it's an unauthenticated write.
+    Route::post('/search/click', [EntryController::class, 'logSearchClick'])
+        ->middleware('throttle:interact');
+
+    // Community map routes: published gallery (read) + anonymous submission
+    // (write, IP-throttled, lands as pending for review).
+    Route::get('/routes', [MapRouteController::class, 'index']);
+    Route::post('/routes', [MapRouteController::class, 'store'])
+        ->middleware('throttle:interact');
+    // Bump a route's load counter (feeds the "popular" ranking).
+    Route::post('/routes/{route}/view', [MapRouteController::class, 'view'])
+        ->middleware('throttle:interact');
 
     // Random/trending must stay fresh; show carries the view-count side effect.
     Route::get('/entries/random', [EntryController::class, 'random']);
@@ -57,7 +70,7 @@ Route::middleware([SetLocale::class, 'throttle:public'])->group(function () {
 | Editorial CRUD (authenticated) — create / update / delete lore entries.
 |--------------------------------------------------------------------------
 */
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:editorial'])->group(function () {
     Route::post('/entries', [EntryController::class, 'store']);
     Route::match(['put', 'patch'], '/entries/{entry}', [EntryController::class, 'update']);
     Route::delete('/entries/{entry}', [EntryController::class, 'destroy']);
@@ -90,5 +103,23 @@ Route::prefix('killstats')->middleware(['throttle:public', 'cache.headers:public
 Route::prefix('wordle')->middleware('throttle:public')->group(function () {
     Route::get('/today', [WordleController::class, 'today'])
         ->middleware('cache.headers:public;max_age=30;s_maxage=60');
-    Route::post('/guess', [WordleController::class, 'guess']);
+    Route::post('/guess', [WordleController::class, 'guess'])
+        ->middleware('throttle:interact');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Altar del Bestiario — the daily creature silhouette game. One creature per
+| day shown greyed-out on an altar; a single guess to name it. `today` ships
+| the puzzle shape, light stat hints and the guess list; `silhouette` streams
+| the sprite through a name-free URL; `guess` scores the one attempt.
+|--------------------------------------------------------------------------
+*/
+Route::prefix('altar')->middleware('throttle:public')->group(function () {
+    Route::get('/today', [AltarController::class, 'today'])
+        ->middleware('cache.headers:public;max_age=30;s_maxage=60');
+    Route::get('/silhouette', [AltarController::class, 'silhouette'])
+        ->middleware('cache.headers:public;max_age=1800;s_maxage=3600');
+    Route::post('/guess', [AltarController::class, 'guess'])
+        ->middleware('throttle:interact');
 });

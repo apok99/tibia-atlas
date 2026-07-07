@@ -189,6 +189,44 @@ php artisan about        # confirm env=production, debug=off, cache=redis, queue
 php artisan queue:work --once   # confirm a job processes
 ```
 
+## 11. Frontend static assets (avoid stale-chunk 404s)
+
+Vite emits content-hashed files (`assets/ItemsPage-XXXX.js`). Two things go
+wrong after a deploy if the server isn't configured for that:
+
+1. A cached/stale `index.html` references old hashes that were just deleted →
+   `Failed to fetch dynamically imported module` (404). The app now reloads
+   itself once on `vite:preloadError` as a safety net, but the server must
+   still serve the right headers.
+2. Hashed assets get re-downloaded needlessly if they aren't marked immutable.
+
+**Nginx** for the frontend site:
+
+```nginx
+# index.html must never be cached — it's the pointer to the current hashes.
+location = /index.html {
+    add_header Cache-Control "no-cache";
+}
+
+# Hashed assets never change content under the same name: cache forever.
+location /assets/ {
+    add_header Cache-Control "public, max-age=31536000, immutable";
+}
+
+# SPA fallback
+location / {
+    try_files $uri $uri/ /index.html;
+}
+```
+
+**Cloudflare:** make sure no cache rule / "Cache Everything" applies to
+`index.html` (or purge it on deploy). The `/assets/` rule can be cached freely.
+
+**Deploy order:** copy the new `dist/assets/*` onto the server *before*
+replacing `index.html`, and don't delete the previous deploy's assets right
+away (keep one or two old releases) — tabs opened before the deploy still
+request old chunk names until they reload.
+
 ---
 
 ### One-time vs every-deploy
@@ -200,3 +238,6 @@ php artisan queue:work --once   # confirm a job processes
 | `config/route/event/view:cache` | cron `schedule:run` line |
 | `queue:restart` | Cloudflare cache rule |
 | reload php-fpm | trusted proxies in `bootstrap/app.php` |
+| | `php artisan storage:link` (once — exposes `storage/app/public` at `/storage`; the mirrored entry sprites live under `storage/app/public/sprites`) |
+| | `php artisan tibia:backfill-item-stats` (once — fills `meta.item_subcategory`, `bonuses`, `resists`, `atk_mod`/`hit_mod` and `charges` for all equippable items; the loadout configurator scores gear with these. New imports capture them automatically) |
+| | `php artisan tibia:mirror-images` (once — downloads every off-site entry sprite from tibia.fandom.com onto the public disk and repoints `primary_image` at the local copy so the site never hotlinks fandom. ~11k images; needs the `curl` binary. Requires `APP_URL` to be the final public API URL so the stored URLs are correct. The daily scheduled run then mirrors only new/refreshed images. Behind Cloudflare, `/storage/*` is cached at the edge) |

@@ -137,10 +137,17 @@ html[data-theme='dark'] .ks-raid-badge {
 }
 
 @layer base {
+  /* Root type scale — every rem-based size (Tailwind text-* utilities, the body
+     copy below) keys off this. Bump it to enlarge the whole site uniformly.
+     16px is the browser default; 17.6px ≈ +10%. */
+  html {
+    font-size: 17.6px;
+  }
+
   body {
     @apply text-fg antialiased;
     font-family: var(--font-display);
-    font-size: 20.5px;
+    font-size: 1.28rem;
     background-color: var(--color-bg);
     /* Aged-paper wash: warm highlight top-centre, dusty falloff to the edges. */
     background-image:
@@ -459,6 +466,8 @@ html[data-theme='dark'] .ks-raid-badge {
 .tm-route-stair.is-down { background: #9c3b2e; }
 .tm-route-stair.is-up { background: #4f7a3a; }
 .tm-route-stair.is-tp { background: #3f6b7a; }
+/* Partial-route endpoint: the trail goes cold here (no data past this point). */
+.tm-route-stair.is-lost { background: #6b2d26; border-style: dashed; cursor: default; }
 .tm-route-stair:hover { filter: brightness(1.12); }
 
 /* Boat-leg badge at the midpoint of a sea crossing. */
@@ -553,6 +562,32 @@ html[data-theme='dark'] .ks-raid-badge {
 .tm-spawn-all img {
   width: 26px;
   height: 26px;
+}
+/* Zero-size wrapper so the ×N count can sit outside the circle's clipped edge
+   while the sprite keeps its own self-centering transform. */
+.tm-spawn-marker {
+  position: relative;
+}
+.tm-spawn-count {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  min-width: 14px;
+  height: 15px;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+  background: #2a0d00;
+  border: 1.5px solid #ff7a33;
+  border-radius: 9999px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 /* ---- Imported minimap POI markers (levitate spots, levers, depots…) ---- */
@@ -1140,4 +1175,37 @@ html[data-theme='dark'] .ks-raid-badge {
   .ks-orbit-ring, .ks-orbit-sprite, .ks-orbit-core-pulse, .ks-orbit-radar,
   .ks-bar-fill, .ks-rank-row, .ks-ticker-track, .ks-orb, .ks-search-row, .ks-search-trend,
   .ks-raid-card, .ks-raid-badge, .ks-raid-mark { animation: none; }
+}
+
+/* Bestiary Altar: mystical motes drifting up from the pedestal. Each mote is
+   positioned + timed with per-particle CSS vars set in AltarPage; the palette
+   (--mote-color/--mote-glow) is themed on the play state at the container. */
+.altar-particles {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 5;
+}
+.altar-mote {
+  position: absolute;
+  bottom: 3.25rem;
+  left: var(--x);
+  width: var(--size);
+  height: var(--size);
+  border-radius: 9999px;
+  background: var(--mote-color, var(--color-line-2));
+  box-shadow: 0 0 6px 1px var(--mote-glow, transparent);
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: altar-rise var(--dur) ease-in-out var(--delay) infinite;
+}
+@keyframes altar-rise {
+  0%   { opacity: 0; transform: translate(0, 0) scale(0.5); }
+  12%  { opacity: var(--peak, 0.85); }
+  75%  { opacity: var(--peak, 0.85); }
+  100% { opacity: 0; transform: translate(var(--drift), -7.5rem) scale(1.05); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .altar-mote { animation: none; opacity: 0; }
 }

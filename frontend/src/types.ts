@@ -101,6 +101,8 @@ export interface Entry {
   available_locales: Locale[]
   sources: Source[]
   related: EntryListItem[]
+  /** Items this creature drops (creatures only); absent for other types. */
+  loot?: LootItem[]
   /** Creature spawn points (absolute game coords) for the hunting map. */
   spawns: Spawn[]
   spawn_count: number
@@ -173,9 +175,21 @@ export interface ItemStats {
   vocations: string[]
   level: number | null
   attack: number | null
+  /** Elemental damage on modern weapons (Sanguine Blade: attack 8 + fire 46). */
+  element_attack?: number | null
+  /** Element of element_attack, e.g. "fire". */
+  element_attack_type?: string | null
+  /** Flat attack bonus on modern gear (wiki atk_mod). */
+  atk_mod?: number | null
+  /** Hit-chance bonus on modern gear (wiki hit_mod). */
+  hit_mod?: number | null
   defense: number | null
   defense_mod: string | null
   armor: number | null
+  /** Skill bonuses, e.g. { "magic level": 2, "speed": 15 }. */
+  bonuses?: Record<string, number> | null
+  /** Elemental resistances in %, e.g. { "fire": 5, "ice": -2 }. */
+  resists?: Record<string, number> | null
   power: number | null
   weight: number | null
   hands: string | null
@@ -197,6 +211,15 @@ export interface Dropper {
   slug: string | null
   image: string | null
   published: boolean
+}
+
+/** An item a creature drops, linking through to its catalogue page. */
+export interface LootItem {
+  slug: string
+  name: string
+  image: string | null
+  /** Best gp estimate (NPC price or wiki value), for ranking; null if unknown. */
+  value: number | null
 }
 
 /** Full item detail (the album's click-through modal). */
@@ -227,9 +250,21 @@ export interface ItemFacets {
   equippable: number
 }
 
+/**
+ * Weapon-style cards the configurator expands the weapon slot into, for
+ * vocations that master several weapon types (knight: sword/axe/club,
+ * paladin: bow/crossbow).
+ */
+export type WeaponCardSlot =
+  | 'weapon_sword'
+  | 'weapon_axe'
+  | 'weapon_club'
+  | 'weapon_bow'
+  | 'weapon_crossbow'
+
 /** One equipment slot's recommendation in the loadout configurator. */
 export interface LoadoutSlot {
-  slot: EquipSlot
+  slot: EquipSlot | WeaponCardSlot
   best: EntryListItem
   alternatives: EntryListItem[]
 }

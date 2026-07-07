@@ -24,7 +24,7 @@ export function CreatureKillStats({ slug, enabled = true }: { slug: string; enab
 
   if (!data?.linked || !data.latest) return null
 
-  const { latest, series } = data
+  const { latest, popularity, series } = data
 
   return (
     <section className="panel overflow-hidden">
@@ -50,6 +50,33 @@ export function CreatureKillStats({ slug, enabled = true }: { slug: string; enab
         <p className="mt-2 text-[10px] text-fg-mute">
           {t('ks.acrossWorlds')} · {t('ks.lastSnapshot')}: {latest.date}
         </p>
+
+        {/* Popularity: rank among all hunted races by creatures slain (7d) */}
+        {popularity ? (
+          <div className="mt-3 rounded border border-accent/30 bg-accent/5 p-3">
+            <div className="flex items-baseline justify-between gap-2">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-accent">
+                {t('ks.popularity')}
+              </div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-accent">
+                {t('ks.popularityTop', { p: popularity.top_percent })}
+              </div>
+            </div>
+            <div className="mt-1.5 flex items-baseline gap-2">
+              <span className="font-mono text-lg font-bold tabular-nums text-fg">#{popularity.rank}</span>
+              <span className="text-[10px] text-fg-dim">
+                {t('ks.popularityOf', { total: popularity.total.toLocaleString() })}
+              </span>
+            </div>
+            <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-bg-2">
+              <span
+                className="block h-full rounded-full bg-accent"
+                style={{ width: `${Math.max(2, Math.round((1 - (popularity.rank - 1) / popularity.total) * 100))}%` }}
+              />
+            </span>
+            <p className="mt-1.5 text-[10px] text-fg-dim">{t('ks.popularityHint')}</p>
+          </div>
+        ) : null}
 
         {/* Experience handed out */}
         {latest.exp_each ? (

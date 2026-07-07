@@ -39,6 +39,42 @@ class CreatureKillStatsQuery
     }
 
     /**
+     * Popularity of a race by creatures slain (7d) among every race hunted on
+     * a given snapshot date. Returns null when the race had no kills that week.
+     */
+    public function popularityOn(int $raceId, string $date): ?\stdClass
+    {
+        $killed = (int) DB::table('kill_daily')
+            ->where('race_id', $raceId)
+            ->where('snapshot_date', $date)
+            ->sum('week_killed');
+
+        if ($killed <= 0) {
+            return null;
+        }
+
+        $totals = DB::table('kill_daily')
+            ->where('snapshot_date', $date)
+            ->groupBy('race_id')
+            ->selectRaw('SUM(week_killed) AS killed');
+
+        $row = DB::query()
+            ->fromSub($totals, 't')
+            ->selectRaw(
+                'COUNT(*) FILTER (WHERE killed > 0) AS total,
+                 COUNT(*) FILTER (WHERE killed > ?) AS above',
+                [$killed],
+            )
+            ->first();
+
+        return (object) [
+            'killed' => $killed,
+            'rank' => (int) $row->above + 1,
+            'total' => (int) $row->total,
+        ];
+    }
+
+    /**
      * Daily trend across all worlds (kill_daily retains ~30 days).
      *
      * @return Collection<int, \stdClass> rows of {period, players_killed, killed}

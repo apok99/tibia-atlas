@@ -50,8 +50,19 @@ class TelescopeServiceProvider extends TelescopeApplicationServiceProvider
      */
     protected function gate(): void
     {
-        // Access is gated by HTTP Basic Auth at the nginx layer: the public site
-        // is a token-auth SPA, so there is no web-session user to authorize here.
-        Gate::define('viewTelescope', fn (?User $user = null) => true);
+        // Defence in depth: nginx puts HTTP Basic Auth in front of /telescope,
+        // but the app must not be wide open if that layer is ever misconfigured.
+        // Outside local, only IPs listed in TELESCOPE_ALLOWED_IPS get through
+        // (empty list = nobody). The public site is a token-auth SPA, so there
+        // is no web-session user to authorize here.
+        Gate::define('viewTelescope', function (?User $user = null): bool {
+            if ($this->app->environment('local')) {
+                return true;
+            }
+
+            $allowed = array_filter(array_map('trim', explode(',', (string) config('telescope.allowed_ips', ''))));
+
+            return in_array(request()->ip(), $allowed, true);
+        });
     }
 }

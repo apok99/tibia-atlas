@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { api } from '../lib/api'
-import { planRoute, type RoutePlan } from '../lib/routing'
+import { planRoute, type RoutePlan, type RouteLeg } from '../lib/routing'
 import { Seo } from '../lib/seo'
 import { Icon, iconMarkup } from '../lib/icons'
 import { useGlossary } from '../hooks/useGlossary'
-import { useTopSearches, type TopSearch } from '../hooks/useKillStats'
+import { useBosses, type BossRow } from '../hooks/useKillStats'
 import { TypeIcon } from '../components/TypeIcon'
-import type { Entry, Spawn } from '../types'
+import { Skeleton } from '../components/Skeleton'
+import type { Dropper, Entry, EntryListItem, ItemDetail, Spawn } from '../types'
 
 // Minimap tiles are 256x256, named Minimap_Color_<gameX>_<gameY>_<floor>.png,
 // aligned to a 256-unit grid in Tibia world coordinates.
@@ -29,6 +31,20 @@ const SURFACE = 7
 // Distinct ring colours for each creature overlay.
 const PALETTE = ['#d23d2f', '#3fa7d6', '#6cc551', '#e0a531', '#9b5de5', '#f15bb5', '#ff8c42', '#4ecdc4']
 
+// Boss "spawn heat" (0-100) → a qualitative bucket for the Boss Watch strip.
+// High heat = no recent kills across worlds, so the boss is likely up; low heat
+// = freshly killed (still on cooldown).
+function heatBucket(heat: number): 'hot' | 'warm' | 'cold' {
+  if (heat >= 66) return 'hot'
+  if (heat >= 33) return 'warm'
+  return 'cold'
+}
+const HEAT_STYLE = {
+  hot: { cls: 'text-accent', glyph: '🔥', label: 'map.bossHot' },
+  warm: { cls: 'text-gold', glyph: '🌡', label: 'map.bossWarm' },
+  cold: { cls: 'text-interp', glyph: '❄', label: 'map.bossCold' },
+} as const
+
 // Cities/landmarks (surface floor). Coordinates are approximate centres within
 // the available tiles — tweak freely if any feels off.
 type Landmark = { name: string; x: number; y: number; floor: number }
@@ -37,7 +53,10 @@ const LANDMARKS: Landmark[] = [
   { name: 'Ankrahmun', x: 33146, y: 32816, floor: 7 },
   { name: 'Carlin', x: 32343, y: 31792, floor: 7 },
   { name: 'Cormaya', x: 33307, y: 31999, floor: 7 },
-  { name: 'Darashia', x: 33236, y: 32432, floor: 7 },
+  // NOTE: route anchors must sit on OPEN city ground. (33236,32432) is the
+  // decorative walled garden (a sealed 39-tile pocket) — routes from the
+  // dropdown died at the start there. Same for Venore's old (32947,32081).
+  { name: 'Darashia', x: 33213, y: 32453, floor: 7 },
   { name: 'Edron', x: 33211, y: 31830, floor: 7 },
   { name: 'Farmine', x: 33030, y: 31500, floor: 7 },
   { name: 'Kazordoon', x: 32614, y: 31923, floor: 7 },
@@ -49,7 +68,7 @@ const LANDMARKS: Landmark[] = [
   { name: 'Roshamuul', x: 33524, y: 32477, floor: 7 },
   { name: 'Svargrond', x: 32278, y: 31146, floor: 7 },
   { name: 'Thais', x: 32365, y: 32224, floor: 7 },
-  { name: 'Venore', x: 32947, y: 32081, floor: 7 },
+  { name: 'Venore', x: 32963, y: 32087, floor: 7 },
   { name: 'Yalahar', x: 32805, y: 31234, floor: 7 },
 ]
 
@@ -107,6 +126,67 @@ const REGIONS: { name: string; x: number; y: number }[] = [
   { name: 'Okolnir', x: 32230, y: 31412 },
   { name: 'Formorgar Glacier', x: 32102, y: 31144 },
   { name: 'Chyllfroest', x: 32060, y: 31034 },
+  { name: 'Tyrsung', x: 32464, y: 31173 },
+  { name: 'Grimlund', x: 32021, y: 31294 },
+  { name: 'Inukaya', x: 32367, y: 31058 },
+  // Carlin & western isles
+  { name: 'Senja', x: 32020, y: 31692 },
+  { name: 'Vega', x: 31974, y: 31901 },
+  { name: 'Isle of the Kings', x: 32126, y: 31665 },
+  { name: 'Ghostlands', x: 32220, y: 31770 },
+  { name: 'Fields of Glory', x: 32440, y: 31960 },
+  { name: 'Mintwallin', x: 32540, y: 32200 },
+  // Venore surroundings
+  { name: 'Green Claw Swamp', x: 32820, y: 32020 },
+  { name: 'Amazon Camp', x: 32839, y: 31920 },
+  { name: 'Gnomebase Alpha', x: 33001, y: 31900 },
+  // Southern seas
+  { name: 'Meriana', x: 32132, y: 32912 },
+  { name: 'Marapur', x: 33842, y: 32852 },
+  { name: 'Murmuring Wilderness', x: 33690, y: 32780 },
+  { name: 'Gnomprona', x: 33600, y: 32880 },
+  // Zao & the far east
+  { name: 'Zao', x: 33350, y: 31370 },
+  { name: 'Razachai', x: 33074, y: 31100 },
+  { name: 'Zzaion', x: 33262, y: 31100 },
+  { name: 'Issavi', x: 33946, y: 31516 },
+  { name: 'Warzones 4-6', x: 33800, y: 32170 },
+  // Roshamuul & the dream realms
+  { name: 'Roshamuul Prison', x: 33520, y: 32600 },
+  { name: 'Guzzlemaw Valley', x: 33645, y: 32390 },
+  { name: 'Feyrist', x: 33540, y: 32208 },
+  { name: 'Candia', x: 33370, y: 32155 },
+  // Ankrahmun desert & the Ancient Tombs. Each of the seven tombs is labelled at
+  // its surface entrance (client marker coords); the bosses spawn on the floors
+  // below. Names match the tomb, with the boss it houses in parentheses.
+  { name: 'Mountain Tomb (Dipthrah)', x: 33133, y: 32568 },
+  { name: 'Oasis Tomb (Rahemos)', x: 33133, y: 32640 },
+  { name: 'Ancient Ruins Tomb (Vashresamun)', x: 33208, y: 32591 },
+  { name: 'Tarpit Tomb (Morguthis)', x: 33233, y: 32704 },
+  { name: 'Stone Tomb (Thalas)', x: 33282, y: 32743 },
+  { name: 'Shadow Tomb (Mahrdis)', x: 33255, y: 32833 },
+  { name: 'Library Tomb (Ashmunrah)', x: 33142, y: 32838 },
+  { name: 'Horestis Tomb', x: 33026, y: 32710 },
+  { name: 'Peninsula Tomb', x: 33027, y: 32869 },
+  { name: 'Cobra Bastion', x: 33398, y: 32655 },
+  // Tiquanda east coast
+  { name: 'Asura Palace', x: 32948, y: 32689 },
+  // The Hive & the north-eastern seas
+  { name: 'The Hive', x: 33560, y: 31255 },
+  { name: 'Hive Outpost', x: 33467, y: 31322 },
+  { name: 'Gray Island', x: 33191, y: 31985 },
+  { name: 'Orcsoberfest', x: 33779, y: 31054 },
+  // Kilmaresh south
+  { name: 'Ruins of Nuur', x: 33848, y: 31685 },
+  // Starter isles & the dream courts
+  { name: 'Island of Destiny', x: 32094, y: 32004 },
+  { name: 'Targuna', x: 33514, y: 32720 },
+  { name: 'Winter Court', x: 33697, y: 32127 },
+  { name: 'Summer Court', x: 33691, y: 32213 },
+  // Forbidden Islands (wiki Mapper Coords)
+  { name: 'Talahu', x: 31953, y: 32660 },
+  { name: 'Kharos', x: 32121, y: 32686 },
+  { name: 'Malada', x: 32016, y: 32713 },
 ]
 
 // Every name drawn on the map: the cities (prominent) plus the regions (subtle).
@@ -143,6 +223,18 @@ type AllSpawns = {
 // A point-of-interest from the imported client minimap markers
 // (public/map-markers.json, generated by tools/gen-map-markers.mjs).
 type Poi = { x: number; y: number; z: number; desc: string; color: string; icon: string }
+
+// A published community route from GET /api/routes (ranked by load count).
+type CommunityRoute = {
+  id: number
+  name: string
+  description: string | null
+  waypoints: [number, number, number][]
+  connect: 'auto' | 'straight'
+  author: string | null
+  views: number
+  created_at: string
+}
 
 // Lucide-style line-icon paths (24x24), matching the rest of the UI — a real
 // icon set reads far clearer than glyphs.
@@ -186,6 +278,10 @@ const ZONE_RADIUS = 200
 // Safety ceiling on how many creature sprites to draw at once (the screen-grid
 // de-duplication normally keeps it far below this).
 const SPRITE_CAP = 1200
+
+// The per-spawn orange dots are only drawn from this zoom in. Zoomed further out
+// they just speckle the whole map, so there we show only the grouped ×N sprites.
+const DOT_MIN_ZOOM = 2
 
 const inTileBounds = (x: number, y: number) =>
   x >= X_MIN && x < X_MAX && y >= Y_MIN && y < Y_MAX
@@ -251,6 +347,176 @@ function escapeHtml(s: string): string {
   )
 }
 
+// Draw a route's legs onto a layer group for the floor in view: walk polylines
+// (ink on parchment), boat hops (dashed) and stair/rope/shovel/levitate
+// floor-change badges. Shared by the "how to get there" directions and the
+// manual route builder so both render identically. `floorWord` is the localized
+// "Floor" label; `onFloorJump` switches the map to a leg's destination floor.
+function drawRouteLegs(
+  grp: L.LayerGroup,
+  legs: RouteLeg[],
+  floor: number,
+  floorWord: string,
+  floorLabel: (f: number) => string,
+  onFloorJump: (f: number) => void,
+) {
+  for (const leg of legs) {
+    if (leg.kind === 'walk') {
+      if (leg.floor !== floor || leg.path.length < 2) continue
+      const latlngs = leg.path.map((p) => toLatLng(p.x, p.y))
+      grp.addLayer(
+        L.polyline(latlngs, { color: '#f4e7c6', weight: 7, opacity: 0.95, lineJoin: 'round', lineCap: 'round' }),
+      )
+      grp.addLayer(
+        L.polyline(latlngs, { color: '#3b2313', weight: 3.5, opacity: 1, lineJoin: 'round', lineCap: 'round' }),
+      )
+    } else if (leg.kind === 'boat') {
+      if (floor !== leg.fromFloor && floor !== leg.toFloor) continue
+      const seg = [toLatLng(leg.from.x, leg.from.y), toLatLng(leg.to.x, leg.to.y)]
+      grp.addLayer(
+        L.polyline(seg, { color: '#3b2313', weight: 5, opacity: 0.55, dashArray: '2 9', lineCap: 'round' }),
+      )
+      grp.addLayer(
+        L.polyline(seg, { color: '#f4e7c6', weight: 2.5, opacity: 0.95, dashArray: '2 9', lineCap: 'round' }),
+      )
+      grp.addLayer(
+        L.marker(toLatLng((leg.from.x + leg.to.x) / 2, (leg.from.y + leg.to.y) / 2), {
+          icon: L.divIcon({
+            className: '',
+            html: `<div class="tm-route-boat">${iconMarkup(leg.icon)} ${escapeHtml(leg.toName)}</div>`,
+            iconSize: [0, 0],
+          }),
+          interactive: false,
+        }),
+      )
+    } else if (leg.kind === 'stairs') {
+      if (leg.floor !== floor) continue
+      const glyph =
+        leg.tool === 'rope' ? iconMarkup('rope') : leg.tool === 'shovel' ? iconMarkup('pickaxe') : leg.tool === 'levitate' ? iconMarkup('sparkles') : leg.dir === 'down' ? '▼' : leg.dir === 'up' ? '▲' : '⇄'
+      const cls = leg.dir === 'down' ? 'is-down' : leg.dir === 'up' ? 'is-up' : 'is-tp'
+      grp.addLayer(
+        L.marker(toLatLng(leg.from.x, leg.from.y), {
+          icon: L.divIcon({
+            className: '',
+            html: `<div class="tm-route-stair ${cls}">${glyph} ${escapeHtml(floorWord)} ${floorLabel(leg.toFloor)}</div>`,
+            iconSize: [0, 0],
+          }),
+        }).on('click', () => onFloorJump(leg.toFloor)),
+      )
+    }
+  }
+}
+
+// --- overlay performance helpers ----------------------------------------------
+
+// The "all creatures" dots painted onto one canvas in a single pass. As
+// individual L.circleMarkers a floor carries ~10k layer objects that must be
+// rebuilt on every floor/filter change and repainted one by one — a single
+// canvas draws the same picture in a couple of milliseconds.
+type DotsLayer = L.Layer & { setPoints(pts: [number, number, number][]): void }
+const DotCanvas = L.Layer.extend({
+  setPoints(pts: [number, number, number][]) {
+    ;(this as { _pts?: unknown })._pts = pts
+    if ((this as { _map?: L.Map })._map) (this as { _redraw(): void })._redraw()
+  },
+  onAdd(map: L.Map) {
+    // `leaflet-layer` gives the canvas `position:absolute; left:0; top:0`.
+    // `leaflet-zoom-hide` makes Leaflet hide the canvas for the duration of the
+    // zoom animation (visibility:hidden while the map pane carries
+    // `leaflet-zoom-anim`) — exactly what it does to the DOM marker panes that
+    // hold the creature sprites and POIs. So the dots and their sprites hide
+    // together mid-zoom and are redrawn together on zoomend/moveend, staying
+    // locked to each other. (Keeping the canvas visible and transforming it
+    // per-frame instead left the dots drifting out of their orange circle while
+    // the map scaled, since the sprites they sit under are hidden meanwhile.)
+    const canvas = L.DomUtil.create('canvas', 'leaflet-layer leaflet-zoom-hide')
+    canvas.style.pointerEvents = 'none'
+    ;(this as { _canvas?: HTMLCanvasElement })._canvas = canvas
+    map.getPanes().overlayPane.appendChild(canvas)
+    map.on('moveend resize zoomend', (this as { _reset(): void })._reset, this)
+    ;(this as { _reset(): void })._reset()
+    return this
+  },
+  onRemove(map: L.Map) {
+    map.off('moveend resize zoomend', (this as { _reset(): void })._reset, this)
+    ;(this as { _canvas: HTMLCanvasElement })._canvas.remove()
+    return this
+  },
+  _reset() {
+    const map = (this as { _map: L.Map })._map
+    L.DomUtil.setPosition(
+      (this as { _canvas: HTMLCanvasElement })._canvas,
+      map.containerPointToLayerPoint([0, 0]),
+    )
+    ;(this as { _redraw(): void })._redraw()
+  },
+  _redraw() {
+    const map = (this as { _map: L.Map })._map
+    const canvas = (this as { _canvas: HTMLCanvasElement })._canvas
+    const size = map.getSize()
+    const dpr = window.devicePixelRatio || 1
+    if (canvas.width !== size.x * dpr || canvas.height !== size.y * dpr) {
+      canvas.width = size.x * dpr
+      canvas.height = size.y * dpr
+      canvas.style.width = `${size.x}px`
+      canvas.style.height = `${size.y}px`
+    }
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.clearRect(0, 0, size.x, size.y)
+    const pts = ((this as { _pts?: [number, number, number][] })._pts ?? [])
+    if (!pts.length) return
+    // Same look as the old circle markers: radius 7, dark ring, orange fill.
+    const R = 7
+    ctx.beginPath()
+    for (const p of pts) {
+      const pt = map.latLngToContainerPoint([-p[1], p[0]])
+      if (pt.x < -R || pt.y < -R || pt.x > size.x + R || pt.y > size.y + R) continue
+      ctx.moveTo(pt.x + R, pt.y)
+      ctx.arc(pt.x, pt.y, R, 0, Math.PI * 2)
+    }
+    ctx.globalAlpha = 0.9
+    ctx.fillStyle = '#ff7a33'
+    ctx.fill()
+    ctx.globalAlpha = 1
+    ctx.lineWidth = 1
+    ctx.strokeStyle = '#2a0d00'
+    ctx.stroke()
+  },
+})
+
+// Incrementally sync a layer group with the wanted marker set: keys that
+// survive keep their existing marker (no DOM churn while panning), the rest
+// are added/removed. `epoch` names the inputs the cache was built from — when
+// it changes (zoom, floor, filter set…) the whole group is rebuilt.
+type MarkerCache = { epoch: string; markers: Map<string, L.Marker> }
+function syncMarkers(
+  grp: L.LayerGroup,
+  cache: MarkerCache,
+  epoch: string,
+  wanted: Map<string, () => L.Marker>,
+) {
+  if (cache.epoch !== epoch) {
+    grp.clearLayers()
+    cache.markers.clear()
+    cache.epoch = epoch
+  }
+  for (const [key, mk] of cache.markers) {
+    if (wanted.has(key)) continue
+    if (mk.isPopupOpen()) continue // keep an open popup anchored while panning
+    grp.removeLayer(mk)
+    cache.markers.delete(key)
+  }
+  for (const [key, make] of wanted) {
+    if (!cache.markers.has(key)) {
+      const mk = make()
+      mk.addTo(grp)
+      cache.markers.set(key, mk)
+    }
+  }
+}
+
 // --- URL hash <-> map state ---------------------------------------------------
 // Format: #f=<floor>&z=<zoom>&x=<cx>&y=<cy>&m=<x,y,f,label>;<...>&c=<slug>,<slug>
 //         &r=<sx,sy,sf,slabel>;<ex,ey,ef,elabel>   (route: start ; end)
@@ -276,6 +542,14 @@ function decodeRoutePoint(chunk: string): HashRoutePoint | null {
   return { x: Number(rx), y: Number(ry), floor: Number(rf), label: label || undefined }
 }
 
+// A manually built route restored from the hash: ordered waypoints, how they
+// connect, and an optional name.
+type HashBuild = {
+  points: { x: number; y: number; floor: number }[]
+  connect: 'auto' | 'straight'
+  name: string
+}
+
 function parseHash(): {
   x?: number
   y?: number
@@ -285,6 +559,7 @@ function parseHash(): {
   creatures: string[]
   routeStart: HashRoutePoint | null
   routeEnd: HashRoutePoint | null
+  build: HashBuild | null
 } {
   const h = window.location.hash.replace(/^#/, '')
   const parts: Record<string, string> = {}
@@ -319,8 +594,51 @@ function parseHash(): {
     routeStart = decodeRoutePoint(s ?? '')
     routeEnd = decodeRoutePoint(e ?? '')
   }
-  return { x: num('x'), y: num('y'), z: num('z'), floor: num('f'), markers, creatures, routeStart, routeEnd }
+  // Built route: bp = points (x,y,f ; …), bc = connect mode, bn = name.
+  let build: HashBuild | null = null
+  if (parts.bp) {
+    const points: { x: number; y: number; floor: number }[] = []
+    for (const chunk of parts.bp.split(';')) {
+      if (!chunk) continue
+      const [px, py, pf] = chunk.split(',')
+      if (px && py && pf) points.push({ x: Number(px), y: Number(py), floor: Number(pf) })
+    }
+    if (points.length)
+      build = {
+        points,
+        connect: parts.bc === 'auto' ? 'auto' : 'straight',
+        name: decodeURIComponent(parts.bn ?? ''),
+      }
+  }
+  return { x: num('x'), y: num('y'), z: num('z'), floor: num('f'), markers, creatures, routeStart, routeEnd, build }
 }
+
+// --- immersive map "hotbar" styling -------------------------------------------
+// A compact row of square icon slots: the search field stays the hero, and every
+// secondary action collapses into a tooltip-labelled icon. PILL is the slotted
+// bar that groups them; SLOT/SLOT_ON/SLOT_OFF style each slot.
+const PILL =
+  'pointer-events-auto inline-flex flex-wrap items-center gap-1 rounded-2xl border border-line-2 bg-bg/85 p-1.5 shadow-lg backdrop-blur-md'
+const SLOT = 'grid h-11 w-11 place-items-center rounded-lg border transition'
+const SLOT_OFF =
+  'border-line/40 bg-bg-2/40 text-fg-dim hover:border-line-2 hover:bg-surface hover:text-fg'
+const SLOT_ON = 'border-accent bg-accent text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]'
+
+// Quick-launch "mini windows" floated on the map: shortcuts to the site's games
+// and stats. Titles/taglines reuse the existing nav + section-kicker i18n keys.
+const QUICK_LINKS: { to: string; title: string; kicker: string; icon: string }[] = [
+  // wordle grid
+  { to: '/wordle', title: 'nav.wordle', kicker: 'wordle.kicker', icon: 'M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18' },
+  // sparkles (daily silhouette game)
+  {
+    to: '/altar',
+    title: 'nav.altar',
+    kicker: 'altar.kicker',
+    icon: 'M12 3l-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z',
+  },
+  // bar chart
+  { to: '/killstats', title: 'nav.killstats', kicker: 'ks.kicker', icon: 'M3 3v18h18M8 17V9M13 17v-5M18 17V6' },
+]
 
 export function MapPage() {
   const { t } = useTranslation()
@@ -330,7 +648,7 @@ export function MapPage() {
   const markersGroupRef = useRef<L.LayerGroup | null>(null)
   const cityGroupRef = useRef<L.LayerGroup | null>(null)
   const spawnGroupRef = useRef<L.LayerGroup | null>(null)
-  const allGroupRef = useRef<L.LayerGroup | null>(null)
+  const dotsLayerRef = useRef<DotsLayer | null>(null)
   const allSpriteGroupRef = useRef<L.LayerGroup | null>(null)
   const poiGroupRef = useRef<L.LayerGroup | null>(null)
   // Current-floor "all creatures" data kept for click-to-identify and the
@@ -346,6 +664,13 @@ export function MapPage() {
   }>({ points: [], names: [], images: [], slugs: [], classifications: [], difficulties: [], bosses: [] })
   // Points after applying the category/zone filters — what actually gets drawn.
   const filteredRef = useRef<[number, number, number][]>([])
+  // Diff caches for the marker layers (see syncMarkers) so pans/zooms reuse
+  // existing DOM markers instead of rebuilding every one.
+  const spriteCacheRef = useRef<MarkerCache>({ epoch: '', markers: new Map() })
+  const poiCacheRef = useRef<MarkerCache>({ epoch: '', markers: new Map() })
+  const creatureCacheRef = useRef<MarkerCache>({ epoch: '', markers: new Map() })
+  // Bumped whenever the filtered point set changes, invalidating sprite reps.
+  const overlayGenRef = useRef(0)
 
   // Initial state restored from the shared link (if any).
   const initial = useRef(parseHash()).current
@@ -359,6 +684,18 @@ export function MapPage() {
   const [creatures, setCreatures] = useState<ActiveCreature[]>([])
   const [query, setQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
+  // What the search box looks up: a creature (plot its spawns) or an item (plot
+  // every creature that drops it). "Dónde farmeo este objeto".
+  const [searchKind, setSearchKind] = useState<'creature' | 'item'>('creature')
+  // The item whose droppers are currently plotted, for the context banner.
+  const [activeItem, setActiveItem] = useState<{
+    slug: string
+    name: string
+    image: string | null
+    plotted: string[] // dropper slugs plotted as creatures
+    total: number // droppers with a slug (may exceed plotted if capped)
+  } | null>(null)
+  const [itemBusy, setItemBusy] = useState(false)
   const [showAll, setShowAll] = useState(true)
   const [catFilter, setCatFilter] = useState('') // '' = all classifications
   const [zoneFilter, setZoneFilter] = useState('') // '' = whole map
@@ -366,6 +703,7 @@ export function MapPage() {
   const [bossOnly, setBossOnly] = useState(false) // show only bosses
   const [showPoi, setShowPoi] = useState(false) // imported minimap markers layer
   const [showFilters, setShowFilters] = useState(false) // collapsible refine panel
+  const [bossRailOpen, setBossRailOpen] = useState(true) // world-boss watch sidebar
   const [markerDraft, setMarkerDraft] = useState<{ x: number; y: number; floor: number } | null>(null)
   const [draftLabel, setDraftLabel] = useState('')
   const [shownCount, setShownCount] = useState(0) // spawns currently drawn
@@ -389,6 +727,32 @@ export function MapPage() {
   routeModeRef.current = routeMode
   routeStartRef.current = routeStart
   routeEndRef.current = routeEnd
+
+  // Manual route builder ("crear ruta"): place ordered waypoints by clicking,
+  // connected either by the A* auto-router (planRoute between consecutive points)
+  // or by straight lines. The result is named and shareable via the URL, exactly
+  // like the directions plan.
+  const [buildMode, setBuildMode] = useState(!!initial.build)
+  const [buildPoints, setBuildPoints] = useState<RoutePoint[]>(initial.build?.points ?? [])
+  const [buildConnect, setBuildConnect] = useState<'auto' | 'straight'>(initial.build?.connect ?? 'straight')
+  const [buildName, setBuildName] = useState(initial.build?.name ?? '')
+  const [buildPlan, setBuildPlan] = useState<RoutePlan | null>(null)
+  const [buildBusy, setBuildBusy] = useState(false)
+  const [publishState, setPublishState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle')
+  // Community route gallery: published routes others submitted, ranked by loads.
+  const [routesOpen, setRoutesOpen] = useState(false)
+  const buildGroupRef = useRef<L.LayerGroup | null>(null)
+  const buildModeRef = useRef(buildMode)
+  const buildPointsRef = useRef(buildPoints)
+  const buildConnectRef = useRef(buildConnect)
+  const buildNameRef = useRef(buildName)
+  const appendBuildPointRef = useRef<(p: RoutePoint) => void>(() => {})
+  buildModeRef.current = buildMode
+  buildPointsRef.current = buildPoints
+  buildConnectRef.current = buildConnect
+  buildNameRef.current = buildName
+  appendBuildPointRef.current = (p) => setBuildPoints((prev) => [...prev, p])
+
   // Bumped each time the Leaflet map is (re)created so the overlay-drawing
   // effects re-run against the fresh layer groups — crucial under React
   // StrictMode's mount→cleanup→mount cycle in dev, where data-only deps may not
@@ -417,6 +781,7 @@ export function MapPage() {
   const openMarkerModalRef = useRef<(d: { x: number; y: number; floor: number }) => void>(() => {})
   const renderSpritesRef = useRef<() => void>(() => {})
   const renderPoiRef = useRef<() => void>(() => {})
+  const renderCreaturesRef = useRef<() => void>(() => {})
   const rebuildOverlayRef = useRef<() => void>(() => {})
   addMarkerRef.current = (m) => setMarkers((prev) => [...prev, m])
   removeMarkerRef.current = (id) => setMarkers((prev) => prev.filter((m) => m.id !== id))
@@ -441,6 +806,15 @@ export function MapPage() {
         return
       }
       setRoutePlan(plan)
+      // Best-effort route: warn that the trail goes cold before the target and
+      // say where/how far, instead of a bare "no route".
+      if (plan.partial)
+        setRouteMsg(
+          t('map.routePartial', {
+            tiles: plan.partial.remaining,
+            floor: plan.partial.floor === SURFACE ? '0' : plan.partial.floor < SURFACE ? `+${SURFACE - plan.partial.floor}` : `${SURFACE - plan.partial.floor}`,
+          }),
+        )
       // Jump to the start floor so the beginning of the route is visible.
       setFloor(s.floor)
     } catch {
@@ -480,9 +854,54 @@ export function MapPage() {
     setRouteMsg(null)
   }
 
+  // --- manual route builder actions ---
+  function toggleBuildMode() {
+    const next = !buildMode
+    setBuildMode(next)
+    // Modes are mutually exclusive: leaving directions / marker placement on
+    // would fight the builder for map clicks.
+    if (next) {
+      setRouteMode(false)
+      setPlacing(false)
+    }
+  }
+
+  function undoBuildPoint() {
+    setBuildPoints((prev) => prev.slice(0, -1))
+  }
+
+  function clearBuild() {
+    setBuildPoints([])
+    setBuildName('')
+    setBuildPlan(null)
+    setPublishState('idle')
+  }
+
+  // Submit the built route for review. No accounts: it's stored anonymously
+  // (optional name + the server-recorded IP) as `pending` until a reviewer
+  // publishes it.
+  async function publishRoute() {
+    if (buildPoints.length < 2 || !buildName.trim() || publishState === 'sending') return
+    setPublishState('sending')
+    try {
+      await api.post('/routes', {
+        name: buildName.trim(),
+        connect: buildConnect,
+        waypoints: buildPoints.map((p) => [Math.round(p.x), Math.round(p.y), p.floor]),
+      })
+      setPublishState('done')
+    } catch {
+      setPublishState('error')
+    }
+  }
+
   // A route endpoint's <select> value: the city name, a sentinel for a clicked
   // point, or '' when unset.
-  const endpointValue = (p: RoutePoint | null) => (p ? (p.label ?? '__pt__') : '')
+  // A picked landmark shows its own name in the dropdown; anything else (a raw
+  // map click, or a spawn plotted via a creature's "how to get there" button)
+  // falls back to the synthetic "__pt__" option so the select never renders blank.
+  const isLandmark = (p: RoutePoint | null) => !!p?.label && LANDMARKS.some((l) => l.name === p.label)
+  const endpointValue = (p: RoutePoint | null) => (p ? (isLandmark(p) ? p.label! : '__pt__') : '')
 
   // Floor label matching the selector (0 = surface, +N above, -N below).
   const floorLabel = (f: number) =>
@@ -504,91 +923,105 @@ export function MapPage() {
       )
     if (lvl) f = f.filter((p) => difficulties[p[2]] === lvl)
     filteredRef.current = f
+    overlayGenRef.current++ // sprite representatives may change wholesale
     setShownCount(showAllRef.current ? f.length : 0)
-    allGroupRef.current?.clearLayers() // force dots to redraw for the new set
-    renderSpritesRef.current()
+    renderSpritesRef.current() // paints both the ×N sprites and the (gated) dots
   }
 
-  // Render the "all creatures" overlay: orange dots for every (filtered) spawn
-  // (drawn once, self-healing if the layer ended up empty after a StrictMode
-  // remount) plus creature sprites for the spawns in view, de-duplicated by a
-  // screen grid so photos show at any zoom without piling up.
+  // Render the "all creatures" sprites for the spawns in view, de-duplicated by
+  // a grid so photos show at any zoom without piling up (dense areas thin out;
+  // the orange dots underneath still show every spawn). The grid is anchored in
+  // projected (world-pixel) space rather than container pixels, so each cell's
+  // representative stays put while panning and the syncMarkers diff reuses the
+  // existing DOM nodes instead of rebuilding every sprite on each moveend.
   renderSpritesRef.current = () => {
     const grp = allSpriteGroupRef.current
-    const dotGrp = allGroupRef.current
     const map = mapRef.current
-    if (!grp || !dotGrp || !map) return
+    if (!grp || !map) return
     const points = filteredRef.current
-    const { names, images } = allPointsRef.current
+    const { names, images, slugs } = allPointsRef.current
 
-    // Dots: clear when hidden/empty, (re)draw when the layer is empty but should
-    // have points (covers both first draw and the remount race).
     if (!showAllRef.current || !points.length) {
-      dotGrp.clearLayers()
-    } else if (dotGrp.getLayers().length === 0) {
-      for (const [x, y] of points) {
-        dotGrp.addLayer(
-          L.circleMarker(toLatLng(x, y), {
-            radius: 7,
-            stroke: true,
-            color: '#2a0d00',
-            weight: 1,
-            fillColor: '#ff7a33',
-            fillOpacity: 0.9,
-            interactive: false,
-          }),
-        )
-      }
+      syncMarkers(grp, spriteCacheRef.current, 'off', new Map())
+      dotsLayerRef.current?.setPoints([])
+      return
     }
 
-    grp.clearLayers()
-    if (!showAllRef.current || !points.length) return
-
-    const b = map.getBounds()
-    const N = b.getNorth()
-    const S = b.getSouth()
-    const E = b.getEast()
-    const W = b.getWest()
+    const zoom = map.getZoom()
+    // Orange per-spawn dots only from DOT_MIN_ZOOM in; zoomed further out the
+    // grouped sprites carry the picture and the dots would just be noise.
+    dotsLayerRef.current?.setPoints(zoom >= DOT_MIN_ZOOM ? points : [])
     // Scale the sprite badge with zoom so it doesn't look tiny when zoomed in,
     // and keep the de-dup grid a bit larger than the badge to avoid overlap.
-    const size = Math.max(28, Math.min(64, Math.round(22 + map.getZoom() * 9)))
+    const size = Math.max(28, Math.min(64, Math.round(22 + zoom * 9)))
     const imgPx = Math.round(size * 0.85)
-    const cell = size + 6
-    // De-duplicate by a screen-pixel grid: keep one representative sprite per
-    // cell so photos appear at any zoom without overlapping (dense areas thin
-    // out; the orange dots underneath still show every spawn).
-    const seen = new Set<string>()
-    const chosen: [number, number, number][] = []
+    // Grouping grid: a multiple of the badge footprint that grows as you zoom
+    // out (where the badge itself is clamped small but each screen cell covers
+    // far more world), so an overview collapses spawns into a few hundred
+    // sprites while a close-up separates them into individuals. `7 - zoom`,
+    // clamped, sweeps the factor from ~8 when fully zoomed out to ~2.5 zoomed in.
+    const groupFactor = Math.max(2.5, Math.min(8, 7 - zoom))
+    const cell = Math.round((size + 6) * groupFactor)
+    const view = map.getPixelBounds()
+    const minX = view.min!.x - cell
+    const maxX = view.max!.x + cell
+    const minY = view.min!.y - cell
+    const maxY = view.max!.y + cell
+    // How many distinct species a cell may show, by zoom: an overview keeps only
+    // the dominant creature(s) so it reads at a glance, and zooming in reveals
+    // the full species mix. Spawns beyond the cap stay visible as orange dots.
+    const perCell = zoom <= 0 ? 2 : zoom <= 2 ? 4 : zoom <= 4 ? 8 : Infinity
+    // Aggregate spawns per grid cell, then per species within each cell, so
+    // repeats of one species collapse into an ×N count. Each cell then emits its
+    // top `perCell` species (ranked by spawn count) as sprites.
+    type CellAgg = { p: [number, number, number]; n: number }
+    const cells = new Map<string, Map<number, CellAgg>>()
     for (const p of points) {
-      const lat = -p[1]
-      const lng = p[0]
-      if (lat < S || lat > N || lng < W || lng > E) continue
-      const pt = map.latLngToContainerPoint([lat, lng])
-      const key = Math.floor(pt.x / cell) + '_' + Math.floor(pt.y / cell)
-      if (seen.has(key)) continue
-      seen.add(key)
-      chosen.push(p)
-      if (chosen.length >= SPRITE_CAP) break
+      const pt = map.project(toLatLng(p[0], p[1]), zoom)
+      if (pt.x < minX || pt.x > maxX || pt.y < minY || pt.y > maxY) continue
+      const ck = Math.floor(pt.x / cell) + '_' + Math.floor(pt.y / cell)
+      let byName = cells.get(ck)
+      if (!byName) cells.set(ck, (byName = new Map()))
+      const hit = byName.get(p[2])
+      if (hit) hit.n++
+      else byName.set(p[2], { p, n: 1 })
     }
-    const { slugs } = allPointsRef.current
-    for (const p of chosen) {
-      const ci = p[2]
-      const img = images[ci]
-        ? `<img src="${escapeHtml(images[ci]!)}" alt="" loading="lazy" style="width:${imgPx}px;height:${imgPx}px" />`
-        : ''
-      const icon = L.divIcon({
-        className: '',
-        html: `<div class="tm-spawn tm-spawn-all" style="--ring:#ff7a33;width:${size}px;height:${size}px">${img}</div>`,
-        iconSize: [0, 0],
-      })
-      L.marker(toLatLng(p[0], p[1]), { icon })
-        .addTo(grp)
-        .bindPopup(
-          `<div><div style="font-weight:700">${escapeHtml(names[ci])}</div>` +
+    const wanted = new Map<string, () => L.Marker>()
+    for (const [ck, byName] of cells) {
+      if (wanted.size >= SPRITE_CAP) break
+      const top =
+        perCell === Infinity
+          ? [...byName.values()]
+          : [...byName.values()].sort((a, b) => b.n - a.n).slice(0, perCell)
+      for (const agg of top) {
+      const { p, n } = agg
+      // Fold cell + species + count into the marker key so a cell whose N
+      // changes while panning (points entering/leaving the edge) rebuilds it.
+      wanted.set(ck + '_' + p[2] + '_' + n, () => {
+        const ci = p[2]
+        const img = images[ci]
+          ? `<img src="${escapeHtml(images[ci]!)}" alt="" loading="lazy" style="width:${imgPx}px;height:${imgPx}px" />`
+          : ''
+        const badge =
+          n > 1
+            ? `<span class="tm-spawn-count" style="left:${Math.round(size * 0.34)}px;top:-${Math.round(size * 0.4)}px">&times;${n}</span>`
+            : ''
+        const icon = L.divIcon({
+          className: '',
+          html: `<div class="tm-spawn-marker"><div class="tm-spawn tm-spawn-all" style="--ring:#ff7a33;width:${size}px;height:${size}px">${img}</div>${badge}</div>`,
+          iconSize: [0, 0],
+        })
+        const title = n > 1 ? escapeHtml(names[ci]) + ' (&times;' + n + ')' : escapeHtml(names[ci])
+        return L.marker(toLatLng(p[0], p[1]), { icon }).bindPopup(
+          `<div><div style="font-weight:700">${title}</div>` +
             `<div style="opacity:.55;font-size:11px;margin:2px 0">${p[0]}, ${p[1]}, z${floorRef.current}</div>` +
             `<a href="/entry/${escapeHtml(slugs[ci] ?? '')}" style="color:var(--color-accent);font-size:11px;font-weight:700">${escapeHtml(t('map.viewEntry'))}</a></div>`,
         )
+      })
+        if (wanted.size >= SPRITE_CAP) break
+      }
     }
+    syncMarkers(grp, spriteCacheRef.current, `${zoom}|${overlayGenRef.current}`, wanted)
   }
 
   // Draw the imported minimap POI markers for the current floor. De-duplicated
@@ -598,38 +1031,40 @@ export function MapPage() {
     const grp = poiGroupRef.current
     const map = mapRef.current
     if (!grp || !map) return
-    grp.clearLayers()
-    if (!showPoiRef.current) return
+    if (!showPoiRef.current) {
+      syncMarkers(grp, poiCacheRef.current, 'off', new Map())
+      return
+    }
     const f = floorRef.current
-    const b = map.getBounds()
-    const N = b.getNorth()
-    const S = b.getSouth()
-    const E = b.getEast()
-    const W = b.getWest()
+    const zoom = map.getZoom()
     const cell = 34
-    const seen = new Set<string>()
+    const view = map.getPixelBounds()
+    const minX = view.min!.x - cell
+    const maxX = view.max!.x + cell
+    const minY = view.min!.y - cell
+    const maxY = view.max!.y + cell
+    const wanted = new Map<string, () => L.Marker>()
     for (const m of poiRef.current) {
       if (m.z !== f) continue
-      const lat = -m.y
-      const lng = m.x
-      if (lat < S || lat > N || lng < W || lng > E) continue
-      const pt = map.latLngToContainerPoint([lat, lng])
+      const pt = map.project(toLatLng(m.x, m.y), zoom)
+      if (pt.x < minX || pt.x > maxX || pt.y < minY || pt.y > maxY) continue
       const key = Math.floor(pt.x / cell) + '_' + Math.floor(pt.y / cell)
-      if (seen.has(key)) continue
-      seen.add(key)
-      const icon = L.divIcon({
-        className: '',
-        html: `<div class="tm-poi" style="--poi:${m.color}"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="${m.icon}"/></svg></div>`,
-        iconSize: [0, 0],
+      if (wanted.has(key)) continue
+      wanted.set(key, () => {
+        const icon = L.divIcon({
+          className: '',
+          html: `<div class="tm-poi" style="--poi:${m.color}"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="${m.icon}"/></svg></div>`,
+          iconSize: [0, 0],
+        })
+        return L.marker(toLatLng(m.x, m.y), { icon })
+          .bindTooltip(escapeHtml(m.desc), { direction: 'top', offset: [0, -9] })
+          .bindPopup(
+            `<div><div style="font-weight:700">${escapeHtml(m.desc)}</div>` +
+              `<div style="opacity:.55;font-size:11px;margin-top:2px">${m.x}, ${m.y}, z${m.z}</div></div>`,
+          )
       })
-      L.marker(toLatLng(m.x, m.y), { icon })
-        .addTo(grp)
-        .bindTooltip(escapeHtml(m.desc), { direction: 'top', offset: [0, -9] })
-        .bindPopup(
-          `<div><div style="font-weight:700">${escapeHtml(m.desc)}</div>` +
-            `<div style="opacity:.55;font-size:11px;margin-top:2px">${m.x}, ${m.y}, z${m.z}</div></div>`,
-        )
     }
+    syncMarkers(grp, poiCacheRef.current, `${f}|${zoom}`, wanted)
   }
 
   function writeHash() {
@@ -641,6 +1076,11 @@ export function MapPage() {
     if (creaturesRef.current.length) hash += `&c=${creaturesRef.current.map((c) => c.slug).join(',')}`
     if (routeStartRef.current || routeEndRef.current)
       hash += `&r=${encodeRoutePoint(routeStartRef.current)};${encodeRoutePoint(routeEndRef.current)}`
+    if (buildPointsRef.current.length) {
+      hash += `&bp=${buildPointsRef.current.map((p) => [Math.round(p.x), Math.round(p.y), p.floor].join(',')).join(';')}`
+      hash += `&bc=${buildConnectRef.current}`
+      if (buildNameRef.current.trim()) hash += `&bn=${encodeURIComponent(buildNameRef.current.trim())}`
+    }
     window.history.replaceState(null, '', '#' + hash)
   }
 
@@ -650,8 +1090,8 @@ export function MapPage() {
 
     const map = L.map(containerRef.current, {
       crs: L.CRS.Simple,
-      preferCanvas: true, // render the ~10k spawn dots on the map's own canvas
-      minZoom: -4, // provisional; tightened to the fit-zoom once the size is known
+      preferCanvas: true, // vector layers (route polylines) render to canvas
+      minZoom: 1, // hard floor: never zoom out past z=1 (see resize clamp)
       maxZoom: 5,
       zoomControl: true,
       attributionControl: false,
@@ -661,6 +1101,10 @@ export function MapPage() {
       ],
       maxBoundsViscosity: 1.0,
     })
+
+    // The +/- zoom buttons default to the top-left corner, where they sit under
+    // the search pill; move them to the top-right, clear of the floating chrome.
+    map.zoomControl.setPosition('topright')
 
     const worldBounds = L.latLngBounds([-Y_MAX, X_MIN], [-Y_MIN, X_MAX])
 
@@ -698,15 +1142,17 @@ export function MapPage() {
     })
     layer.addTo(map)
 
-    // The "all creatures" dots (potentially ~10k) render on the map's own canvas
-    // (preferCanvas) — DOM markers would not survive that count.
-    const allGroup = L.layerGroup().addTo(map)
+    // The "all creatures" dots (potentially ~10k) paint onto a single canvas
+    // overlay in one pass — one layer object instead of one per dot.
+    const dots = new (DotCanvas as unknown as new () => DotsLayer)()
+    dots.addTo(map)
     const allSpriteGroup = L.layerGroup().addTo(map)
     const poiGroup = L.layerGroup().addTo(map)
     const spawnGroup = L.layerGroup().addTo(map)
     const cityGroup = L.layerGroup().addTo(map)
     const markersGroup = L.layerGroup().addTo(map)
     const routeGroup = L.layerGroup().addTo(map)
+    const buildGroup = L.layerGroup().addTo(map)
 
     // Restore the shared view, or default to Thais.
     if (initial.x != null && initial.y != null && initial.z != null) {
@@ -720,15 +1166,28 @@ export function MapPage() {
     markersGroupRef.current = markersGroup
     cityGroupRef.current = cityGroup
     spawnGroupRef.current = spawnGroup
-    allGroupRef.current = allGroup
+    dotsLayerRef.current = dots
     allSpriteGroupRef.current = allSpriteGroup
     poiGroupRef.current = poiGroup
     routeGroupRef.current = routeGroup
+    buildGroupRef.current = buildGroup
+    // Fresh map, fresh layer groups: the diff caches hold markers bound to the
+    // previous map (StrictMode remount), so they must start empty.
+    spriteCacheRef.current = { epoch: '', markers: new Map() }
+    poiCacheRef.current = { epoch: '', markers: new Map() }
+    creatureCacheRef.current = { epoch: '', markers: new Map() }
     setMapReady((v) => v + 1)
 
     map.on('click', (e: L.LeafletMouseEvent) => {
       const x = Math.round(e.latlng.lng)
       const y = Math.round(-e.latlng.lat)
+
+      // "Crear ruta" builder mode: each click appends an ordered waypoint on the
+      // current floor.
+      if (buildModeRef.current) {
+        appendBuildPointRef.current({ x, y, floor: floorRef.current })
+        return
+      }
 
       // "Directions" mode: first click sets the start, second the destination
       // (and kicks off the route computation).
@@ -805,20 +1264,22 @@ export function MapPage() {
       writeHash()
       renderSpritesRef.current()
       renderPoiRef.current()
+      renderCreaturesRef.current()
     })
     syncCenter()
 
     // The container may have zero size at mount (e.g. inside transitions);
-    // recompute once layout settles and whenever it resizes. Clamp the minimum
-    // zoom to the level that already shows the whole map — zooming out past that
-    // left Leaflet computing a non-finite fit zoom and crashing.
+    // recompute once layout settles and whenever it resizes. The immersive map
+    // fills the viewport, so the whole world would fit at a very low zoom — but
+    // zooming out that far reads as a tiny map floating in black. Keep z=1 as the
+    // hard floor; only tighten it further if a small container needs a higher
+    // zoom just to fit the bounds.
     const resize = () => {
       map.invalidateSize()
       const fitZoom = map.getBoundsZoom(worldBounds, false)
-      if (Number.isFinite(fitZoom)) {
-        map.setMinZoom(fitZoom)
-        if (map.getZoom() < fitZoom) map.setZoom(fitZoom)
-      }
+      const minZ = Math.max(1, Number.isFinite(fitZoom) ? fitZoom : 1)
+      map.setMinZoom(minZ)
+      if (map.getZoom() < minZ) map.setZoom(minZ)
     }
     resize()
     const raf = requestAnimationFrame(resize)
@@ -834,10 +1295,11 @@ export function MapPage() {
       markersGroupRef.current = null
       cityGroupRef.current = null
       spawnGroupRef.current = null
-      allGroupRef.current = null
+      dotsLayerRef.current = null
       allSpriteGroupRef.current = null
       poiGroupRef.current = null
       routeGroupRef.current = null
+      buildGroupRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -902,33 +1364,58 @@ export function MapPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [floor, mapReady])
 
-  // Re-draw creature spawn icons on creature/floor change.
-  useEffect(() => {
-    creaturesRef.current = creatures
+  // Draw the selected creatures' spawn icons. Seven creatures can carry ~700
+  // spawn points and Leaflet repositions every DOM marker on each zoom, so only
+  // spawns in (or near) the viewport get a DOM node; keys are world coordinates
+  // and pans/zooms reuse the existing markers (syncMarkers), adding/removing
+  // just the ones that cross the padded view edge.
+  renderCreaturesRef.current = () => {
     const grp = spawnGroupRef.current
-    if (grp) {
-      grp.clearLayers()
-      for (const cr of creatures) {
-        const img = cr.image
-          ? `<img src="${escapeHtml(cr.image)}" alt="" loading="lazy" />`
-          : ''
-        for (const sp of cr.spawns) {
-          if (sp.z !== floor) continue
+    const map = mapRef.current
+    if (!grp || !map) return
+    const f = floorRef.current
+    const zoom = map.getZoom()
+    const pad = 160 // px beyond the view so edge markers don't pop in late
+    const view = map.getPixelBounds()
+    const minX = view.min!.x - pad
+    const maxX = view.max!.x + pad
+    const minY = view.min!.y - pad
+    const maxY = view.max!.y + pad
+    const wanted = new Map<string, () => L.Marker>()
+    for (const cr of creaturesRef.current) {
+      const img = cr.image
+        ? `<img src="${escapeHtml(cr.image)}" alt="" loading="lazy" />`
+        : ''
+      for (const sp of cr.spawns) {
+        if (sp.z !== f) continue
+        const pt = map.project(toLatLng(sp.x, sp.y), zoom)
+        if (pt.x < minX || pt.x > maxX || pt.y < minY || pt.y > maxY) continue
+        wanted.set(`${cr.slug}_${sp.x}_${sp.y}`, () => {
           const icon = L.divIcon({
             className: '',
             html: `<div class="tm-spawn" style="--ring:${cr.color}">${img}</div>`,
             iconSize: [0, 0],
           })
-          L.marker(toLatLng(sp.x, sp.y), { icon })
-            .addTo(grp)
-            .bindPopup(
-              `<div><div style="font-weight:700">${escapeHtml(cr.name)}</div>` +
-                `<div style="opacity:.55;font-size:11px;margin:2px 0">${sp.x}, ${sp.y}, z${sp.z}</div>` +
-                `<a href="/entry/${escapeHtml(cr.slug)}" style="color:var(--color-accent);font-size:11px;font-weight:700">${escapeHtml(t('map.viewEntry'))}</a></div>`,
-            )
-        }
+          return L.marker(toLatLng(sp.x, sp.y), { icon }).bindPopup(
+            `<div><div style="font-weight:700">${escapeHtml(cr.name)}</div>` +
+              `<div style="opacity:.55;font-size:11px;margin:2px 0">${sp.x}, ${sp.y}, z${sp.z}</div>` +
+              `<a href="/entry/${escapeHtml(cr.slug)}" style="color:var(--color-accent);font-size:11px;font-weight:700">${escapeHtml(t('map.viewEntry'))}</a></div>`,
+          )
+        })
       }
     }
+    syncMarkers(
+      grp,
+      creatureCacheRef.current,
+      `${f}|${creaturesRef.current.map((c) => c.slug + c.color).join(',')}`,
+      wanted,
+    )
+  }
+
+  // Re-draw creature spawn icons on creature/floor change.
+  useEffect(() => {
+    creaturesRef.current = creatures
+    renderCreaturesRef.current()
     writeHash()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [creatures, floor, mapReady])
@@ -941,60 +1428,19 @@ export function MapPage() {
     grp.clearLayers()
     if (routePlan) {
       // Legs live on specific floors; only draw those on the floor in view.
-      for (const leg of routePlan.legs) {
-        if (leg.kind === 'walk') {
-          if (leg.floor !== floor || leg.path.length < 2) continue
-          const latlngs = leg.path.map((p) => toLatLng(p.x, p.y))
-          // Ink on parchment: a warm cream casing under a dark sepia core, so the
-          // walking line reads like a hand-drawn route over the busy minimap and
-          // matches the atlas identity (no map-app blue).
-          grp.addLayer(
-            L.polyline(latlngs, { color: '#f4e7c6', weight: 7, opacity: 0.95, lineJoin: 'round', lineCap: 'round' }),
-          )
-          grp.addLayer(
-            L.polyline(latlngs, { color: '#3b2313', weight: 3.5, opacity: 1, lineJoin: 'round', lineCap: 'round' }),
-          )
-        } else if (leg.kind === 'boat') {
-          // Ferry hop: drawn on whichever end's floor is in view (the Kazordoon
-          // steamboat docks underground, so a crossing can span floors).
-          if (floor !== leg.fromFloor && floor !== leg.toFloor) continue
-          // Dashed crossing in the same ink-and-parchment pair (same geometry +
-          // dashArray, so the two dash patterns overlay exactly).
-          const seg = [toLatLng(leg.from.x, leg.from.y), toLatLng(leg.to.x, leg.to.y)]
-          grp.addLayer(
-            L.polyline(seg, { color: '#3b2313', weight: 5, opacity: 0.55, dashArray: '2 9', lineCap: 'round' }),
-          )
-          grp.addLayer(
-            L.polyline(seg, { color: '#f4e7c6', weight: 2.5, opacity: 0.95, dashArray: '2 9', lineCap: 'round' }),
-          )
-          grp.addLayer(
-            L.marker(toLatLng((leg.from.x + leg.to.x) / 2, (leg.from.y + leg.to.y) / 2), {
-              icon: L.divIcon({
-                className: '',
-                html: `<div class="tm-route-boat">${iconMarkup(leg.icon)} ${escapeHtml(leg.toName)}</div>`,
-                iconSize: [0, 0],
-              }),
-              interactive: false,
+      drawRouteLegs(grp, routePlan.legs, floor, t('map.floor'), floorLabel, setFloor)
+      // Partial route: mark where the trail goes cold on its own floor.
+      if (routePlan.partial && routePlan.partial.floor === floor) {
+        grp.addLayer(
+          L.marker(toLatLng(routePlan.partial.x, routePlan.partial.y), {
+            icon: L.divIcon({
+              className: '',
+              html: `<div class="tm-route-stair is-lost">✕ ${escapeHtml(t('map.routeLostHere'))}</div>`,
+              iconSize: [0, 0],
             }),
-          )
-        } else if (leg.kind === 'stairs') {
-          if (leg.floor !== floor) continue
-          // A floor change happens here — a clickable badge that jumps the view
-          // to the destination floor. Rope spots and shovel piles show their tool
-          // so the player knows what to bring.
-          const glyph =
-            leg.tool === 'rope' ? iconMarkup('rope') : leg.tool === 'shovel' ? iconMarkup('pickaxe') : leg.dir === 'down' ? '▼' : leg.dir === 'up' ? '▲' : '⇄'
-          const cls = leg.dir === 'down' ? 'is-down' : leg.dir === 'up' ? 'is-up' : 'is-tp'
-          grp.addLayer(
-            L.marker(toLatLng(leg.from.x, leg.from.y), {
-              icon: L.divIcon({
-                className: '',
-                html: `<div class="tm-route-stair ${cls}">${glyph} ${escapeHtml(t('map.floor'))} ${floorLabel(leg.toFloor)}</div>`,
-                iconSize: [0, 0],
-              }),
-            }).on('click', () => setFloor(leg.toFloor)),
-          )
-        }
+            interactive: false,
+          }),
+        )
       }
     }
     const pin = (p: RoutePoint, label: string, color: string) =>
@@ -1013,12 +1459,107 @@ export function MapPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeStart, routeEnd, routePlan, floor, mapReady])
 
-  // Keep the placing cursor + ref in sync (route mode also uses the crosshair).
+  // Compute the built route's connecting legs whenever its points or connection
+  // mode change. 'straight' synthesizes simple walk/floor-change legs instantly;
+  // 'auto' routes each consecutive pair with the A* planner (falling back to a
+  // straight hop for any pair the router can't connect).
+  useEffect(() => {
+    const pts = buildPoints
+    if (pts.length < 2) {
+      setBuildPlan(null)
+      setBuildBusy(false)
+      return
+    }
+    const straightHop = (a: RoutePoint, b: RoutePoint): Extract<RouteLeg, { kind: 'walk' }> => ({
+      kind: 'walk',
+      floor: a.floor,
+      path: [{ x: a.x, y: a.y }, { x: b.x, y: b.y }],
+      tiles: Math.round(Math.hypot(b.x - a.x, b.y - a.y)),
+    })
+    if (buildConnect === 'straight') {
+      const legs: RouteLeg[] = []
+      let total = 0
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1]
+        const b = pts[i]
+        if (a.floor === b.floor) {
+          const leg = straightHop(a, b)
+          legs.push(leg)
+          total += leg.tiles
+        } else {
+          // A floor change between two waypoints: a badge on the origin floor.
+          legs.push({ kind: 'stairs', from: { x: a.x, y: a.y }, to: { x: b.x, y: b.y }, floor: a.floor, toFloor: b.floor, dir: b.floor < a.floor ? 'up' : 'down' })
+        }
+      }
+      setBuildPlan({ legs, totalTiles: total })
+      setBuildBusy(false)
+      return
+    }
+    let cancelled = false
+    setBuildBusy(true)
+    ;(async () => {
+      const legs: RouteLeg[] = []
+      let total = 0
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1]
+        const b = pts[i]
+        try {
+          const plan = await planRoute({ x: a.x, y: a.y, floor: a.floor }, { x: b.x, y: b.y, floor: b.floor })
+          if (plan) {
+            legs.push(...plan.legs)
+            total += plan.totalTiles
+          } else {
+            legs.push(straightHop(a, b))
+          }
+        } catch {
+          legs.push(straightHop(a, b))
+        }
+      }
+      if (!cancelled) {
+        setBuildPlan({ legs, totalTiles: total })
+        setBuildBusy(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [buildPoints, buildConnect])
+
+  // Draw the built route: its legs (shared renderer) plus numbered waypoint pins
+  // on the floor in view.
+  useEffect(() => {
+    const grp = buildGroupRef.current
+    if (!grp) return
+    grp.clearLayers()
+    if (buildPlan) drawRouteLegs(grp, buildPlan.legs, floor, t('map.floor'), floorLabel, setFloor)
+    buildPoints.forEach((p, i) => {
+      if (p.floor !== floor) return
+      grp.addLayer(
+        L.marker(toLatLng(p.x, p.y), {
+          icon: L.divIcon({
+            className: '',
+            html: `<div class="tm-route-pin" style="--rp:#8a5a2b">${i + 1}</div>`,
+            iconSize: [0, 0],
+          }),
+          interactive: false,
+        }),
+      )
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buildPoints, buildPlan, floor, mapReady])
+
+  // Keep the shared link in sync with the built route.
+  useEffect(() => {
+    writeHash()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buildPoints, buildConnect, buildName])
+
+  // Keep the placing cursor + ref in sync (route + builder modes also use it).
   useEffect(() => {
     placingRef.current = placing
     const c = mapRef.current?.getContainer()
-    if (c) c.classList.toggle('tm-placing', placing || routeMode)
-  }, [placing, routeMode])
+    if (c) c.classList.toggle('tm-placing', placing || routeMode || buildMode)
+  }, [placing, routeMode, buildMode])
 
   // --- "all creatures" overlay: every spawn on the current floor ---
   const { data: allSpawns } = useQuery<AllSpawns>({
@@ -1063,8 +1604,6 @@ export function MapPage() {
 
   useEffect(() => {
     showAllRef.current = showAll
-    const grp = allGroupRef.current
-    if (!grp) return
     if (!showAll || !allSpawns) {
       allPointsRef.current = {
         points: [],
@@ -1140,6 +1679,20 @@ export function MapPage() {
       .slice(0, 8)
   }, [debouncedQuery, glossary])
 
+  // --- item search (via the catalogue; items include drafts, so it hits the API
+  // rather than the published-only glossary) ---
+  const { data: itemResults } = useQuery({
+    queryKey: ['map-item-search', debouncedQuery.trim().toLowerCase()],
+    enabled: searchKind === 'item' && debouncedQuery.trim().length >= 2,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const { data } = await api.get<{ data: EntryListItem[] }>('/items', {
+        params: { q: debouncedQuery.trim(), per_page: 8 },
+      })
+      return data.data
+    },
+  })
+
   // Restore creatures + a shared route from the link (once, StrictMode-safe).
   useEffect(() => {
     if (restoredRef.current) return
@@ -1199,6 +1752,44 @@ export function MapPage() {
     setCreatures((prev) => prev.filter((c) => c.slug !== slug))
   }
 
+  // "¿Dónde farmeo este objeto?" — plot every creature that drops the item.
+  // Its droppers come pre-resolved to slug/name/image; each is plotted through
+  // addCreature so it gets the full toolkit (best-spawn jump, respawn switcher,
+  // "how to get there"). Capped at PALETTE.length so the map doesn't flood.
+  async function addItem(slug: string) {
+    setQuery('')
+    setSearchOpen(false)
+    setItemBusy(true)
+    try {
+      const { data } = await api.get<{ data: ItemDetail }>(`/items/${slug}`)
+      const it = data.data
+      const droppers = it.dropped_by.filter((d): d is Dropper & { slug: string } => !!d.slug)
+      const plotted = droppers.slice(0, PALETTE.length)
+      setActiveItem({
+        slug: it.slug,
+        name: it.name ?? slug,
+        image: it.image,
+        plotted: plotted.map((d) => d.slug),
+        total: droppers.length,
+      })
+      // Jump to the first dropper's densest spawn, then plot the rest quietly.
+      if (plotted.length) {
+        await addCreature(plotted[0].slug, true)
+        await Promise.all(plotted.slice(1).map((d) => addCreature(d.slug, false)))
+      }
+    } catch {
+      // leave the map as-is on failure
+    } finally {
+      setItemBusy(false)
+    }
+  }
+
+  // Drop the item context and remove the creatures it plotted.
+  function clearItem() {
+    if (activeItem) for (const s of activeItem.plotted) removeCreature(s)
+    setActiveItem(null)
+  }
+
   // Fly to the next/previous spawn cluster of a creature, switching floor.
   function cycleSpawn(slug: string, dir: 1 | -1) {
     const cr = creaturesRef.current.find((c) => c.slug === slug)
@@ -1225,6 +1816,37 @@ export function MapPage() {
     if (map) map.setView(toLatLng(cl.x, cl.y), Math.max(map.getZoom(), 3))
   }
 
+  // A plotted creature's active spawn cluster as a route endpoint (its current
+  // respawn if cycled, else the recommended best one).
+  function routeEndForCreature(cr: ActiveCreature): RoutePoint | null {
+    if (cr.clusters.length === 0) return null
+    const cl = cr.clusters[cr.jumpIdx] ?? cr.clusters[0]
+    return { x: cl.x, y: cl.y, floor: cl.z, label: cr.name }
+  }
+
+  // Set the route destination, compute the route if an origin is already
+  // picked, and fly the map to it.
+  function applyRouteEnd(pt: RoutePoint) {
+    setRouteEnd(pt)
+    setRoutePlan(null)
+    setRouteMsg(null)
+    const s = routeStartRef.current
+    if (s) computeRouteRef.current(s, pt)
+    floorRef.current = pt.floor
+    setFloor(pt.floor)
+    const map = mapRef.current
+    if (map) map.setView(toLatLng(pt.x, pt.y), Math.max(map.getZoom(), 3))
+  }
+
+  // "Cómo llegar" from a plotted creature's active spawn cluster.
+  function routeToSpawn(slug: string) {
+    const cr = creaturesRef.current.find((c) => c.slug === slug)
+    const pt = cr && routeEndForCreature(cr)
+    if (!pt) return
+    setRouteMode(true)
+    applyRouteEnd(pt)
+  }
+
   function goTo(l: Landmark) {
     floorRef.current = l.floor
     setFloor(l.floor)
@@ -1246,39 +1868,252 @@ export function MapPage() {
   const spawnsOnFloor = (cr: ActiveCreature) => cr.spawns.filter((s) => s.z === floor).length
   const activeFilterCount = [catFilter, zoneFilter, levelFilter].filter(Boolean).length
 
-  // "Most searched" rail: the site's trending creature searches. Only creatures
-  // with a slug + sprite can be plotted, so filter to those.
-  const { data: topSearched } = useTopSearches(20)
-  const hot = useMemo(
-    () =>
-      (topSearched?.data ?? [])
-        .filter((r): r is TopSearch & { slug: string; image: string } => r.type === 'creature' && !!r.slug && !!r.image)
-        .slice(0, 12),
-    [topSearched],
-  )
   const activeSlugs = useMemo(() => new Set(creatures.map((c) => c.slug)), [creatures])
 
+  // "Boss Watch": the raid/world bosses ranked by spawn heat (likelihood of
+  // being up right now / about to spawn). Powers both the ☠-mode strip and the
+  // always-on right-edge boss rail, so it's fetched on every map view.
+  // Plottable bosses (slug + sprite) sorted hottest first.
+  const { data: bossWatch, isLoading: bossLoading } = useBosses('raid', 24)
+  const bosses = useMemo(
+    () =>
+      (bossWatch ?? [])
+        .filter((b): b is BossRow & { slug: string; image: string } => !!b.slug && !!b.image)
+        .sort((a, b) => b.heat - a.heat || b.due - a.due),
+    [bossWatch],
+  )
+
+  // Published community routes, most-loaded first. Only fetched once the gallery
+  // is opened.
+  const { data: communityRoutes, isLoading: routesLoading } = useQuery({
+    queryKey: ['community-routes'],
+    enabled: routesOpen,
+    staleTime: 60 * 1000,
+    queryFn: async () => {
+      const { data } = await api.get<{ data: CommunityRoute[] }>('/routes')
+      return data.data
+    },
+  })
+
+  // Load a community route onto the map: drop it into the builder (so it renders
+  // with pins + legs and can be tweaked/re-published), fly to its start, and bump
+  // its load counter (the popularity signal).
+  function loadCommunityRoute(r: CommunityRoute) {
+    setRouteMode(false)
+    setPlacing(false)
+    setBuildMode(true)
+    setBuildName(r.name)
+    setBuildConnect(r.connect)
+    setBuildPoints(r.waypoints.map(([x, y, floor]) => ({ x, y, floor })))
+    setPublishState('idle')
+    setRoutesOpen(false)
+    const first = r.waypoints[0]
+    if (first) {
+      floorRef.current = first[2]
+      setFloor(first[2])
+      const map = mapRef.current
+      if (map) map.setView(toLatLng(first[0], first[1]), Math.max(map.getZoom(), 3))
+    }
+    api.post(`/routes/${r.id}/view`).catch(() => {})
+  }
+
   return (
-    <div className="space-y-3">
+    <div className="fixed inset-x-0 bottom-0 top-[var(--header-h,57px)] z-20 overflow-hidden bg-[#0e1015]">
       <Seo title={t('map.title')} description={t('map.intro')} path="/map" />
-      {/* Compact header — title and intro share a row on wide screens so the
-          controls and map sit higher up the page. */}
-      <div className="flex flex-col gap-x-8 gap-y-1 md:flex-row md:items-baseline md:justify-between">
-        <div className="shrink-0">
-          <p className="text-xs font-bold uppercase tracking-widest text-accent">{t('map.kicker')}</p>
-          <h1 className="text-2xl font-black tracking-tight">{t('map.title')}</h1>
-        </div>
-        <p className="max-w-xl text-sm leading-relaxed text-fg-dim">{t('map.intro')}</p>
+      <h1 className="sr-only">{t('map.title')}</h1>
+
+      {/* The atlas fills the entire immersive canvas; every control floats over it. */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div ref={containerRef} className="h-full w-full" style={{ background: '#0e1015' }} />
       </div>
 
-      {/* Primary toolbar — creature search + navigation + actions, one row */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[240px] flex-1">
+      {/* Coordinate readout — bottom-left corner. */}
+      <div className="pointer-events-none absolute bottom-2 left-2 z-[1000] rounded border border-line bg-bg/85 px-2 py-1 font-mono text-[11px] tabular-nums text-fg-dim backdrop-blur-md">
+        {center.x}, {center.y}, z{floor}
+      </div>
+
+      {/* Quick-launch mini windows — shortcuts to the games + stats, tucked into
+          the bottom-right corner (above the attribution line). */}
+      <div className="pointer-events-auto absolute bottom-9 right-2 z-[1000] flex flex-col items-end gap-1.5">
+        {QUICK_LINKS.map((q) => (
+          <Link
+            key={q.to}
+            to={q.to}
+            title={t(q.kicker)}
+            className="group flex items-center gap-2 rounded-lg border border-line-2 bg-bg-2/90 px-2.5 py-1.5 shadow-lg backdrop-blur-md transition hover:-translate-x-0.5 hover:border-accent"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-accent transition group-hover:scale-110" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d={q.icon} />
+            </svg>
+            <span className="text-xs font-bold leading-none text-fg">{t(q.title)}</span>
+          </Link>
+        ))}
+      </div>
+
+      {/* Floor selector — pinned to the right edge, vertically centred. */}
+      <div className="absolute right-2 top-1/2 z-[1000] flex max-h-[82vh] -translate-y-1/2 flex-col gap-1 overflow-y-auto rounded-md border border-line bg-bg/90 p-2 backdrop-blur-md">
+        <span className="mb-1 text-center text-[10px] font-bold uppercase tracking-widest text-fg-mute">
+          {t('map.floor')}
+        </span>
+        {FLOORS.map((f) => {
+          const rel = SURFACE - f // +N above surface, -N below
+          const label = rel === 0 ? '0' : rel > 0 ? `+${rel}` : `${rel}`
+          const active = f === floor
+          return (
+            <button
+              key={f}
+              onClick={() => setFloor(f)}
+              title={`${t('map.floor')} ${f}`}
+              className={`h-6 w-9 rounded text-[11px] font-bold tabular-nums transition ${
+                active
+                  ? 'bg-accent text-white'
+                  : f === SURFACE
+                    ? 'bg-line/40 text-fg hover:bg-line'
+                    : 'text-fg-mute hover:bg-line/40 hover:text-fg'
+              }`}
+            >
+              {label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* World-boss watch — a vertical list down the left edge (the normal-mob
+          rail is gone). Each boss shows its spawn "time"/status (heat bucket:
+          likely up / maybe / just killed, plus %) and the worlds it applies to.
+          Hottest first; always shown (skeletons while loading). Tapping plots the
+          boss's location on the map. */}
+      {(bossLoading || bosses.length > 0) &&
+        (bossRailOpen ? (
+        <aside
+          className="absolute bottom-10 left-2 top-28 z-[1000] flex w-52 flex-col gap-0.5 overflow-y-auto rounded-xl border border-line bg-bg/85 p-1.5 backdrop-blur-md"
+          aria-busy={bossLoading}
+        >
+          <div className="flex items-center justify-between gap-1.5 px-1 pb-1 text-theory">
+            <span className="flex items-center gap-1.5">
+              <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 12h.01M15 12h.01M8 20v2h8v-2M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20" />
+              </svg>
+              <span className="text-[10px] font-bold uppercase tracking-widest">{t('map.bossWatch')}</span>
+            </span>
+            <button
+              onClick={() => setBossRailOpen(false)}
+              title={t('map.modeHide')}
+              aria-label={t('map.modeHide')}
+              className="grid h-5 w-5 shrink-0 place-items-center rounded text-fg-mute transition hover:bg-line/40 hover:text-fg"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </button>
+          </div>
+          {bosses.length > 0
+            ? bosses.slice(0, 16).map((b) => {
+                const hs = HEAT_STYLE[heatBucket(b.heat)]
+                const on = activeSlugs.has(b.slug)
+                const worlds = b.worlds.slice(0, 3).join(', ')
+                const moreWorlds = b.worlds.length > 3 ? ` +${b.worlds.length - 3}` : ''
+                return (
+                  <button
+                    key={b.slug}
+                    onClick={() => (on ? removeCreature(b.slug) : addCreature(b.slug))}
+                    title={`${b.race} · ${t(hs.label)} ${b.heat}%${b.worlds.length ? ` · ${b.worlds.join(', ')}` : ''}`}
+                    className={`group flex w-full items-center gap-2 rounded-lg border px-1.5 py-1 text-left transition ${
+                      on ? 'border-accent bg-accent/10' : 'border-transparent hover:border-line-2 hover:bg-bg-2/60'
+                    }`}
+                  >
+                    <span className="relative shrink-0">
+                      <img src={b.image} alt="" loading="lazy" className="sprite h-9 w-9 object-contain transition group-hover:scale-110" />
+                      <span
+                        className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-bg ${
+                          b.heat >= 66 ? 'bg-accent' : b.heat >= 33 ? 'bg-gold' : 'bg-interp'
+                        }`}
+                      />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-bold text-fg">{b.race}</span>
+                      <span className={`flex items-center gap-1 text-[10px] font-bold ${hs.cls}`}>
+                        <span aria-hidden>{hs.glyph}</span>
+                        <span className="truncate">{t(hs.label)}</span>
+                        <span className="tabular-nums opacity-70">{b.heat}%</span>
+                      </span>
+                      {b.worlds.length > 0 && (
+                        <span className="flex items-center gap-1 text-[10px] text-fg-mute">
+                          <svg viewBox="0 0 24 24" className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="9" />
+                            <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
+                          </svg>
+                          <span className="truncate">
+                            {worlds}
+                            {moreWorlds}
+                          </span>
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                )
+              })
+            : Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full rounded-lg" />
+              ))}
+        </aside>
+        ) : (
+          // Collapsed — a compact skull button that reopens the sidebar.
+          <button
+            onClick={() => setBossRailOpen(true)}
+            title={t('map.bossWatch')}
+            aria-label={t('map.bossWatch')}
+            className="absolute left-2 top-28 z-[1000] grid h-10 w-10 place-items-center rounded-xl border border-line bg-bg/85 text-theory shadow-lg backdrop-blur-md transition hover:border-line-2 hover:text-accent"
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 12h.01M15 12h.01M8 20v2h8v-2M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20" />
+            </svg>
+          </button>
+        ))}
+
+      {/* Floating control layer — pinned to the top, translucent so the map reads
+          through it. The outer wrapper ignores pointer events so the map stays
+          draggable in the side gutters; the inner column re-enables them. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-[1000] flex flex-col p-2 pt-5 sm:p-3 sm:pt-7">
+        <div className="pointer-events-none flex w-full max-w-md flex-col gap-2">
+
+      {/* Search — the hero, pinned top-left. The action/layer hotbar lives at the
+          bottom of the screen (see below). */}
+      <div className="pointer-events-none flex flex-col gap-2">
+        {/* Search pill — creature/item mode toggle + the search field */}
+        <div className="pointer-events-auto flex w-full items-center gap-1.5 rounded-2xl border-2 border-line bg-bg-2/95 p-1 shadow-lg backdrop-blur-md transition focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25">
+          {/* Mode: creature spawns, or item droppers ("where does it drop?") */}
+          <div className="flex shrink-0 items-center gap-0.5 rounded-xl bg-bg/50 p-0.5">
+            {(
+              [
+                { key: 'creature', type: 'creature', label: t('map.searchModeCreature') },
+                { key: 'item', type: 'item', label: t('map.searchModeItem') },
+              ] as const
+            ).map((m) => (
+              <button
+                key={m.key}
+                onClick={() => {
+                  setSearchKind(m.key)
+                  setQuery('')
+                  setSearchOpen(false)
+                }}
+                title={m.label}
+                aria-label={m.label}
+                aria-pressed={searchKind === m.key}
+                className={`grid h-9 w-9 place-items-center rounded-lg transition ${
+                  searchKind === m.key ? 'bg-accent text-white shadow-sm' : 'text-fg-mute hover:text-fg'
+                }`}
+              >
+                <TypeIcon type={m.type} className="h-5 w-5" />
+              </button>
+            ))}
+          </div>
+          <div className="relative min-w-0 flex-1">
           <div className="relative">
             <svg
               aria-hidden="true"
               viewBox="0 0 24 24"
-              className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-fg-mute"
+              className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-fg-mute"
               fill="none"
               stroke="currentColor"
               strokeWidth="2.2"
@@ -1296,11 +2131,11 @@ export function MapPage() {
               }}
               onFocus={() => setSearchOpen(true)}
               onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
-              placeholder={t('map.searchCreature')}
-              className="h-12 w-full rounded-xl border-2 border-line bg-bg-2 pl-12 pr-4 text-base font-semibold text-fg shadow-sm outline-none transition placeholder:font-medium placeholder:text-fg-mute hover:border-line-2 focus:border-accent focus:ring-2 focus:ring-accent/25"
+              placeholder={t(searchKind === 'item' ? 'map.searchItem' : 'map.searchCreature')}
+              className="h-10 w-full rounded-xl bg-transparent pl-10 pr-3 text-base font-semibold text-fg outline-none placeholder:font-medium placeholder:text-fg-mute"
             />
           </div>
-          {searchOpen && debouncedQuery.trim().length >= 2 && searchResults && searchResults.length > 0 && (
+          {searchOpen && debouncedQuery.trim().length >= 2 && searchKind === 'creature' && searchResults && searchResults.length > 0 && (
             <ul className="absolute z-[1100] mt-2 max-h-80 w-full overflow-auto rounded-xl border-2 border-line bg-bg-2 py-1.5 shadow-2xl">
               {searchResults.map((r) => (
                 <li key={r.slug}>
@@ -1330,115 +2165,436 @@ export function MapPage() {
               ))}
             </ul>
           )}
+          {searchOpen && debouncedQuery.trim().length >= 2 && searchKind === 'item' && itemResults && itemResults.length > 0 && (
+            <ul className="absolute z-[1100] mt-2 max-h-80 w-full overflow-auto rounded-xl border-2 border-line bg-bg-2 py-1.5 shadow-2xl">
+              {itemResults.map((r) => (
+                <li key={r.slug}>
+                  <button
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => addItem(r.slug)}
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-surface-2"
+                  >
+                    {r.primary_image ? (
+                      <img
+                        src={r.primary_image}
+                        alt=""
+                        className="h-6 w-6 shrink-0 object-contain"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <TypeIcon type="item" className="h-4 w-4 shrink-0 text-fg-mute" />
+                    )}
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg">
+                      {r.name}
+                    </span>
+                    <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-fg-mute">
+                      {t('map.searchModeItem')}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
-        {/* Jump to a city (navigation only) */}
-        <select
-          value=""
-          onChange={(e) => {
-            const l = LANDMARKS.find((x) => x.name === e.target.value)
-            if (l) goTo(l)
-          }}
-          className="h-11 rounded-lg border border-line bg-bg-2 px-3 text-sm font-bold uppercase tracking-wider text-fg-dim outline-none transition hover:border-line-2"
-        >
-          <option value="">{t('map.goTo')}</option>
-          {LANDMARKS.map((l) => (
-            <option key={l.name} value={l.name}>
-              {l.name}
-            </option>
-          ))}
-        </select>
+        </div>
 
-        <div className="ml-auto flex items-center gap-2">
-          {/* Directions — the headline action, keeps its label */}
-          <button
-            onClick={() => {
-              const next = !routeMode
-              setRouteMode(next)
-              if (next) setPlacing(false)
-              resetRoute()
-            }}
-            className={`inline-flex h-11 items-center gap-2 rounded-lg border px-4 text-sm font-bold uppercase tracking-wider transition ${
-              routeMode
-                ? 'border-accent bg-accent text-white shadow-[0_4px_14px_-6px_rgba(156,59,46,0.9)]'
-                : 'border-line bg-bg-2 text-fg-dim hover:border-line-2 hover:text-fg'
-            }`}
-          >
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="3 11 22 2 13 21 11 13 3 11" />
-            </svg>
-            {routeMode ? t('map.routeActive') : t('map.route')}
-          </button>
+        {/* Hotbar — grouped icon slots, pinned to the bottom-centre of the screen
+            like a game action bar (fixed, so it escapes the top control column and
+            anchors to the viewport). Tooltips name each action. */}
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[1000] flex flex-wrap items-end justify-center gap-2 p-2 sm:p-3">
+          {/* Navigate & plan routes */}
+          <div className={PILL}>
+            {/* Jump to a city (native select behind a slot icon) */}
+            <div className={`relative ${SLOT} ${SLOT_OFF}`} title={t('map.goTo')}>
+              <TypeIcon type="city" className="h-5 w-5" />
+              <select
+                value=""
+                onChange={(e) => {
+                  const l = LANDMARKS.find((x) => x.name === e.target.value)
+                  if (l) goTo(l)
+                }}
+                aria-label={t('map.goTo')}
+                className="absolute inset-0 cursor-pointer opacity-0"
+              >
+                <option value="">{t('map.goTo')}</option>
+                {LANDMARKS.map((l) => (
+                  <option key={l.name} value={l.name}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          {/* Add marker — icon only */}
-          <button
-            onClick={() => {
-              setPlacing((p) => !p)
-              setRouteMode(false)
-            }}
-            title={t('map.addMarker')}
-            aria-label={t('map.addMarker')}
-            className={`grid h-11 w-11 place-items-center rounded-lg border transition ${
-              placing
-                ? 'border-accent bg-accent text-white'
-                : 'border-line bg-bg-2 text-fg-dim hover:border-line-2 hover:text-fg'
-            }`}
-          >
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
-              <path d="M12 8v4M10 10h4" />
-            </svg>
-          </button>
+            <span className="mx-0.5 h-6 w-px bg-line/50" />
 
-          {/* Clear markers — icon only, with count */}
-          {markers.length > 0 && (
+            {/* Directions */}
             <button
-              onClick={() => setMarkers([])}
-              title={`${t('map.clear')} (${markers.length})`}
-              aria-label={`${t('map.clear')} (${markers.length})`}
-              className="relative grid h-11 w-11 place-items-center rounded-lg border border-line bg-bg-2 text-fg-mute transition hover:border-line-2 hover:text-fg"
+              onClick={() => {
+                const next = !routeMode
+                setRouteMode(next)
+                resetRoute()
+                if (next) {
+                  setPlacing(false)
+                  setBuildMode(false)
+                  const cr = creaturesRef.current[0]
+                  const pt = cr && routeEndForCreature(cr)
+                  if (pt) applyRouteEnd(pt)
+                }
+              }}
+              title={routeMode ? t('map.routeActive') : t('map.route')}
+              aria-label={t('map.route')}
+              aria-pressed={routeMode}
+              className={`${SLOT} ${routeMode ? SLOT_ON : SLOT_OFF}`}
             >
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                <polygon points="3 11 22 2 13 21 11 13 3 11" />
               </svg>
-              <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold text-white">
-                {markers.length}
-              </span>
             </button>
-          )}
 
-          {/* Share link — icon only */}
-          <button
-            onClick={share}
-            title={t('map.share')}
-            aria-label={t('map.share')}
-            className={`grid h-11 w-11 place-items-center rounded-lg border transition ${
-              copied
-                ? 'border-canon bg-canon/15 text-canon'
-                : 'border-line bg-bg-2 text-fg-dim hover:border-line-2 hover:text-fg'
-            }`}
-          >
-            {copied ? (
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 6 9 17l-5-5" />
-              </svg>
-            ) : (
+            {/* Community routes gallery */}
+            <button
+              onClick={() => setRoutesOpen((v) => !v)}
+              title={t('map.routesGallery')}
+              aria-label={t('map.routesGallery')}
+              aria-pressed={routesOpen}
+              className={`${SLOT} ${routesOpen ? SLOT_ON : SLOT_OFF}`}
+            >
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="18" cy="5" r="3" />
-                <circle cx="6" cy="12" r="3" />
-                <circle cx="18" cy="19" r="3" />
-                <path d="m8.6 13.5 6.8 4M15.4 6.5 8.6 10.5" />
+                <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
               </svg>
+            </button>
+
+            {/* Build a route */}
+            <button
+              onClick={toggleBuildMode}
+              title={t('map.buildRoute')}
+              aria-label={t('map.buildRoute')}
+              aria-pressed={buildMode}
+              className={`${SLOT} ${buildMode ? SLOT_ON : SLOT_OFF}`}
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="6" cy="19" r="2" />
+                <circle cx="18" cy="5" r="2" />
+                <path d="M8 17.5 16 6.5" strokeDasharray="2 3" />
+              </svg>
+            </button>
+
+            <span className="mx-0.5 h-6 w-px bg-line/50" />
+
+            {/* Add a marker */}
+            <button
+              onClick={() => {
+                setPlacing((p) => !p)
+                setRouteMode(false)
+                setBuildMode(false)
+              }}
+              title={t('map.addMarker')}
+              aria-label={t('map.addMarker')}
+              aria-pressed={placing}
+              className={`${SLOT} ${placing ? SLOT_ON : SLOT_OFF}`}
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
+                <path d="M12 8v4M10 10h4" />
+              </svg>
+            </button>
+
+            {/* Clear markers (with count) */}
+            {markers.length > 0 && (
+              <button
+                onClick={() => setMarkers([])}
+                title={`${t('map.clear')} (${markers.length})`}
+                aria-label={`${t('map.clear')} (${markers.length})`}
+                className={`relative ${SLOT} ${SLOT_OFF}`}
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                </svg>
+                <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold text-white">
+                  {markers.length}
+                </span>
+              </button>
             )}
-          </button>
+
+            {/* Share this view */}
+            <button
+              onClick={share}
+              title={t('map.share')}
+              aria-label={t('map.share')}
+              className={`${SLOT} ${copied ? 'border-canon bg-canon/15 text-canon' : SLOT_OFF}`}
+            >
+              {copied ? (
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="18" cy="5" r="3" />
+                  <circle cx="6" cy="12" r="3" />
+                  <circle cx="18" cy="19" r="3" />
+                  <path d="m8.6 13.5 6.8 4M15.4 6.5 8.6 10.5" />
+                </svg>
+              )}
+            </button>
+          </div>
+
+          {/* Layers — what's drawn on the atlas */}
+          <div className={PILL}>
+            {/* All creatures / hide */}
+            <button
+              onClick={() => {
+                if (showAll && !bossOnly) setShowAll(false)
+                else {
+                  setShowAll(true)
+                  setBossOnly(false)
+                }
+              }}
+              title={t('map.modeAll')}
+              aria-label={t('map.modeAll')}
+              aria-pressed={showAll && !bossOnly}
+              className={`${SLOT} ${showAll && !bossOnly ? SLOT_ON : SLOT_OFF}`}
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            </button>
+
+            {/* Bosses only */}
+            <button
+              onClick={() => {
+                if (showAll && bossOnly) setBossOnly(false)
+                else {
+                  setShowAll(true)
+                  setBossOnly(true)
+                }
+              }}
+              title={t('map.bosses')}
+              aria-label={t('map.bosses')}
+              aria-pressed={showAll && bossOnly}
+              className={`${SLOT} ${showAll && bossOnly ? 'border-theory bg-theory text-white' : SLOT_OFF}`}
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 12h.01M15 12h.01M8 20v2h8v-2M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20" />
+              </svg>
+            </button>
+
+            <span className="mx-0.5 h-6 w-px bg-line/50" />
+
+            {/* Imported client markers (points of interest) */}
+            <button
+              onClick={() => setShowPoi((v) => !v)}
+              title={t('map.markersLayer')}
+              aria-label={t('map.markersLayer')}
+              aria-pressed={showPoi}
+              className={`${SLOT} ${showPoi ? 'border-interp bg-interp/15 text-interp' : SLOT_OFF}`}
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                <path d="M4 22v-7" />
+              </svg>
+            </button>
+
+            {/* Refine filters */}
+            <button
+              onClick={() => setShowFilters((v) => !v)}
+              title={t('map.filters')}
+              aria-label={t('map.filters')}
+              aria-pressed={showFilters}
+              className={`relative ${SLOT} ${showFilters || activeFilterCount ? SLOT_ON : SLOT_OFF}`}
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 6h16M7 12h10M10 18h4" />
+              </svg>
+              {activeFilterCount > 0 && (
+                <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold text-white">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+
+            {showAll && (
+              <span
+                className="px-1.5 text-sm font-bold tabular-nums text-fg-dim"
+                title={t('map.spawnsShown')}
+              >
+                {shownCount.toLocaleString()}
+              </span>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Community routes gallery — published routes others submitted, most
+          popular (most-loaded) first; clicking one loads it onto the map. */}
+      {routesOpen && (
+        <div className="pointer-events-auto rounded-xl border border-line bg-bg-2/95 px-3 py-2.5 shadow-lg backdrop-blur-md">
+          <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-accent">
+              {t('map.routesGallery')}
+            </span>
+            <span className="text-xs text-fg-mute">{t('map.routesGalleryHint')}</span>
+          </div>
+          {routesLoading ? (
+            <p className="py-2 text-sm text-fg-mute">{t('map.routesLoading')}</p>
+          ) : communityRoutes && communityRoutes.length > 0 ? (
+            <div className="flex max-h-64 flex-col gap-1.5 overflow-y-auto">
+              {communityRoutes.map((r) => (
+                <button
+                  key={r.id}
+                  onClick={() => loadCommunityRoute(r)}
+                  className="flex items-center gap-3 rounded-lg border border-line bg-bg-2 px-3 py-2 text-left transition hover:border-accent hover:bg-accent/5"
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-accent" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="6" cy="19" r="2" />
+                    <circle cx="18" cy="5" r="2" />
+                    <path d="M8 17.5 16 6.5" strokeDasharray="2 3" />
+                  </svg>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-bold text-fg">{r.name}</span>
+                    <span className="block truncate text-xs text-fg-mute">
+                      {t('map.buildPoints', { count: r.waypoints.length })}
+                      {' · '}
+                      {r.connect === 'auto' ? t('map.buildAuto') : t('map.buildStraight')}
+                      {r.author ? ` · ${r.author}` : ''}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1 text-xs font-bold tabular-nums text-fg-dim">
+                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                    {r.views}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="py-2 text-sm text-fg-mute">{t('map.routesEmpty')}</p>
+          )}
+        </div>
+      )}
+
+      {/* Item context banner — explains why a batch of creatures got plotted
+          ("where does this item drop?") and clears them all in one click. */}
+      {(activeItem || itemBusy) && (
+        <div className="pointer-events-auto flex flex-wrap items-center gap-2.5 rounded-xl border border-interp/40 bg-bg-2/95 px-3 py-2 text-sm shadow-lg backdrop-blur-md">
+          {itemBusy && !activeItem ? (
+            <span className="font-semibold text-fg-dim">{t('map.itemLoading')}</span>
+          ) : activeItem ? (
+            <>
+              {activeItem.image && (
+                <img src={activeItem.image} alt="" loading="lazy" className="sprite h-8 w-8 object-contain" />
+              )}
+              <span className="font-bold text-fg">{activeItem.name}</span>
+              <span className="text-fg-dim">
+                {activeItem.total === 0
+                  ? t('map.itemNoDroppers')
+                  : t('map.itemDropsFrom', { count: activeItem.plotted.length })}
+              </span>
+              {activeItem.total > activeItem.plotted.length && (
+                <span className="rounded-[2px] border border-line bg-bg-2 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-fg-mute">
+                  +{activeItem.total - activeItem.plotted.length} {t('map.itemMore')}
+                </span>
+              )}
+              <button
+                onClick={clearItem}
+                className="ml-auto text-xs font-bold uppercase tracking-wider text-fg-mute transition hover:text-accent"
+              >
+                ✕ {t('map.itemClear')}
+              </button>
+            </>
+          ) : null}
+        </div>
+      )}
+
+      {/* Active creature bar — right under the search so the respawn switcher
+          (◀ 1/4 ▶) is immediately visible after plotting a creature. */}
+      {creatures.length > 0 && (
+        <div className="pointer-events-auto flex flex-wrap items-center gap-2">
+          {creatures.map((cr) => (
+            <div
+              key={cr.slug}
+              className="flex items-center gap-2.5 rounded-xl border-2 bg-bg-2 py-1.5 pl-2 pr-2 shadow-sm"
+              style={{ borderColor: cr.color }}
+            >
+              {cr.image && (
+                <img src={cr.image} alt="" loading="lazy" className="sprite h-8 w-8 object-contain" />
+              )}
+              <span className="text-sm font-bold text-fg sm:text-base">{cr.name}</span>
+              <span className="text-xs font-semibold tabular-nums text-fg-mute">
+                {spawnsOnFloor(cr)}/{cr.spawns.length}
+              </span>
+              {cr.clusters.length > 0 && (
+                <button
+                  onClick={() => jumpToBest(cr.slug)}
+                  className="flex items-center gap-1 rounded-lg bg-accent/15 px-2 py-1.5 text-xs font-bold text-accent transition hover:bg-accent/25"
+                  title={t('map.bestSpawn')}
+                >
+                  <span aria-hidden>⭐</span>
+                  <span className="tabular-nums">{cr.clusters[0].count}×</span>
+                  <span className="text-accent/70">z{cr.clusters[0].z}</span>
+                </button>
+              )}
+              {cr.clusters.length > 0 && (
+                <div className="flex items-center gap-0.5 rounded-lg border border-line bg-bg p-0.5">
+                  <button
+                    onClick={() => cycleSpawn(cr.slug, -1)}
+                    disabled={cr.clusters.length < 2}
+                    className="grid h-8 w-8 place-items-center rounded-md text-sm text-fg-dim transition hover:bg-line/50 hover:text-fg disabled:opacity-30 disabled:hover:bg-transparent"
+                    title={t('map.prevSpawn')}
+                    aria-label={t('map.prevSpawn')}
+                  >
+                    ◀
+                  </button>
+                  <span className="px-1 text-center leading-tight" title={t('map.spawnAreas')}>
+                    <span className="block text-[9px] font-bold uppercase tracking-widest text-fg-mute">
+                      {t('map.respawn')}
+                    </span>
+                    <span className="block text-xs font-bold tabular-nums text-fg">
+                      {cr.jumpIdx + 1}/{cr.clusters.length}
+                    </span>
+                  </span>
+                  <button
+                    onClick={() => cycleSpawn(cr.slug, 1)}
+                    disabled={cr.clusters.length < 2}
+                    className="grid h-8 w-8 place-items-center rounded-md text-sm text-fg-dim transition hover:bg-line/50 hover:text-fg disabled:opacity-30 disabled:hover:bg-transparent"
+                    title={t('map.nextSpawn')}
+                    aria-label={t('map.nextSpawn')}
+                  >
+                    ▶
+                  </button>
+                </div>
+              )}
+              {cr.clusters.length > 0 && (
+                <button
+                  onClick={() => routeToSpawn(cr.slug)}
+                  className="grid h-8 w-8 place-items-center rounded-lg text-sm text-fg-mute transition hover:bg-accent/10 hover:text-accent"
+                  title={t('map.routeToSpawn')}
+                  aria-label={t('map.routeToSpawn')}
+                >
+                  🧭
+                </button>
+              )}
+              <button
+                onClick={() => removeCreature(cr.slug)}
+                className="grid h-8 w-8 place-items-center rounded-lg text-sm text-fg-mute transition hover:bg-accent/10 hover:text-accent"
+                title={t('map.delete')}
+                aria-label={t('map.delete')}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Directions bar — origin/destination pickers (city dropdown or map click).
           Quiet paper inset like the layer panel below, so it blends with the page
           instead of reading as a brighter plate. */}
       {routeMode && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-line bg-bg-2/40 px-3 py-2.5 text-sm">
+        <div className="pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-line bg-bg-2/95 px-3 py-2.5 shadow-lg backdrop-blur-md text-sm">
           {/* Origin */}
           <div className="flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-canon ring-2 ring-white/80" />
@@ -1452,7 +2608,9 @@ export function MapPage() {
               className="h-9 rounded-lg border border-line bg-bg-2 px-2.5 text-sm font-semibold text-fg-dim outline-none transition hover:border-line-2 focus:border-accent"
             >
               <option value="">{t('map.routeFrom')}</option>
-              {routeStart && !routeStart.label && <option value="__pt__">{t('map.routePoint')}</option>}
+              {routeStart && !isLandmark(routeStart) && (
+                <option value="__pt__">{routeStart.label ?? t('map.routePoint')}</option>
+              )}
               {LANDMARKS.map((l) => (
                 <option key={l.name} value={l.name}>
                   {l.name}
@@ -1478,7 +2636,9 @@ export function MapPage() {
               className="h-9 rounded-lg border border-line bg-bg-2 px-2.5 text-sm font-semibold text-fg-dim outline-none transition hover:border-line-2 focus:border-accent"
             >
               <option value="">{t('map.routeTo')}</option>
-              {routeEnd && !routeEnd.label && <option value="__pt__">{t('map.routePoint')}</option>}
+              {routeEnd && !isLandmark(routeEnd) && (
+                <option value="__pt__">{routeEnd.label ?? t('map.routePoint')}</option>
+              )}
               {LANDMARKS.map((l) => (
                 <option key={l.name} value={l.name}>
                   {l.name}
@@ -1506,6 +2666,7 @@ export function MapPage() {
                 const words = [
                   ...(tools.has('rope') ? [t('map.routeNeedRope')] : []),
                   ...(tools.has('shovel') ? [t('map.routeNeedShovel')] : []),
+                  ...(tools.has('levitate') ? [t('map.routeNeedLevitate')] : []),
                 ]
                 return (
                   <span className="mr-1 rounded-[2px] border border-theory/60 bg-theory/10 px-2 py-0.5 font-semibold text-fg-dim">
@@ -1538,15 +2699,17 @@ export function MapPage() {
                       className="flex items-center gap-1 font-semibold text-accent transition hover:text-accent-2"
                     >
                       <span aria-hidden>
-                        {leg.tool === 'rope' ? <Icon name="rope" /> : leg.tool === 'shovel' ? <Icon name="pickaxe" /> : leg.dir === 'down' ? '▼' : leg.dir === 'up' ? '▲' : '⇄'}
+                        {leg.tool === 'rope' ? <Icon name="rope" /> : leg.tool === 'shovel' ? <Icon name="pickaxe" /> : leg.tool === 'levitate' ? <Icon name="sparkles" /> : leg.dir === 'down' ? '▼' : leg.dir === 'up' ? '▲' : '⇄'}
                       </span>
                       {leg.tool === 'rope'
                         ? t('map.routeRope', { floor: floorLabel(leg.toFloor) })
                         : leg.tool === 'shovel'
                           ? t('map.routeShovel', { floor: floorLabel(leg.toFloor) })
-                          : leg.dir === 'teleport'
-                            ? t('map.routeTeleport', { floor: floorLabel(leg.toFloor) })
-                            : t('map.routeStairs', { floor: floorLabel(leg.toFloor) })}
+                          : leg.tool === 'levitate'
+                            ? t('map.routeLevitate', { floor: floorLabel(leg.toFloor) })
+                            : leg.dir === 'teleport'
+                              ? t('map.routeTeleport', { floor: floorLabel(leg.toFloor) })
+                              : t('map.routeStairs', { floor: floorLabel(leg.toFloor) })}
                     </button>
                   )}
                 </span>
@@ -1568,91 +2731,97 @@ export function MapPage() {
         </div>
       )}
 
-      {/* Spawn overlay control panel */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-2 rounded-xl border border-line bg-bg-2/40 px-3 py-2.5">
-        {/* Primary display mode — one choice at a time */}
-        <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-lg border border-line bg-bg p-1">
+      {/* Route builder bar — name, connection style, and the point count / actions.
+          Clicking the map appends ordered waypoints. */}
+      {buildMode && (
+        <div className="pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-line bg-bg-2/95 px-3 py-2.5 shadow-lg backdrop-blur-md text-sm">
+          <input
+            value={buildName}
+            onChange={(e) => setBuildName(e.target.value)}
+            placeholder={t('map.buildNamePlaceholder')}
+            className="h-9 min-w-[160px] flex-1 rounded-lg border border-line bg-bg-2 px-3 text-sm font-semibold text-fg outline-none transition placeholder:font-medium placeholder:text-fg-mute hover:border-line-2 focus:border-accent"
+          />
+
+          {/* Connection style: auto-route between points, or straight lines */}
+          <div className="inline-flex shrink-0 rounded-lg border border-line bg-bg p-1">
             {(
               [
-                { key: 'hide', label: t('map.modeHide'), on: 'bg-line text-fg' },
-                { key: 'all', label: `● ${t('map.modeAll')}`, on: 'bg-accent text-white' },
-                { key: 'boss', label: `☠ ${t('map.bosses')}`, on: 'bg-theory text-white' },
+                { key: 'auto', label: t('map.buildAuto') },
+                { key: 'straight', label: t('map.buildStraight') },
               ] as const
-            ).map((seg) => {
-              const mode = !showAll ? 'hide' : bossOnly ? 'boss' : 'all'
-              const active = mode === seg.key
-              return (
-                <button
-                  key={seg.key}
-                  onClick={() => {
-                    if (seg.key === 'hide') setShowAll(false)
-                    else if (seg.key === 'all') {
-                      setShowAll(true)
-                      setBossOnly(false)
-                    } else {
-                      setShowAll(true)
-                      setBossOnly(true)
-                    }
-                  }}
-                  className={`rounded-md px-3.5 py-1.5 text-sm font-bold uppercase tracking-wider transition ${
-                    active ? seg.on : 'text-fg-mute hover:text-fg'
-                  }`}
-                >
-                  {seg.label}
-                </button>
-              )
-            })}
+            ).map((m) => (
+              <button
+                key={m.key}
+                onClick={() => setBuildConnect(m.key)}
+                className={`rounded-md px-3 py-1 text-xs font-bold uppercase tracking-wider transition ${
+                  buildConnect === m.key ? 'bg-accent text-white' : 'text-fg-mute hover:text-fg'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
           </div>
-        </div>
 
-        {/* Imported client markers (points of interest) */}
-        <button
-          onClick={() => setShowPoi((v) => !v)}
-          title={t('map.markersHint')}
-          className={`h-9 rounded-lg border px-3.5 text-sm font-bold uppercase tracking-wider transition ${
-            showPoi
-              ? 'border-interp bg-interp/15 text-interp'
-              : 'border-line bg-bg-2 text-fg-dim hover:border-line-2 hover:text-fg'
-          }`}
-        >
-          ⚑ {t('map.markersLayer')}
-        </button>
-
-        <span className="hidden h-7 w-px bg-line sm:block" />
-
-        {/* Refine — toggles the collapsible filter row below */}
-        <button
-          onClick={() => setShowFilters((v) => !v)}
-          title={t('map.filters')}
-          className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3.5 text-sm font-bold uppercase tracking-wider transition ${
-            showFilters || activeFilterCount
-              ? 'border-accent bg-accent/10 text-accent'
-              : 'border-line bg-bg-2 text-fg-dim hover:border-line-2 hover:text-fg'
-          }`}
-        >
-          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 6h16M7 12h10M10 18h4" />
-          </svg>
-          {t('map.filters')}
-          {activeFilterCount > 0 && (
-            <span className="grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold text-white">
-              {activeFilterCount}
-            </span>
-          )}
-        </button>
-
-        {showAll && (
-          <span className="ml-auto text-sm font-bold tabular-nums text-fg-dim">
-            {shownCount.toLocaleString()} <span className="font-semibold text-fg-mute">{t('map.spawnsShown')}</span>
+          <span className="flex items-center gap-2 text-fg-dim">
+            {buildBusy ? t('map.buildBusy') : t('map.buildPoints', { count: buildPoints.length })}
+            {buildPlan && buildPlan.totalTiles > 0 && !buildBusy && (
+              <span className="rounded-[2px] border border-line bg-bg-2 px-2 py-0.5 font-bold tabular-nums text-fg">
+                {buildPlan.totalTiles.toLocaleString()} {t('map.routeDist')}
+              </span>
+            )}
           </span>
-        )}
-      </div>
+
+          {buildPoints.length > 0 ? (
+            <>
+              <button
+                onClick={publishRoute}
+                disabled={!buildName.trim() || publishState === 'sending' || publishState === 'done'}
+                title={!buildName.trim() ? t('map.buildPublishNeedName') : t('map.buildPublish')}
+                className={`rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  publishState === 'done'
+                    ? 'bg-canon/15 text-canon'
+                    : publishState === 'error'
+                      ? 'bg-accent/15 text-accent'
+                      : 'bg-accent text-white hover:bg-accent-2'
+                }`}
+              >
+                {publishState === 'sending'
+                  ? t('map.buildPublishing')
+                  : publishState === 'done'
+                    ? `✓ ${t('map.buildPublished')}`
+                    : publishState === 'error'
+                      ? t('map.buildPublishError')
+                      : t('map.buildPublish')}
+              </button>
+              <button
+                onClick={undoBuildPoint}
+                className="text-xs font-bold uppercase tracking-wider text-fg-mute transition hover:text-fg"
+              >
+                ↶ {t('map.buildUndo')}
+              </button>
+              <button
+                onClick={share}
+                className="text-xs font-bold uppercase tracking-wider text-accent transition hover:text-accent-2"
+              >
+                {copied ? t('map.copied') : t('map.share')}
+              </button>
+              <button
+                onClick={clearBuild}
+                className="ml-auto text-xs font-bold uppercase tracking-wider text-fg-mute transition hover:text-accent"
+              >
+                ✕ {t('map.buildClear')}
+              </button>
+            </>
+          ) : (
+            <span className="ml-auto text-fg-mute">{t('map.buildHint')}</span>
+          )}
+        </div>
+      )}
 
       {/* Collapsible refine panel — hidden until "Filtros" is opened, so it
           doesn't take a permanent row above the map. */}
       {showFilters && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-bg-2/40 px-3 py-2.5">
+        <div className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-xl border border-line bg-bg-2/95 px-3 py-2.5 shadow-lg backdrop-blur-md">
           <select
             value={catFilter}
             onChange={(e) => {
@@ -1719,139 +2888,60 @@ export function MapPage() {
         </div>
       )}
 
-      {/* Map + "most searched" quick-access rail: a single background-less column
-          of creature icons down the left edge. Tapping one plots it on the map. */}
-      <div className="flex gap-2 sm:gap-3">
-        {hot.length > 0 && (
-          <aside className="order-1 flex h-[78vh] min-h-[440px] shrink-0 flex-col items-center gap-1.5 overflow-y-auto px-1">
-            {hot.map((r) => {
-              const on = activeSlugs.has(r.slug)
-              const name = r.name ?? r.term
+      {/* Boss Watch — only in ☠ mode. The raid/world bosses ranked by spawn heat
+          (likelihood of being up now); clicking one plots its location + flies
+          there. Turns "which bosses are up?" into a map action. */}
+      {bossOnly && bosses.length > 0 && (
+        <div className="pointer-events-auto rounded-xl border border-theory/40 bg-bg-2/95 px-3 py-2.5 shadow-lg backdrop-blur-md">
+          <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-theory">
+              ☠ {t('map.bossWatch')}
+            </span>
+            <span className="text-xs text-fg-mute">{t('map.bossWatchHint')}</span>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {bosses.map((b) => {
+              const hs = HEAT_STYLE[heatBucket(b.heat)]
+              const on = activeSlugs.has(b.slug)
               return (
                 <button
-                  key={r.slug}
-                  onClick={() => (on ? removeCreature(r.slug) : addCreature(r.slug))}
-                  title={name}
-                  aria-label={name}
-                  className={`group grid h-11 w-11 shrink-0 place-items-center rounded-lg transition ${
-                    on ? 'bg-accent/15 ring-1 ring-inset ring-accent/50' : 'hover:bg-bg-2'
+                  key={b.slug}
+                  onClick={() => (on ? removeCreature(b.slug) : addCreature(b.slug))}
+                  title={t('map.bossTip', { worlds: b.worlds_active, due: b.due, cd: b.cooldown })}
+                  className={`flex shrink-0 items-center gap-2 rounded-lg border px-2 py-1.5 transition ${
+                    on ? 'border-accent bg-accent/10' : 'border-line bg-bg-2 hover:border-line-2'
                   }`}
                 >
-                  <img
-                    src={r.image}
-                    alt={name}
-                    loading="lazy"
-                    className="sprite h-10 w-10 object-contain transition group-hover:scale-110"
-                  />
+                  <img src={b.image} alt="" loading="lazy" className="sprite h-9 w-9 shrink-0 object-contain" />
+                  <span className="flex flex-col items-start pr-1">
+                    <span className="whitespace-nowrap text-sm font-bold text-fg">{b.race}</span>
+                    <span className={`whitespace-nowrap text-[10px] font-bold uppercase tracking-wider ${hs.cls}`}>
+                      {hs.glyph} {t(hs.label)} · {b.heat}%
+                    </span>
+                    {b.worlds.length > 0 && (
+                      <span className="flex items-center gap-1 whitespace-nowrap text-[10px] font-semibold text-fg-mute">
+                        <svg viewBox="0 0 24 24" className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="9" />
+                          <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
+                        </svg>
+                        {b.worlds.slice(0, 2).join(' · ')}
+                        {b.worlds.length > 2 ? ` +${b.worlds.length - 2}` : ''}
+                      </span>
+                    )}
+                  </span>
                 </button>
               )
             })}
-          </aside>
-        )}
-
-      <div className="relative order-2 flex-1 overflow-hidden rounded-lg border border-line bg-[#0e1015]">
-        <div ref={containerRef} className="h-[78vh] min-h-[440px] w-full" style={{ background: '#0e1015' }} />
-
-        {/* Coordinate readout */}
-        <div className="pointer-events-none absolute bottom-2 left-2 z-[1000] rounded border border-line bg-bg/85 px-2 py-1 font-mono text-[11px] tabular-nums text-fg-dim backdrop-blur-md">
-          {center.x}, {center.y}, z{floor}
-        </div>
-
-        {/* Floor selector */}
-        <div className="absolute right-3 top-3 z-[1000] flex flex-col gap-1 rounded-md border border-line bg-bg/90 p-2 backdrop-blur-md">
-          <span className="mb-1 text-center text-[10px] font-bold uppercase tracking-widest text-fg-mute">
-            {t('map.floor')}
-          </span>
-          {FLOORS.map((f) => {
-            const rel = SURFACE - f // +N above surface, -N below
-            const label = rel === 0 ? '0' : rel > 0 ? `+${rel}` : `${rel}`
-            const active = f === floor
-            return (
-              <button
-                key={f}
-                onClick={() => setFloor(f)}
-                title={`${t('map.floor')} ${f}`}
-                className={`h-6 w-9 rounded text-[11px] font-bold tabular-nums transition ${
-                  active
-                    ? 'bg-accent text-white'
-                    : f === SURFACE
-                      ? 'bg-line/40 text-fg hover:bg-line'
-                      : 'text-fg-mute hover:bg-line/40 hover:text-fg'
-                }`}
-              >
-                {label}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-      </div>
-
-      {/* Active creature legend — sits below the map so adding creatures never
-          pushes the map down the page. */}
-      {creatures.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          {creatures.map((cr) => (
-            <span
-              key={cr.slug}
-              className="flex items-center gap-2 rounded-full border border-line bg-bg-2 py-1 pl-1.5 pr-2 text-xs font-semibold text-fg-dim"
-            >
-              <span
-                className="inline-block h-3 w-3 rounded-full border border-white/70"
-                style={{ background: cr.color }}
-              />
-              {cr.image && <img src={cr.image} alt="" loading="lazy" className="tm-legend-sprite" />}
-              <span className="text-fg">{cr.name}</span>
-              <span className="text-fg-mute">
-                {spawnsOnFloor(cr)}/{cr.spawns.length}
-              </span>
-              {cr.clusters.length > 0 && (
-                <button
-                  onClick={() => jumpToBest(cr.slug)}
-                  className="flex items-center gap-1 rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent transition hover:bg-accent/25"
-                  title={t('map.bestSpawn')}
-                >
-                  <span aria-hidden>⭐</span>
-                  <span className="tabular-nums">{cr.clusters[0].count}×</span>
-                  <span className="text-accent/70">z{cr.clusters[0].z}</span>
-                </button>
-              )}
-              {cr.clusters.length > 1 && (
-                <span className="ml-0.5 flex items-center gap-1 rounded bg-line/40 px-1">
-                  <button
-                    onClick={() => cycleSpawn(cr.slug, -1)}
-                    className="text-fg-mute transition hover:text-fg"
-                    title={t('map.prevSpawn')}
-                  >
-                    ◀
-                  </button>
-                  <span className="text-[10px] tabular-nums text-fg-dim" title={t('map.spawnAreas')}>
-                    {cr.jumpIdx + 1}/{cr.clusters.length}
-                  </span>
-                  <button
-                    onClick={() => cycleSpawn(cr.slug, 1)}
-                    className="text-fg-mute transition hover:text-fg"
-                    title={t('map.nextSpawn')}
-                  >
-                    ▶
-                  </button>
-                </span>
-              )}
-              <button
-                onClick={() => removeCreature(cr.slug)}
-                className="ml-0.5 text-fg-mute transition hover:text-accent"
-                title={t('map.delete')}
-              >
-                ✕
-              </button>
-            </span>
-          ))}
+          </div>
         </div>
       )}
 
-      {/* Imported-marker category legend — below the map, shown only with the layer on */}
+        </div>
+      </div>
+
+      {/* Imported-marker category legend — floats along the bottom when the layer is on */}
       {showPoi && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1 text-xs font-semibold text-fg-dim">
+        <div className="pointer-events-auto absolute bottom-20 left-1/2 z-[1000] flex max-w-[94vw] -translate-x-1/2 flex-wrap items-center justify-center gap-x-4 gap-y-2 overflow-x-auto rounded-xl border border-line bg-bg/85 px-3 py-2 text-xs font-semibold text-fg-dim backdrop-blur-md">
           <span className="text-[10px] font-bold uppercase tracking-widest text-fg-mute">
             {t('map.markersLegend')}
           </span>
@@ -1885,7 +2975,9 @@ export function MapPage() {
         </div>
       )}
 
-      <p className="text-xs text-fg-mute">{t('map.disclaimer')}</p>
+      <p className="pointer-events-none absolute bottom-2 right-2 z-[1000] max-w-[42vw] text-right text-[10px] leading-tight text-fg-mute/70">
+        {t('map.disclaimer')}
+      </p>
 
       {/* New-marker naming modal (replaces the old window.prompt) */}
       {markerDraft && (

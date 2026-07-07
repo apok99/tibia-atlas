@@ -38,7 +38,18 @@ class EntryListingQuery
             ->when($filters->q !== null, function ($q) use ($filters) {
                 // Escape LIKE wildcards in user input so "50%" or "a_b" match
                 // literally, mirroring the autocomplete search.
-                $term = '%'.addcslashes($filters->q, '%_\\').'%';
+                $escaped = addcslashes($filters->q, '%_\\');
+
+                if ($filters->qMode === 'starts') {
+                    // Prefix mode: only names that begin with the term — the
+                    // overview would make "starts with" meaningless.
+                    $q->whereHas('translations', fn ($t) => $t
+                        ->where('name', 'ilike', $escaped.'%'));
+
+                    return;
+                }
+
+                $term = '%'.$escaped.'%';
                 $q->whereHas('translations', fn ($t) => $t
                     ->where('name', 'ilike', $term)
                     ->orWhere('overview', 'ilike', $term))

@@ -70,6 +70,37 @@ export function HomePage() {
         </span>
       </Link>
 
+      {/* Bestiary Altar — the daily silhouette game, mirrored to face the other
+          way so it pairs with the Bestiordle plate above it. */}
+      <Link
+        to="/altar"
+        className="atlas-plate group flex flex-col items-start gap-4 p-5 sm:flex-row-reverse sm:items-center sm:gap-6 sm:text-right"
+      >
+        <span
+          className="relative grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-lg border border-line-2 bg-surface"
+          aria-hidden="true"
+        >
+          <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_38%,rgba(196,167,240,0.3),transparent_70%)]" />
+          <img
+            src="/api/altar/silhouette"
+            alt=""
+            className="relative h-12 w-12 object-contain [filter:grayscale(1)_contrast(0)_brightness(0.5)] [image-rendering:pixelated]"
+          />
+        </span>
+        <div className="flex-1">
+          <p className="font-title text-[11px] uppercase tracking-[0.2em] text-accent">
+            {t('altar.kicker')}
+          </p>
+          <h3 className="mt-1 font-title text-xl uppercase tracking-[0.06em] text-fg">
+            {t('altar.brand')}
+          </h3>
+          <p className="mt-1 text-sm italic leading-relaxed text-fg-dim">{t('altar.subtitle')}</p>
+        </div>
+        <span className="btn shrink-0">
+          <span aria-hidden="true">←</span> {t('altar.play')}
+        </span>
+      </Link>
+
       {/* The dashboard's rotating creature orbit — real "most hunted" data. */}
       <MostHunted />
     </div>

@@ -114,11 +114,6 @@ function SlotCard({ slot }: { slot: LoadoutSlot }) {
         <span className="text-[11px] font-bold uppercase tracking-widest text-accent-2">
           {t(`items.slot.${slot.slot}`)}
         </span>
-        {best.item?.power != null && (
-          <span className="text-[10px] font-bold uppercase tracking-wider text-fg-mute">
-            {t('items.power')} <span className="tabular-nums text-fg">{best.item.power}</span>
-          </span>
-        )}
       </div>
 
       {/* Best in slot. */}
@@ -153,15 +148,20 @@ function SlotCard({ slot }: { slot: LoadoutSlot }) {
         </div>
       </div>
 
+      {/* Flavour text — the item's in-game description. */}
+      {best.overview && (
+        <p className="mt-2 text-xs leading-relaxed text-fg-mute">{best.overview}</p>
+      )}
+
       {/* Alternatives. */}
       {slot.alternatives.length > 0 && (
         <div className="mt-2.5 border-t border-line pt-2">
           <span className="text-[10px] font-bold uppercase tracking-wider text-fg-mute">
             {t('items.alternatives')}
           </span>
-          <div className="mt-1.5 flex flex-wrap gap-2">
+          <div className="mt-1.5 space-y-1.5">
             {slot.alternatives.map((alt) => (
-              <AltChip key={alt.slug} alt={alt} />
+              <AltRow key={alt.slug} alt={alt} />
             ))}
           </div>
         </div>
@@ -192,21 +192,42 @@ function SlotCardSkeleton() {
   )
 }
 
-function AltChip({ alt }: { alt: EntryListItem }) {
+function AltRow({ alt }: { alt: EntryListItem }) {
+  const { t } = useTranslation()
+
   return (
-    <span
-      title={`${alt.name}${alt.item?.power != null ? ` · ${alt.item.power}` : ''}`}
-      className="flex items-center gap-1.5 rounded border border-line bg-surface/60 py-0.5 pl-0.5 pr-2"
-    >
-      {alt.primary_image && (
-        <img
-          src={alt.primary_image}
-          alt={alt.name ?? ''}
-          loading="lazy"
-          className="h-6 w-6 object-contain"
-        />
-      )}
-      <span className="max-w-28 truncate text-[11px] text-fg-mute">{alt.name}</span>
-    </span>
+    <div className="flex items-start gap-2.5 rounded border border-line bg-surface/60 p-2">
+      <div className="sprite-tile flex h-10 w-10 shrink-0 items-center justify-center">
+        {alt.primary_image && (
+          <img
+            src={alt.primary_image}
+            alt={alt.name ?? ''}
+            loading="lazy"
+            className="sprite max-h-8 max-w-8 object-contain"
+          />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs font-semibold text-fg">{alt.name}</span>
+          {alt.item?.level ? (
+            <span className="rounded bg-surface px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-accent-2">
+              {t('items.lvl', { n: alt.item.level })}
+            </span>
+          ) : null}
+          {statChips(alt.item, t).map((c) => (
+            <span
+              key={c.label}
+              className="rounded bg-surface px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-fg-mute"
+            >
+              {c.label} <span className="tabular-nums text-fg">{c.value}</span>
+            </span>
+          ))}
+        </div>
+        {alt.overview && (
+          <p className="mt-1 text-[11px] leading-relaxed text-fg-mute">{alt.overview}</p>
+        )}
+      </div>
+    </div>
   )
 }

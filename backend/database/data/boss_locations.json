@@ -355,10 +355,10 @@
     "src": "Secret Library ice wing (same room as Brother Chill)"
   },
   "ghulosh-deathgaze": {
-    "x": 32479,
-    "y": 32780,
-    "z": 11,
-    "src": "Ghulosh's room, Secret Library"
+    "x": 32756,
+    "y": 32721,
+    "z": 10,
+    "src": "Client marker: Ghulosh room (same room as base Ghulosh, Secret Library)"
   },
   "dragon-hoard": {
     "x": 32479,
@@ -439,16 +439,16 @@
     "src": "Oramond (TibiaWiki location)"
   },
   "horadron": {
-    "x": 33524,
-    "y": 32477,
-    "z": 7,
-    "src": "Roshamuul Prison (TibiaWiki location)"
+    "x": 33535,
+    "y": 32382,
+    "z": 12,
+    "src": "Roshamuul Prison, floor -5 (TibiaWiki Gaz'haragoth: raid at 131.23|126.126|12)"
   },
   "morgaroth": {
-    "x": 32095,
-    "y": 32583,
-    "z": 7,
-    "src": "Underground Goroma Volcano (TibiaWiki location)"
+    "x": 32088,
+    "y": 32573,
+    "z": 13,
+    "src": "Underground Goroma Volcano demon lair (client marker \"Demons\", floor -6)"
   },
   "minishabaal": {
     "x": 33236,
@@ -517,10 +517,10 @@
     "src": "Lion's Rock (Forgotten Knowledge Quest final area)"
   },
   "an-observer-eye": {
-    "x": 33137,
-    "y": 32352,
-    "z": 7,
-    "src": "Lion's Rock (Forgotten Knowledge Quest, Replica Dungeon)"
+    "x": 32786,
+    "y": 32818,
+    "z": 13,
+    "src": "TibiaWiki: Replica Dungeon ({{Mapper Coords|128.18|128.50|13}})"
   },
   "football-creature": {
     "x": 33607,
@@ -534,5 +534,59 @@
     "y": 32688,
     "z": 7,
     "src": "TibiaWiki: Ferumbras' Citadel on Kharos ({{Mapper Coords|125.121|127.176|7}})"
+  },
+  "fleshcrawler": {
+    "x": 33224,
+    "y": 32690,
+    "z": 7,
+    "src": "Kha'labal ancient-scarab field (roaming desert boss)"
+  },
+  "anomaly": {
+    "x": 32106,
+    "y": 31329,
+    "z": 12,
+    "src": "Client marker: Boss Anomaly - Darama (exact)"
+  },
+  "dreadmaw": {
+    "x": 33272,
+    "y": 31165,
+    "z": 5,
+    "src": "Client marker: Dreadmaw (approximate spawn location)"
+  },
+  "eradicator": {
+    "x": 32221,
+    "y": 31373,
+    "z": 14,
+    "src": "Client marker: Eradicator (SD) (exact)"
+  },
+  "heoni": {
+    "x": 33232,
+    "y": 31750,
+    "z": 4,
+    "src": "reverted to original import value (no exact marker; my wiki edit was unverified)"
+  },
+  "hide": {
+    "x": 32827,
+    "y": 32691,
+    "z": 7,
+    "src": "Client marker: task boss: Hide (exact)"
+  },
+  "thul": {
+    "x": 32085,
+    "y": 32782,
+    "z": 12,
+    "src": "Client marker: Task boss: Thul (exact)"
+  },
+  "bibby-bloodbath": {
+    "x": 32350,
+    "y": 31721,
+    "z": 7,
+    "src": "Client marker: Bibby Bloodbath (exact spawn tile)"
+  },
+  "essence-of-malice": {
+    "x": 33099,
+    "y": 31921,
+    "z": 15,
+    "src": "Client marker: Essence of Malice room"
   }
 }

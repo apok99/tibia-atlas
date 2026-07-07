@@ -119,7 +119,10 @@ function loadItems() {
   // as a door — windows, wall segments, tables, statues, torches… Whitelisting all
   // of them pierced house walls (routes walked through window tiles). A door is a
   // passage only if its NAME says so.
-  const DOOR_NAMES = /^(closed door|open door|door|gate of expertise|entrance|closed gate|open gate|closed fence gate|open fence gate)$/
+  // "ornate door with a keyhole" = the Medusa Shield Quest double doors in
+  // Drefia's pentagon (sealed the whole wyrm-lair descent); "magic door" =
+  // the classic blue quest doors; "hive gate" = Quirefang's hive gates.
+  const DOOR_NAMES = /^(closed door|open door|door|gate of expertise|entrance|closed gate|open gate|closed fence gate|open fence gate|ornate door with a keyhole|magic door|hive gate)$/
   for (const [a, b] of rows) {
     if (/key="type"\s+value="door"/.test(b)) {
       const nm = a.match(/\bname="([^"]*)"/)
@@ -161,8 +164,11 @@ function loadItems() {
   // Kept as a separate set from doors: doors only exempt their own id (a "window"
   // can be type=door and must NOT unblock its wall tile), gates unblock the tile.
   // This pass also catches self-closing <item …/> rows the paired regex misses.
+  // "ornate door with a keyhole" (Drefia's Medusa Shield double doors),
+  // "magic door" (blue quest doors) and "hive gate" (Quirefang) also stack on
+  // wall items, so they need the same tile-level override as city gates.
   const gates = new Set()
-  { const re = /<item\s+([^>]*?)\/?>/g; let m; while ((m = re.exec(xml))) if (/\bname="gate"/i.test(m[1])) expand(m[1], (i) => gates.add(i)) }
+  { const re = /<item\s+([^>]*?)\/?>/g; let m; while ((m = re.exec(xml))) if (/\bname="(gate|ornate door with a keyhole|magic door|hive gate)"/i.test(m[1])) expand(m[1], (i) => gates.add(i)) }
   return { doors, ladders, fchange, gates, useDown, ropeUp, shovelDown }
 }
 

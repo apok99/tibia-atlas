@@ -32,4 +32,23 @@ class CreatureKillStatsTransformer
             'level_7d' => $expEach ? TibiaExp::levelForExp($expEach * $weekKilled) : null,
         ];
     }
+
+    /**
+     * Popularity block: where this creature ranks by creatures slain (7d)
+     * among every race hunted on the latest snapshot.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function popularity(?\stdClass $row): ?array
+    {
+        if (! $row || $row->total < 1) {
+            return null;
+        }
+
+        return [
+            'rank' => $row->rank,
+            'total' => $row->total,
+            'top_percent' => max(1, (int) ceil($row->rank / $row->total * 100)),
+        ];
+    }
 }

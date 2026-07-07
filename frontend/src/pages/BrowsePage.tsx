@@ -24,11 +24,14 @@ export function BrowsePage() {
   // views are shareable and survive a refresh.
   const classification = searchParams.get('cls') ?? ''
   const boss = searchParams.get('boss') ?? ''
+  // Search match mode: contains (default) or name-prefix ("starts with").
+  const qMode = searchParams.get('qm') === 'starts' ? 'starts' : 'contains'
   const showFilters = type === 'creature'
 
   const { data, isLoading } = useEntries({
     type,
     q: debouncedQ || undefined,
+    q_mode: debouncedQ && qMode === 'starts' ? 'starts' : undefined,
     page,
     classification: classification || undefined,
     boss: boss === '0' || boss === '1' ? boss : undefined,
@@ -36,18 +39,18 @@ export function BrowsePage() {
 
   // Any filter change should reset back to page 1 (but not on initial load,
   // and not when React StrictMode double-invokes this effect in dev).
-  const prevFilters = useRef({ q: debouncedQ, type, classification, boss })
+  const prevFilters = useRef({ q: debouncedQ, qMode, type, classification, boss })
   useEffect(() => {
     const p = prevFilters.current
-    if (p.q === debouncedQ && p.type === type && p.classification === classification && p.boss === boss) return
-    prevFilters.current = { q: debouncedQ, type, classification, boss }
+    if (p.q === debouncedQ && p.qMode === qMode && p.type === type && p.classification === classification && p.boss === boss) return
+    prevFilters.current = { q: debouncedQ, qMode, type, classification, boss }
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.delete('page')
       return next
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedQ, type, classification, boss])
+  }, [debouncedQ, qMode, type, classification, boss])
 
   const setFilter = (key: string, value: string) => {
     setSearchParams((prev) => {
@@ -92,12 +95,29 @@ export function BrowsePage() {
           <span className="h-7 w-1.5 rounded-full bg-accent" />
           {type ? t(`types.${type}`) : t('home.browseAll')}
         </h1>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={t('browse.searchPlaceholder')}
-          className="w-full rounded-md border border-line bg-surface px-4 py-2 text-sm text-fg outline-none placeholder:text-fg-mute focus:border-accent/60 sm:w-72"
-        />
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          {/* Match mode: contains (default) vs name-prefix. Lives in the URL (qm). */}
+          <div className="inline-flex overflow-hidden rounded-md border border-line">
+            {(['contains', 'starts'] as const).map((mode, i) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setFilter('qm', mode === 'starts' ? 'starts' : '')}
+                className={`px-3 py-2 text-xs font-semibold transition ${i > 0 ? 'border-l border-line' : ''} ${
+                  qMode === mode ? 'bg-accent/15 text-accent' : 'bg-surface text-fg-dim hover:text-fg'
+                }`}
+              >
+                {t(mode === 'starts' ? 'browse.matchStarts' : 'browse.matchContains')}
+              </button>
+            ))}
+          </div>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={t('browse.searchPlaceholder')}
+            className="w-full rounded-md border border-line bg-surface px-4 py-2 text-sm text-fg outline-none placeholder:text-fg-mute focus:border-accent/60 sm:w-72"
+          />
+        </div>
       </div>
 
       {showFilters && (

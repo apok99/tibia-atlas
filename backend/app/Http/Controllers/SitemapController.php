@@ -19,7 +19,7 @@ class SitemapController extends Controller
     public function index(): Response
     {
         $body = Cache::remember('sitemap:index', 3600, function () {
-            $maps = ['pages', 'lore'];
+            $maps = ['pages', 'lore', 'items'];
             $now = now()->toAtomString();
             $xml = '<?xml version="1.0" encoding="UTF-8"?>'."\n";
             $xml .= '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'."\n";
@@ -39,13 +39,14 @@ class SitemapController extends Controller
         return match ($section) {
             'pages' => $this->xml(Cache::remember('sitemap:pages', 3600, fn () => $this->pages())),
             'lore' => $this->xml(Cache::remember('sitemap:lore', 1800, fn () => $this->lore())),
+            'items' => $this->xml(Cache::remember('sitemap:items', 3600, fn () => $this->items())),
             default => abort(404),
         };
     }
 
     private function pages(): string
     {
-        $paths = ['', 'browse', 'items', 'map', 'history', 'timeline', 'quests', 'killstats', 'soundtrack', 'wordle'];
+        $paths = ['', 'browse', 'items', 'map', 'history', 'quests', 'killstats', 'soundtrack', 'wordle', 'about'];
         foreach (EntryType::values() as $t) {
             $paths[] = 'browse/'.$t;
         }
@@ -71,6 +72,36 @@ class SitemapController extends Controller
                         self::SITE.'/entry/'.$e->slug,
                         $e->updated_at?->toAtomString(),
                         '0.8',
+                    );
+                }
+            });
+
+        return $this->wrap($urls);
+    }
+
+    /**
+     * Item detail pages. Items are a large draft catalogue, so only those with
+     * real, searchable content are listed — equippable gear, items a creature
+     * drops, or items an NPC trades — not bare decoration with no data.
+     */
+    private function items(): string
+    {
+        $urls = [];
+        Entry::ofType(EntryType::Item)
+            ->select('slug', 'updated_at')
+            ->whereRaw(
+                "(jsonb_exists(meta, 'equip_slot')"
+                ." or jsonb_array_length(coalesce(meta->'dropped_by', '[]'::jsonb)) > 0"
+                ." or jsonb_array_length(coalesce(meta->'npc_buy', '[]'::jsonb)) > 0"
+                ." or jsonb_array_length(coalesce(meta->'npc_sell', '[]'::jsonb)) > 0)"
+            )
+            ->orderBy('id')
+            ->chunk(2000, function ($chunk) use (&$urls) {
+                foreach ($chunk as $e) {
+                    $urls[] = $this->url(
+                        self::SITE.'/items/'.$e->slug,
+                        $e->updated_at?->toAtomString(),
+                        '0.6',
                     );
                 }
             });

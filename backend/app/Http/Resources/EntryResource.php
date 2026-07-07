@@ -63,6 +63,10 @@ class EntryResource extends JsonResource
             'sources' => SourceResource::collection($this->whenLoaded('sources')),
             'related' => EntryListResource::collection($this->whenLoaded('relatedEntries')),
 
+            // Items this creature drops (reverse-resolved from item drop lists);
+            // present only on creature detail responses.
+            'loot' => $this->when(! is_null($this->loot), fn () => $this->loot),
+
             'published_at' => $this->published_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

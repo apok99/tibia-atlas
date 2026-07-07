@@ -1,6 +1,8 @@
-# Tibia Atlas
+# Tibia Atlas — la guía de Tibia en español
 
-> Bilingual (Spanish & English) atlas of Tibia — the MMORPG by CipSoft. At its heart is an interactive world map with every creature's spawns floor by floor and routes between cities, plus a daily wordle, a bestiary and the documented lore of Tibia. Content separates canon from interpretation and cites every source with editorial discipline. Fan project; lore is documented, never invented. Not affiliated with CipSoft.
+> Guía y atlas de Tibia (el MMORPG de CipSoft) en español e inglés. Su núcleo es un mapa interactivo con dónde aparece cada criatura piso por piso y rutas entre ciudades, además de un bestiario, el catálogo completo de items (stats, precio y qué criatura los suelta), un wordle diario y el lore documentado de Tibia. El contenido separa el canon de la interpretación y cita cada fuente con disciplina editorial. Proyecto de fans; el lore se documenta, nunca se inventa. No afiliado a CipSoft.
+>
+> Bilingual (Spanish & English) atlas of Tibia. Interactive world map with every creature's spawns floor by floor, routes between cities, a bestiary, the full item catalogue (stats, price, droppers), a daily wordle and documented Tibia lore.
 
 Each article is structured as: Overview, Canon (only what official sources support), Interpretations, Theories, Related Entities and Sources. Content is available in Spanish (`?lang=es`, default) and English (`?lang=en`).
 
@@ -14,7 +16,6 @@ Each article is structured as: Overview, Canon (only what official sources suppo
 - [Items](https://tibiaatlas.com/items): the full item catalogue with stats
 - [Map](https://tibiaatlas.com/map): interactive map with creature spawn points
 - [Library](https://tibiaatlas.com/history): every readable in-game book, transcribed
-- [Timeline](https://tibiaatlas.com/timeline): the complete history of the world and the game
 
 ## Full index
 
