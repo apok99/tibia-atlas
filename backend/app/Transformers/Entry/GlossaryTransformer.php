@@ -6,7 +6,7 @@ use App\Models\Entry;
 use Illuminate\Support\Collection;
 
 /**
- * Shapes the auto-linking glossary: {slug, type, name} per published entry in
+ * Shapes the auto-linking glossary: {slug, type, name, image} per published entry in
  * the active locale, longest names first so multi-word matches win over their
  * substrings.
  */
@@ -23,6 +23,7 @@ class GlossaryTransformer
                 'slug' => $e->slug,
                 'type' => $e->type->value,
                 'name' => $e->translation($locale)?->name,
+                'image' => $e->primary_image,
             ])
             ->filter(fn ($i) => filled($i['name']))
             ->sortByDesc(fn ($i) => mb_strlen($i['name']))

@@ -10,6 +10,7 @@ use App\Queries\KillStats\KillOverviewQuery;
 use App\Queries\KillStats\KillStatsMetaQuery;
 use App\Queries\KillStats\RaceRankingQuery;
 use App\Queries\KillStats\RaceSeriesQuery;
+use App\Support\KillStatsCache;
 use App\Transformers\KillStats\BossRespawnTransformer;
 use App\Transformers\KillStats\BossWatchTransformer;
 use App\Transformers\KillStats\CreatureKillStatsTransformer;
@@ -48,79 +49,89 @@ class KillStatsService
     /** @return array<string, mixed> */
     public function meta(): array
     {
-        return $this->meta->summary();
+        return KillStatsCache::remember('meta', fn () => $this->meta->summary());
     }
 
     /** @return array<string, mixed> */
     public function worlds(): array
     {
-        return ['data' => $this->meta->worlds()];
+        return KillStatsCache::remember('worlds', fn () => ['data' => $this->meta->worlds()]);
     }
 
     /** @return array<string, mixed> */
     public function ranking(string $window, string $world, string $metric, int $limit): array
     {
-        $rows = $this->ranking->get($window, $world, $metric, $limit);
+        $key = 'ranking:'.$window.':'.rawurlencode($world).':'.$metric.':'.$limit;
 
-        return [
+        return KillStatsCache::remember($key, fn () => [
             'window' => $window,
             'metric' => $metric,
             'world' => $world,
-            'data' => $this->rankingTransformer->collection($rows),
-        ];
+            'data' => $this->rankingTransformer->collection(
+                $this->ranking->get($window, $world, $metric, $limit),
+            ),
+        ]);
     }
 
     /** @return array<string, mixed> */
     public function series(string $race, string $world, string $granularity): array
     {
-        $base = ['race' => $race, 'world' => $world, 'granularity' => $granularity];
+        $key = 'series:'.rawurlencode($race).':'.rawurlencode($world).':'.$granularity;
 
-        $raceId = $this->series->raceId($race);
-        if (! $raceId) {
-            return [...$base, 'data' => []];
-        }
+        return KillStatsCache::remember($key, function () use ($race, $world, $granularity) {
+            $base = ['race' => $race, 'world' => $world, 'granularity' => $granularity];
 
-        $rows = $this->series->get($raceId, $world, $granularity);
-        $precision = $granularity === 'day' ? KillPointTransformer::DAY : KillPointTransformer::MONTH;
+            $raceId = $this->series->raceId($race);
+            if (! $raceId) {
+                return [...$base, 'data' => []];
+            }
 
-        return [...$base, 'data' => $this->points->collection($rows, $precision)];
+            $rows = $this->series->get($raceId, $world, $granularity);
+            $precision = $granularity === 'day' ? KillPointTransformer::DAY : KillPointTransformer::MONTH;
+
+            return [...$base, 'data' => $this->points->collection($rows, $precision)];
+        });
     }
 
     /** @return array<string, mixed> */
     public function entry(string $slug): array
     {
-        $race = $this->creature->raceForSlug($slug);
-        if (! $race) {
-            return ['linked' => false, 'race' => null, 'latest' => null, 'series' => []];
-        }
+        return KillStatsCache::remember('entry:'.rawurlencode($slug), function () use ($slug) {
+            $race = $this->creature->raceForSlug($slug);
+            if (! $race) {
+                return ['linked' => false, 'race' => null, 'latest' => null, 'series' => []];
+            }
 
-        $expEach = is_numeric($race->exp_each) ? (int) $race->exp_each : null;
+            $expEach = is_numeric($race->exp_each) ? (int) $race->exp_each : null;
 
-        $latest = null;
-        $latestDate = $this->creature->latestDate($race->id);
-        if ($latestDate) {
-            $row = $this->creature->totalsOn($race->id, $latestDate);
-            $latest = $this->creatureTransformer->latest($latestDate, $row, $expEach);
-        }
+            $latest = null;
+            $latestDate = $this->creature->latestDate($race->id);
+            if ($latestDate) {
+                $row = $this->creature->totalsOn($race->id, $latestDate);
+                $latest = $this->creatureTransformer->latest($latestDate, $row, $expEach);
+            }
 
-        return [
-            'linked' => true,
-            'race' => $race->name,
-            'latest' => $latest,
-            'series' => $this->points->collection($this->creature->dailySeries($race->id), KillPointTransformer::DAY),
-        ];
+            return [
+                'linked' => true,
+                'race' => $race->name,
+                'latest' => $latest,
+                'series' => $this->points->collection($this->creature->dailySeries($race->id), KillPointTransformer::DAY),
+            ];
+        });
     }
 
     /** @return array<string, mixed> */
     public function experience(string $window, string $world, int $limit): array
     {
-        $rows = $this->experience->get($window, $world, $limit);
+        $key = 'experience:'.$window.':'.rawurlencode($world).':'.$limit;
 
-        return [
+        return KillStatsCache::remember($key, fn () => [
             'window' => $window,
             'world' => $world,
-            'data' => $this->experienceTransformer->collection($rows),
-        ];
+            'data' => $this->experienceTransformer->collection(
+                $this->experience->get($window, $world, $limit),
+            ),
+        ]);
     }
 
     /**
@@ -130,18 +141,20 @@ class KillStatsService
      */
     public function overview(string $world = 'all'): array
     {
-        $latest = $this->overview->latestDate();
-        $worldId = $this->overview->worldId($world);
+        return KillStatsCache::remember('overview:'.rawurlencode($world), function () use ($world) {
+            $latest = $this->overview->latestDate();
+            $worldId = $this->overview->worldId($world);
 
-        return $this->overviewTransformer->build(
-            latest: $latest,
-            totals: $latest ? $this->overview->totals($latest, $worldId) : null,
-            exp24h: $latest ? $this->overview->experience24h($latest, $worldId) : 0,
-            series: $latest ? $this->overview->activitySeries($latest) : collect(),
-            onlineHistory: $this->overview->onlineHistory(),
-            onlinePeak: $this->overview->onlinePeak(),
-            worlds: $this->overview->worlds(),
-        );
+            return $this->overviewTransformer->build(
+                latest: $latest,
+                totals: $latest ? $this->overview->totals($latest, $worldId) : null,
+                exp24h: $latest ? $this->overview->experience24h($latest, $worldId) : 0,
+                series: $latest ? $this->overview->activitySeries($latest) : collect(),
+                onlineHistory: $this->overview->onlineHistory(),
+                onlinePeak: $this->overview->onlinePeak(),
+                worlds: $this->overview->worlds(),
+            );
+        });
     }
 
     /**
@@ -151,41 +164,45 @@ class KillStatsService
      */
     public function bosses(int $limit, string $type = 'raid'): array
     {
-        $latest = $this->bossWatch->latestDate();
-        $rows = $latest
-            ? $this->bossWatch->rows($latest, (int) config('killstats.raid_max_worlds'), $type)
-            : collect();
+        return KillStatsCache::remember("bosses:{$type}:{$limit}", function () use ($limit, $type) {
+            $latest = $this->bossWatch->latestDate();
+            $rows = $latest
+                ? $this->bossWatch->rows($latest, (int) config('killstats.raid_max_worlds'), $type)
+                : collect();
 
-        return [
-            'latest' => $latest,
-            'type' => $type,
-            'data' => $this->bossWatchTransformer->collection($rows, config('killstats.iconic_raid_bosses'), $limit, $type),
-        ];
+            return [
+                'latest' => $latest,
+                'type' => $type,
+                'data' => $this->bossWatchTransformer->collection($rows, config('killstats.iconic_raid_bosses'), $limit, $type),
+            ];
+        });
     }
 
     /** @return array<string, mixed> */
     public function boss(string $slug): array
     {
-        $race = $this->bossRespawn->raceForSlug($slug);
-        if (! $race) {
-            return ['linked' => false, 'race' => null];
-        }
+        return KillStatsCache::remember('boss:'.rawurlencode($slug), function () use ($slug) {
+            $race = $this->bossRespawn->raceForSlug($slug);
+            if (! $race) {
+                return ['linked' => false, 'race' => null];
+            }
 
-        $latestDate = $this->bossRespawn->latestDate($race->id);
-        $shaped = $this->bossRespawnTransformer->build(
-            $this->bossRespawn->currentStatus($race->id, $latestDate),
-            $this->bossRespawn->lastKillPerWorld($race->id),
-            Carbon::today(),
-        );
+            $latestDate = $this->bossRespawn->latestDate($race->id);
+            $shaped = $this->bossRespawnTransformer->build(
+                $this->bossRespawn->currentStatus($race->id, $latestDate),
+                $this->bossRespawn->lastKillPerWorld($race->id),
+                Carbon::today(),
+            );
 
-        return [
-            'linked' => true,
-            'race' => $race->name,
-            'is_boss' => $race->rank === 'Boss',
-            'latest_date' => $latestDate,
-            'summary' => $shaped['summary'],
-            'worlds' => $shaped['worlds'],
-            'respawn' => $this->respawnAnalyzer->model($this->bossRespawn->killEvents($race->id)),
-        ];
+            return [
+                'linked' => true,
+                'race' => $race->name,
+                'is_boss' => $race->rank === 'Boss',
+                'latest_date' => $latestDate,
+                'summary' => $shaped['summary'],
+                'worlds' => $shaped['worlds'],
+                'respawn' => $this->respawnAnalyzer->model($this->bossRespawn->killEvents($race->id)),
+            ];
+        });
     }
 }

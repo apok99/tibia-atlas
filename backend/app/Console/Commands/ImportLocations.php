@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Entry;
 use App\Services\Import\TibiaWikiImporter;
 use Illuminate\Console\Command;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -69,7 +70,7 @@ class ImportLocations extends Command
                 $entry->meta = $meta;
                 $entry->save();
                 $updated++;
-                $this->line("  <info>✓</info> {$entry->slug}: ".\Illuminate\Support\Str::limit($location, 70));
+                $this->line("  <info>✓</info> {$entry->slug}: ".Str::limit($location, 70));
             } catch (Throwable $e) {
                 $failed++;
                 $this->line("  <error>✗</error> {$entry->slug}: {$e->getMessage()}");

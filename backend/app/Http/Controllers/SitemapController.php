@@ -24,7 +24,7 @@ class SitemapController extends Controller
             $xml = '<?xml version="1.0" encoding="UTF-8"?>'."\n";
             $xml .= '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'."\n";
             foreach ($maps as $m) {
-                $xml .= "  <sitemap><loc>".self::SITE."/sitemap-{$m}.xml</loc><lastmod>{$now}</lastmod></sitemap>\n";
+                $xml .= '  <sitemap><loc>'.self::SITE."/sitemap-{$m}.xml</loc><lastmod>{$now}</lastmod></sitemap>\n";
             }
             $xml .= '</sitemapindex>';
 

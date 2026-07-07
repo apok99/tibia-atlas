@@ -64,6 +64,7 @@ export function MapPlate() {
               key={src}
               src={src}
               alt=""
+              loading="lazy"
               className="h-full w-full object-cover transition duration-500 group-hover:saturate-100"
               style={{ imageRendering: 'pixelated', filter: 'sepia(0.5) saturate(0.85) contrast(1.05)' }}
             />
@@ -95,6 +96,7 @@ export function MapPlate() {
                 <img
                   src={p.creature.primary_image}
                   alt={p.creature.name ?? ''}
+                  loading="lazy"
                   className="sprite max-h-6 max-w-6 object-contain"
                 />
               ) : (

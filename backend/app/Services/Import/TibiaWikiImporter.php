@@ -585,6 +585,122 @@ class TibiaWikiImporter
         ];
     }
 
+    private function hasNpcInfobox(string $wikitext): bool
+    {
+        return (bool) preg_match('/\{\{\s*Infobox[ _]NPC\s*[|}\r\n]/i', $wikitext);
+    }
+
+    /**
+     * Remove image/media wikitext that pollutes NPC prose: <gallery> blocks and
+     * [[File:…]] / [[Image:…]] embeds (whose caption pipes otherwise survive
+     * cleanWikitext as junk like "thumb|right|300px").
+     */
+    private function stripMedia(string $text): string
+    {
+        $text = preg_replace('/<gallery\b[^>]*>.*?<\/gallery>/is', '', $text) ?? $text;
+        $text = preg_replace('/\[\[(?:File|Image):[^\]]*\]\]/i', '', $text) ?? $text;
+
+        return trim($text);
+    }
+
+    /**
+     * Fetch an NPC page's wikitext and pull the {{Infobox NPC}} fields into
+     * structured lore. NPCs have no `bestiarytext`; their descriptive lore lives
+     * in `notes` (and `history`), with `job`/`location`/`city`/`race` as facts.
+     *
+     * @return array{params: array<string,string>, meta: array<string,mixed>, overview: ?string, canon: ?string, location: ?string, links: list<string>}
+     */
+    public function fetchNpcData(string $title): array
+    {
+        $empty = ['params' => [], 'meta' => [], 'overview' => null, 'canon' => null, 'location' => null, 'links' => []];
+
+        $json = $this->http()
+            ->get(self::API, [
+                'action' => 'parse',
+                'format' => 'json',
+                'page' => $title,
+                'prop' => 'wikitext',
+                'redirects' => 1,
+            ])
+            ->json();
+
+        $wikitext = $json['parse']['wikitext']['*'] ?? '';
+        if (! is_string($wikitext) || ! $this->hasNpcInfobox($wikitext)) {
+            return $empty;
+        }
+
+        // Single-line infobox params we care about. `notes`/`history` are prose
+        // and may span lines — capture up to the next "| key =" or the closing }}.
+        $keys = ['name', 'job', 'location', 'city', 'race', 'gender', 'implemented'];
+        $params = [];
+        foreach ($keys as $key) {
+            if (! preg_match('/(?im)^\s*\|\s*'.preg_quote($key, '/').'\s*=\s*(.*)$/', $wikitext, $m)) {
+                continue;
+            }
+            $val = trim($m[1]);
+            if ($val !== '' && $val[0] !== '{' && $val[0] !== '['
+                && preg_match('/^(.*?)\s*\|\s*[a-zA-Z0-9_]+\s*=/', $val, $cut)) {
+                $val = trim($cut[1]);
+            }
+            $params[$key] = $val;
+        }
+
+        // Prose fields: grab everything up to the next "| key =" at line start,
+        // or the infobox's closing "}}" on its own line. Terminating on a bare
+        // "}}" would truncate at the first inline template (e.g. {{KW|Cormaya}}).
+        foreach (['notes', 'history'] as $key) {
+            if (preg_match('/(?is)\n\s*\|\s*'.$key.'\s*=\s*(.*?)(?:\n\s*\|\s*[a-zA-Z0-9_]+\s*=|\n\s*\}\})/', $wikitext, $m)) {
+                $params[$key] = $this->stripMedia(trim($m[1]));
+            }
+        }
+
+        $notes = $this->cleanWikitext($params['notes'] ?? '') ?: null;
+        $history = $this->cleanWikitext($params['history'] ?? '') ?: null;
+        $location = $this->cleanWikitext($params['location'] ?? '') ?: null;
+        $city = $this->cleanWikitext($params['city'] ?? '') ?: null;
+        $job = $this->cleanWikitext($params['job'] ?? '') ?: null;
+
+        // Canon: state the facts (job, where), then the historical note.
+        $where = $location ?: $city;
+        $canon = implode("\n\n", array_filter([
+            $job && ! in_array(strtolower($job), ['unknown occupation', 'none', ''], true) ? 'Occupation: '.$job.'.' : null,
+            $where ? 'Found in: '.$where.($city && $location && $city !== $location ? ' ('.$city.').' : '.') : null,
+            $history,
+        ])) ?: null;
+
+        $linkText = implode(' ', array_filter([$params['notes'] ?? '', $params['history'] ?? '', $params['location'] ?? '']));
+        $links = [];
+        if (preg_match_all('/\[\[([^|\]#]+)(?:\|[^\]]*)?\]\]/', $linkText, $mm)) {
+            $links = array_values(array_unique(array_map('trim', $mm[1])));
+        }
+
+        return [
+            'params' => $params,
+            'meta' => $this->buildNpcMeta($params),
+            'overview' => $notes,
+            'canon' => $canon,
+            'location' => $where,
+            'links' => $links,
+        ];
+    }
+
+    /**
+     * @param  array<string,string>  $p
+     * @return array<string,mixed>
+     */
+    private function buildNpcMeta(array $p): array
+    {
+        $meta = ['classification' => 'NPC'];
+        foreach (['job', 'city', 'location', 'race', 'gender'] as $k) {
+            $v = $this->cleanWikitext($p[$k] ?? '');
+            if ($v !== '' && ! in_array(strtolower($v), ['unknown occupation', 'unknown', 'none'], true)) {
+                $meta[$k] = $v;
+            }
+        }
+
+        return $meta;
+    }
+
     /**
      * @param  array<string,string>  $p
      * @return array<string,mixed>
@@ -693,7 +809,18 @@ class TibiaWikiImporter
         }
         // [[target|label]] → label ; [[target]] → target
         $text = preg_replace('/\[\[(?:[^|\]]*\|)?([^\]]+)\]\]/', '$1', $text) ?? $text;
-        $text = preg_replace('/\{\{[^{}]*\}\}/', '', $text) ?? $text;   // simple templates
+        // Link/keyword display templates ({{KW|Cormaya}}, {{Item|rope}}) render as
+        // their argument — keep the last non-empty one instead of dropping it.
+        $text = preg_replace_callback(
+            '/\{\{\s*(?:KW|Kw|Item|Creature|NPC|Npc|Location|City|Book|Outfit|Spell)\s*\|([^{}]*)\}\}/i',
+            function (array $m): string {
+                $parts = array_values(array_filter(array_map('trim', explode('|', $m[1])), fn ($p) => $p !== ''));
+
+                return $parts ? end($parts) : '';
+            },
+            $text
+        ) ?? $text;
+        $text = preg_replace('/\{\{[^{}]*\}\}/', '', $text) ?? $text;   // remaining simple templates
         $text = preg_replace('/<ref[^>]*>.*?<\/ref>/is', '', $text) ?? $text;
         $text = preg_replace('/<\/?[^>]+>/', '', $text) ?? $text;       // stray HTML
         $text = str_replace(["'''", "''"], '', $text);                  // bold/italic

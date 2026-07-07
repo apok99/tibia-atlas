@@ -10,9 +10,7 @@ import {
   YAxis,
 } from 'recharts'
 import { useEntryKillStats } from '../hooks/useKillStats'
-
-const RED = '#d23d2f'
-const CORAL = '#ec6a55'
+import { chartTooltipStyle, useChartTheme } from '../hooks/useChartTheme'
 
 /**
  * Kill-statistics panel shown on a creature's entry page: the latest 24h / 7d
@@ -22,6 +20,7 @@ const CORAL = '#ec6a55'
 export function CreatureKillStats({ slug, enabled = true }: { slug: string; enabled?: boolean }) {
   const { t } = useTranslation()
   const { data } = useEntryKillStats(slug, enabled)
+  const chart = useChartTheme()
 
   if (!data?.linked || !data.latest) return null
 
@@ -43,10 +42,10 @@ export function CreatureKillStats({ slug, enabled = true }: { slug: string; enab
       <div className="p-4">
         {/* Latest totals */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat label={t('ks.playersKilled')} sub={t('ks.last24h')} value={latest.players_killed} color={RED} />
-          <Stat label={t('ks.creaturesKilled')} sub={t('ks.last24h')} value={latest.killed} color={CORAL} />
-          <Stat label={t('ks.playersKilled')} sub={t('ks.last7d')} value={latest.week_players_killed} color={RED} />
-          <Stat label={t('ks.creaturesKilled')} sub={t('ks.last7d')} value={latest.week_killed} color={CORAL} />
+          <Stat label={t('ks.playersKilled')} sub={t('ks.last24h')} value={latest.players_killed} color={chart.accent} />
+          <Stat label={t('ks.creaturesKilled')} sub={t('ks.last24h')} value={latest.killed} color={chart.accent2} />
+          <Stat label={t('ks.playersKilled')} sub={t('ks.last7d')} value={latest.week_players_killed} color={chart.accent} />
+          <Stat label={t('ks.creaturesKilled')} sub={t('ks.last7d')} value={latest.week_killed} color={chart.accent2} />
         </div>
         <p className="mt-2 text-[10px] text-fg-mute">
           {t('ks.acrossWorlds')} · {t('ks.lastSnapshot')}: {latest.date}
@@ -90,24 +89,18 @@ export function CreatureKillStats({ slug, enabled = true }: { slug: string; enab
         ) : (
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={series} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
-              <CartesianGrid stroke="#2c2f38" />
-              <XAxis dataKey="period" tick={{ fill: '#76705f', fontSize: 10 }} stroke="#2c2f38" />
-              <YAxis tick={{ fill: '#76705f', fontSize: 10 }} stroke="#2c2f38" width={42} />
+              <CartesianGrid stroke={chart.grid} strokeOpacity={0.6} />
+              <XAxis dataKey="period" tick={{ fill: chart.tick, fontSize: 10 }} stroke={chart.axis} />
+              <YAxis tick={{ fill: chart.tick, fontSize: 10 }} stroke={chart.axis} width={42} />
               <Tooltip
-                contentStyle={{
-                  background: '#1b1d24',
-                  border: '1px solid #3d414c',
-                  borderRadius: 8,
-                  color: '#e9e3d6',
-                  fontSize: 12,
-                }}
+                contentStyle={chartTooltipStyle(chart)}
                 formatter={(v, key) => [
                   Number(v).toLocaleString(),
                   String(key) === 'players_killed' ? t('ks.playersKilled') : t('ks.creaturesKilled'),
                 ]}
               />
-              <Line type="monotone" dataKey="players_killed" stroke={RED} strokeWidth={2} dot={{ r: 2 }} />
-              <Line type="monotone" dataKey="killed" stroke={CORAL} strokeWidth={2} dot={{ r: 2 }} />
+              <Line type="monotone" dataKey="players_killed" stroke={chart.accent} strokeWidth={2} dot={{ r: 2 }} />
+              <Line type="monotone" dataKey="killed" stroke={chart.accent2} strokeWidth={2} dot={{ r: 2 }} />
             </LineChart>
           </ResponsiveContainer>
         )}

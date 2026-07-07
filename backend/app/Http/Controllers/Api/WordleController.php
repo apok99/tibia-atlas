@@ -26,10 +26,12 @@ class WordleController extends Controller
 {
     /** Word length rotates through these, one per day. */
     private const LENGTHS = [4, 5, 6, 7];
+
     private const MAX_ATTEMPTS = 6;
 
     /** Tibia server save: the puzzle day flips at 10:00 Spanish time (CET/CEST). */
     private const SAVE_HOUR = 10;
+
     private const SAVE_TZ = 'Europe/Madrid';
 
     /** Puzzle shape + dictionary of valid guesses (no answer). */

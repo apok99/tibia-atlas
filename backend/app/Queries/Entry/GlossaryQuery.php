@@ -17,7 +17,7 @@ class GlossaryQuery
     public function publishedNames(): Collection
     {
         return Entry::published()
-            ->select('id', 'slug', 'type')
+            ->select('id', 'slug', 'type', 'primary_image')
             ->with(['translations' => fn ($q) => $q->select('id', 'entry_id', 'locale', 'name')])
             ->get();
     }

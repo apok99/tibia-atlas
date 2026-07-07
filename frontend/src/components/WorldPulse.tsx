@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { compact } from './CountUp'
+import { compact } from '../lib/format'
 import type { KillWorld } from '../hooks/useKillStats'
 
 const REGION_COLOR: Record<string, string> = {

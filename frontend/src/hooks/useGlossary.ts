@@ -7,6 +7,7 @@ export interface GlossaryItem {
   slug: string
   type: EntryType
   name: string
+  image: string | null
 }
 
 /** Index of all published entry names in the active locale, for auto-linking. */

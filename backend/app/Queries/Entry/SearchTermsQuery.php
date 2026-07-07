@@ -2,19 +2,20 @@
 
 namespace App\Queries\Entry;
 
+use App\Services\Entry\SearchLogService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
  * Read of the most-searched entries log (one row per opened slug). The write
- * side lives in {@see \App\Services\Entry\SearchLogService}.
+ * side lives in {@see SearchLogService}.
  */
 class SearchTermsQuery
 {
     /**
      * Most-opened entries within the trailing window, most hits first.
      *
-     * @return Collection<int, \stdClass>  rows of {slug, term, hits}
+     * @return Collection<int, \stdClass> rows of {slug, term, hits}
      */
     public function topTerms(int $days, int $limit): Collection
     {

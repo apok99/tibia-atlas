@@ -2,6 +2,7 @@ export type Locale = 'es' | 'en'
 
 export type EntryType =
   | 'creature'
+  | 'npc'
   | 'character'
   | 'city'
   | 'location'

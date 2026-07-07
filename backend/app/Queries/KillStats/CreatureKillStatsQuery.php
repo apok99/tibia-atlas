@@ -41,7 +41,7 @@ class CreatureKillStatsQuery
     /**
      * Daily trend across all worlds (kill_daily retains ~30 days).
      *
-     * @return Collection<int, \stdClass>  rows of {period, players_killed, killed}
+     * @return Collection<int, \stdClass> rows of {period, players_killed, killed}
      */
     public function dailySeries(int $raceId): Collection
     {

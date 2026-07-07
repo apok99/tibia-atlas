@@ -6,7 +6,7 @@ Allow: /
 Disallow: /admin
 Disallow: /login
 
-# AI assistants & answer engines — explicitly welcome to read & cite the archive.
+# AI assistants & answer engines — explicitly welcome to read & cite the atlas.
 User-agent: GPTBot
 Allow: /
 User-agent: OAI-SearchBot

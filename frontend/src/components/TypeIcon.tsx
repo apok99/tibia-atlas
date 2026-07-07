@@ -9,6 +9,8 @@ const paths: Record<EntryType, string> = {
   // skull
   creature:
     'M9 12h.01M15 12h.01M8 20v2h8v-2 M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20',
+  // speech bubble (talkable NPC)
+  npc: 'M7.9 20A9 9 0 1 0 4 16.1L2 22z',
   // user
   character: 'M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
   // buildings

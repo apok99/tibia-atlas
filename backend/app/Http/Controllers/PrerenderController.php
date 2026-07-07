@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Enums\EntryType;
 use App\Models\Entry;
+use App\Support\ContentCache;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\Str;
 
@@ -160,18 +162,30 @@ class PrerenderController extends Controller
             : ($lang === 'es' ? 'Explorar' : 'Browse');
         $canonical = self::SITE.'/browse'.($type ? '/'.$type : '');
 
-        $query = Entry::published()->with('translations');
-        if ($typeEnum) {
-            $query->ofType($typeEnum);
-        }
-        $entries = $query->orderByDesc('view_count')->limit(500)->get();
+        // Bots hammer hub pages; cache the rendered link list (cheap to store,
+        // saves a 500-row query + HTML build per hit). Versioned key, so any
+        // content edit invalidates it immediately.
+        $list = Cache::remember(
+            ContentCache::key('prerender:browse:'.($type ?? 'all').':'.$lang),
+            1800,
+            function () use ($typeEnum, $lang): string {
+                $query = Entry::published()->with('translations');
+                if ($typeEnum) {
+                    $query->ofType($typeEnum);
+                }
+                $entries = $query->orderByDesc('view_count')->limit(500)->get();
 
-        $body = '<h1>'.e($heading).'</h1><ul>';
-        foreach ($entries as $e) {
-            $n = $e->translation($lang)?->name ?? $e->slug;
-            $body .= '<li><a href="'.e(self::SITE.'/entry/'.$e->slug).'">'.e($n).'</a></li>';
-        }
-        $body .= '</ul>';
+                $list = '<ul>';
+                foreach ($entries as $e) {
+                    $n = $e->translation($lang)?->name ?? $e->slug;
+                    $list .= '<li><a href="'.e(self::SITE.'/entry/'.$e->slug).'">'.e($n).'</a></li>';
+                }
+
+                return $list.'</ul>';
+            }
+        );
+
+        $body = '<h1>'.e($heading).'</h1>'.$list;
 
         return $this->view([
             'lang' => $lang,
@@ -211,16 +225,27 @@ class PrerenderController extends Controller
             }
             $body .= '</ul></nav>';
 
-            // Surface the most popular lore so bots reach real content one hop in.
-            $top = Entry::published()->with('translations')->orderByDesc('view_count')->limit(50)->get();
-            if ($top->isNotEmpty()) {
-                $body .= '<h2>'.($lang === 'es' ? 'Destacados' : 'Featured').'</h2><ul>';
-                foreach ($top as $e) {
-                    $n = $e->translation($lang)?->name ?? $e->slug;
-                    $body .= '<li><a href="'.e(self::SITE.'/entry/'.$e->slug).'">'.e($n).'</a></li>';
+            // Surface the most popular lore so bots reach real content one hop
+            // in. The home page is every crawler's first stop — cache the
+            // rendered list instead of querying the top-50 on each hit.
+            $body .= Cache::remember(
+                ContentCache::key('prerender:home-top:'.$lang),
+                1800,
+                function () use ($lang): string {
+                    $top = Entry::published()->with('translations')->orderByDesc('view_count')->limit(50)->get();
+                    if ($top->isEmpty()) {
+                        return '';
+                    }
+
+                    $list = '<h2>'.($lang === 'es' ? 'Destacados' : 'Featured').'</h2><ul>';
+                    foreach ($top as $e) {
+                        $n = $e->translation($lang)?->name ?? $e->slug;
+                        $list .= '<li><a href="'.e(self::SITE.'/entry/'.$e->slug).'">'.e($n).'</a></li>';
+                    }
+
+                    return $list.'</ul>';
                 }
-                $body .= '</ul>';
-            }
+            );
         }
 
         $jsonLd = $slug === ''
@@ -258,11 +283,11 @@ class PrerenderController extends Controller
 
         return [
             '' => [
-                'title' => 'Tibia Atlas — '.($es ? 'El archivo viviente del lore de Tibia' : 'The living archive of Tibian lore'),
+                'title' => 'Tibia Atlas — '.($es ? 'El atlas viviente del mundo de Tibia' : 'The living atlas of the Tibian world'),
                 'h1' => 'Tibia Atlas',
                 'description' => $es
-                    ? 'Atlas bilingüe del lore de Tibia: bestiario, personajes, ciudades, misiones, objetos, mapa, libros y la historia del mundo. Documentado y con fuentes citadas.'
-                    : 'Bilingual archive of Tibia lore: bestiary, characters, cities, quests, items, map, books and the history of the world. Documented and fully sourced.',
+                    ? 'El mapa interactivo de Tibia: encuentra dónde aparece cada criatura piso por piso, traza rutas entre ciudades y explora el mundo. Con wordle diario, bestiario y el lore de Tibia en español e inglés.'
+                    : 'The interactive map of Tibia: find where every creature spawns floor by floor, chart routes between cities and explore the world. Plus a daily wordle, a bestiary and Tibia lore in Spanish and English.',
             ],
             'items' => [
                 'title' => ($es ? 'El Álbum de Items' : 'The Item Album').' · Tibia Atlas',
@@ -297,7 +322,7 @@ class PrerenderController extends Controller
             'soundtrack' => [
                 'title' => ($es ? 'La música de Tibia' : 'The Music of Tibia').' · Tibia Atlas',
                 'h1' => $es ? 'La música de Tibia' : 'The Music of Tibia',
-                'description' => $es ? 'La banda sonora de Tibia para escuchar mientras exploras el archivo.' : 'The Tibia soundtrack to listen to while you explore the archive.',
+                'description' => $es ? 'La banda sonora de Tibia para escuchar mientras exploras el mapa.' : 'The Tibia soundtrack to listen to while you explore the map.',
             ],
             'wordle' => [
                 'title' => 'Bestiordle · Tibia Atlas',

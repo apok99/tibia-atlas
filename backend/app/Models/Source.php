@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\SourceType;
+use Database\Factories\SourceFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class Source extends Model
 {
-    /** @use HasFactory<\Database\Factories\SourceFactory> */
+    /** @use HasFactory<SourceFactory> */
     use HasFactory;
 
     protected $fillable = [

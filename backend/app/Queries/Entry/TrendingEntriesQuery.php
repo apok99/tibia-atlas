@@ -15,7 +15,7 @@ class TrendingEntriesQuery
     /**
      * View counts per entry within the trailing window.
      *
-     * @return Collection<int, int>  views keyed by entry_id
+     * @return Collection<int, int> views keyed by entry_id
      */
     public function recentViewCounts(int $hours, int $limit): Collection
     {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { NavLink, Link, Outlet, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from './LanguageSwitcher'
@@ -14,12 +14,13 @@ type NavItem = { to: string; key: string; end?: boolean }
 const primaryNav: NavItem[] = [
   { to: '/', key: 'nav.home', end: true },
   { to: '/map', key: 'nav.map' },
+  { to: '/wordle', key: 'nav.wordle' },
   { to: '/browse/creature', key: 'nav.bestiary' },
   { to: '/history', key: 'nav.library' },
-  { to: '/wordle', key: 'nav.wordle' },
 ]
 
 const moreNav: NavItem[] = [
+  { to: '/browse/npc', key: 'nav.npcs' },
   { to: '/browse/character', key: 'nav.characters' },
   { to: '/browse/city', key: 'nav.cities' },
   { to: '/items', key: 'nav.items' },
@@ -70,7 +71,7 @@ export function Layout() {
         <div className="h-px w-full bg-gold/70" />
         <div className="h-px w-full bg-gold/30" />
 
-        <div className="mx-auto flex max-w-6xl items-center gap-5 px-4 py-2.5">
+        <div className="mx-auto flex max-w-[86rem] items-center gap-5 px-4 py-2.5">
           <Link to="/" className="flex shrink-0 items-center gap-3">
             <CompassRose className="h-9 w-9 shrink-0 text-fg" />
             <span className="leading-none">
@@ -78,7 +79,7 @@ export function Layout() {
                 TIBIA <span className="text-accent">ATLAS</span>
               </span>
               <span className="mt-0.5 hidden text-[11px] italic text-fg-mute sm:block">
-                edición en español · trazado a mano
+                {t('brandSub')}
               </span>
             </span>
           </Link>
@@ -127,7 +128,7 @@ export function Layout() {
               className="fixed inset-0 top-[var(--header-h,57px)] z-20 cursor-default bg-black/30 backdrop-blur-sm lg:hidden"
             />
             <nav className="relative z-30 max-h-[calc(100vh-57px)] overflow-y-auto border-t border-line bg-bg-2 px-4 py-3 lg:hidden">
-              <div className="mx-auto grid max-w-6xl grid-cols-2 gap-1 sm:grid-cols-3">
+              <div className="mx-auto grid max-w-[86rem] grid-cols-2 gap-1 sm:grid-cols-3">
                 {allNav.map((item) => (
                   <NavLink
                     key={item.to}
@@ -151,8 +152,11 @@ export function Layout() {
         )}
       </header>
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
-        <Outlet />
+      <main className="mx-auto w-full max-w-[86rem] flex-1 px-4 py-8">
+        {/* Route pages are lazy chunks; keep the chrome visible while one loads. */}
+        <Suspense fallback={null}>
+          <Outlet />
+        </Suspense>
       </main>
 
       <PlayerBar />

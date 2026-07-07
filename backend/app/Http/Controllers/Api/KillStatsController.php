@@ -42,7 +42,7 @@ class KillStatsController extends Controller
             window: (string) $request->string('window', 'day'),
             world: (string) $request->string('world', 'all'),
             metric: $this->metric($request),
-            limit: $this->limit($request, 20, 100),
+            limit: $this->clamp($request, 'limit', 20, 1, 100),
         ));
     }
 
@@ -84,7 +84,7 @@ class KillStatsController extends Controller
         return response()->json($this->stats->experience(
             window: (string) $request->string('window', 'week') === 'day' ? 'day' : 'week',
             world: (string) $request->string('world', 'all'),
-            limit: $this->limit($request, 20, 100),
+            limit: $this->clamp($request, 'limit', 20, 1, 100),
         ));
     }
 
@@ -105,7 +105,7 @@ class KillStatsController extends Controller
     public function bosses(Request $request): JsonResponse
     {
         return response()->json($this->stats->bosses(
-            limit: min(max($request->integer('limit', 24), 1), 40),
+            limit: $this->clamp($request, 'limit', 24, 1, 40),
             type: (string) $request->string('type', 'raid') === 'daily' ? 'daily' : 'raid',
         ));
     }
@@ -123,11 +123,5 @@ class KillStatsController extends Controller
         $allowed = config('killstats.metrics');
 
         return in_array($metric, $allowed, true) ? $metric : 'players_killed';
-    }
-
-    /** Clamp a client-supplied limit to a sane range. */
-    private function limit(Request $request, int $default, int $max): int
-    {
-        return min(max($request->integer('limit', $default), 1), $max);
     }
 }

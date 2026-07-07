@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Enums\EntryType;
 use App\Models\Entry;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -43,7 +44,7 @@ class EntryListResource extends JsonResource
             'access' => data_get($this->meta, 'access'),
             // Item stats — null for non-items. Powers the album sections, the
             // collection progress, and the loadout configurator.
-            'item' => $this->type === \App\Enums\EntryType::Item ? [
+            'item' => $this->type === EntryType::Item ? [
                 'category' => data_get($this->meta, 'item_category'),
                 'object_class' => data_get($this->meta, 'object_class'),
                 'slot' => data_get($this->meta, 'equip_slot'),

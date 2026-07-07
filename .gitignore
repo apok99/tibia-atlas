@@ -4,3 +4,8 @@
 /tools/otbm/items.xml
 /tools/otbm/appearances.dat
 /tools/otbm/*.otbm
+/tools/otbm/dropped-links.json
+/tools/otbm/node_modules/
+/tools/otbm/package.json
+/tools/otbm/package-lock.json
+/tools/otbm/tibiamaps/

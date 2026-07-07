@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Book;
+use App\Support\ContentCache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Public, read-only access to the in-game Tibia library (readable books
@@ -47,18 +49,26 @@ class BookController extends Controller
             ->values();
 
         // Shelf groups are always computed over the WHOLE library, so the
-        // sidebar is stable regardless of the current search/filter.
-        $groups = Book::query()
-            ->selectRaw('location_group, count(*) as c')
-            ->groupBy('location_group')
-            ->orderByRaw('count(*) desc')
-            ->get()
-            ->map(fn ($g) => ['name' => $g->location_group, 'count' => (int) $g->c]);
+        // sidebar is stable regardless of the current search/filter. The
+        // library only changes on (rare) imports, so cache the aggregates
+        // instead of re-grouping on every request.
+        $shelf = Cache::remember(ContentCache::key('book-groups'), 3600, function (): array {
+            return [
+                'groups' => Book::query()
+                    ->selectRaw('location_group, count(*) as c')
+                    ->groupBy('location_group')
+                    ->orderByRaw('count(*) desc')
+                    ->get()
+                    ->map(fn ($g) => ['name' => $g->location_group, 'count' => (int) $g->c])
+                    ->all(),
+                'total' => Book::count(),
+            ];
+        });
 
         return response()->json([
             'data' => $books,
-            'groups' => $groups,
-            'total' => Book::count(),
+            'groups' => $shelf['groups'],
+            'total' => $shelf['total'],
         ]);
     }
 

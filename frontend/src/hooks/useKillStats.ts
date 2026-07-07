@@ -39,6 +39,7 @@ export function useKillMeta() {
   return useQuery({
     queryKey: ['killstats', 'meta'],
     queryFn: async () => (await api.get<KillStatsMeta>('/killstats/meta')).data,
+    staleTime: 5 * 60 * 1000,
   })
 }
 
@@ -134,6 +135,7 @@ export function useKillRanking(params: {
     queryKey: ['killstats', 'ranking', params],
     queryFn: async () =>
       (await api.get<{ data: RankingRow[] }>('/killstats/ranking', { params })).data.data,
+    staleTime: 60 * 1000,
   })
 }
 
@@ -162,6 +164,8 @@ export function useEntryKillStats(slug: string | undefined, enabled = true) {
     enabled: !!slug && enabled,
     queryFn: async () =>
       (await api.get<EntryKillStats>(`/killstats/entry/${slug}`)).data,
+    // The warehouse only refreshes when the hourly ETL lands new data.
+    staleTime: 5 * 60 * 1000,
   })
 }
 
@@ -181,6 +185,7 @@ export function useKillExperience(params: { world: string; window: 'day' | 'week
     queryKey: ['killstats', 'experience', params],
     queryFn: async () =>
       (await api.get<{ data: ExpRow[] }>('/killstats/experience', { params })).data.data,
+    staleTime: 5 * 60 * 1000,
   })
 }
 
@@ -222,6 +227,7 @@ export function useBossRespawn(slug: string | undefined, enabled = true) {
     queryKey: ['killstats', 'boss', slug],
     enabled: !!slug && enabled,
     queryFn: async () => (await api.get<BossRespawnData>(`/killstats/boss/${slug}`)).data,
+    staleTime: 5 * 60 * 1000,
   })
 }
 
@@ -237,5 +243,6 @@ export function useKillSeries(params: {
       (await api.get<{ data: SeriesPoint[] }>('/killstats/series', {
         params: { race: params.race, world: params.world, granularity: params.granularity },
       })).data.data,
+    staleTime: 5 * 60 * 1000,
   })
 }

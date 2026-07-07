@@ -12,6 +12,7 @@ use Illuminate\Support\Collection;
 class KillPointTransformer
 {
     public const MONTH = 7;
+
     public const DAY = 10;
 
     /**

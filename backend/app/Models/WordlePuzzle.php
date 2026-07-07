@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
+use App\Http\Controllers\Api\WordleController;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * The locked daily Bestiordle answer for one Tibia day. See the migration and
- * {@see \App\Http\Controllers\Api\WordleController} for how a date is resolved.
+ * {@see WordleController} for how a date is resolved.
  */
 class WordlePuzzle extends Model
 {

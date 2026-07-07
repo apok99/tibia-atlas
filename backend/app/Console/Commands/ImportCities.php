@@ -138,19 +138,19 @@ class ImportCities extends Command
                 $canonEn = $content['canon'];
 
                 $translations = [[
-                    'locale'   => Locale::English->value,
-                    'name'     => $display,
+                    'locale' => Locale::English->value,
+                    'name' => $display,
                     'overview' => $overviewEn,
-                    'canon'    => $canonEn,
+                    'canon' => $canonEn,
                 ]];
 
                 if ($translate) {
                     $esName = $existing?->translations->firstWhere('locale', 'es')?->name ?? $display;
                     $translations[] = [
-                        'locale'   => Locale::Spanish->value,
-                        'name'     => $esName,
+                        'locale' => Locale::Spanish->value,
+                        'name' => $esName,
                         'overview' => $this->tryTranslate($translator, $overviewEn),
-                        'canon'    => $this->tryTranslate($translator, $canonEn),
+                        'canon' => $this->tryTranslate($translator, $canonEn),
                     ];
                 }
 
@@ -159,16 +159,16 @@ class ImportCities extends Command
                 ]);
 
                 $payload = [
-                    'slug'          => $slug,
-                    'type'          => EntryType::City->value,
-                    'status'        => $publish ? EntryStatus::Published->value : EntryStatus::Draft->value,
+                    'slug' => $slug,
+                    'type' => EntryType::City->value,
+                    'status' => $publish ? EntryStatus::Published->value : EntryStatus::Draft->value,
                     'primary_image' => $images[$title] ?? $existing?->primary_image,
-                    'meta'          => $meta,
-                    'translations'  => $translations,
-                    'sources'       => [[
-                        'type'  => SourceType::TibiaWiki->value,
+                    'meta' => $meta,
+                    'translations' => $translations,
+                    'sources' => [[
+                        'type' => SourceType::TibiaWiki->value,
                         'title' => 'TibiaWiki: '.$title,
-                        'url'   => 'https://tibia.fandom.com/wiki/'.rawurlencode(str_replace(' ', '_', $title)),
+                        'url' => 'https://tibia.fandom.com/wiki/'.rawurlencode(str_replace(' ', '_', $title)),
                     ]],
                 ];
 

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\Locale;
 use App\Support\ContentCache;
+use Database\Factories\EntryTranslationFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -14,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class EntryTranslation extends Model
 {
-    /** @use HasFactory<\Database\Factories\EntryTranslationFactory> */
+    /** @use HasFactory<EntryTranslationFactory> */
     use HasFactory;
 
     protected $fillable = [

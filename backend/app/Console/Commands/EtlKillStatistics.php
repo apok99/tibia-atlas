@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\TibiaRace;
 use App\Models\TibiaWorld;
+use App\Support\KillStatsCache;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -45,6 +46,7 @@ class EtlKillStatistics extends Command
 
         if ($this->option('link-only')) {
             $changed = $this->linkRacesToEntries();
+            KillStatsCache::bump();
             $this->info("Re-linked races to lore entries. Links changed: {$changed}.");
 
             return self::SUCCESS;
@@ -82,6 +84,7 @@ class EtlKillStatistics extends Command
                 if ($sleepMs > 0) {
                     usleep($sleepMs * 1000);
                 }
+
                 continue;
             }
 
@@ -141,6 +144,9 @@ class EtlKillStatistics extends Command
             $deleted = DB::table('kill_daily')->where('snapshot_date', '<', $cutoff)->delete();
             $this->info("Pruned {$deleted} daily rows older than {$cutoff}.");
         }
+
+        // 6) New data is live — drop every cached dashboard payload.
+        KillStatsCache::bump();
 
         return self::SUCCESS;
     }

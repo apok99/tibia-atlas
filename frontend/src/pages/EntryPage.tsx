@@ -64,7 +64,7 @@ export function EntryPage() {
         title={entry.name ?? entry.slug}
         description={seoDesc}
         path={`/entry/${entry.slug}`}
-        image={entry.primary_image}
+        image={entry.primary_image ?? undefined}
         type="article"
         jsonLd={[
           articleJsonLd({

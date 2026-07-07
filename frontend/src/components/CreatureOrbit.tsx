@@ -1,4 +1,5 @@
-import { CountUp, compact } from './CountUp'
+import { CountUp } from './CountUp'
+import { compact } from '../lib/format'
 
 export interface OrbitItem {
   race: string

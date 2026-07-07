@@ -3,6 +3,7 @@
 namespace App\Services\Import;
 
 use App\Models\Book;
+use App\Models\BookTranslation;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
@@ -10,7 +11,7 @@ use Illuminate\Support\Str;
  * Imports the readable in-game Tibia books from the community TibiaWiki
  * (Category:Book Texts). Each book page transcludes {{Infobox Book}} whose
  * `text` parameter holds the actual book contents; we parse that plus the
- * title/author/location and store an English {@see \App\Models\BookTranslation}.
+ * title/author/location and store an English {@see BookTranslation}.
  *
  * Idempotent by slug, so bulk runs can resume safely.
  */

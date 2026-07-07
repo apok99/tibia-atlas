@@ -6,7 +6,10 @@ import 'leaflet/dist/leaflet.css'
 import { api } from '../lib/api'
 import { planRoute, type RoutePlan } from '../lib/routing'
 import { Seo } from '../lib/seo'
+import { Icon, iconMarkup } from '../lib/icons'
 import { useGlossary } from '../hooks/useGlossary'
+import { useTopSearches, type TopSearch } from '../hooks/useKillStats'
+import { TypeIcon } from '../components/TypeIcon'
 import type { Entry, Spawn } from '../types'
 
 // Minimap tiles are 256x256, named Minimap_Color_<gameX>_<gameY>_<floor>.png,
@@ -36,7 +39,7 @@ const LANDMARKS: Landmark[] = [
   { name: 'Cormaya', x: 33307, y: 31999, floor: 7 },
   { name: 'Darashia', x: 33236, y: 32432, floor: 7 },
   { name: 'Edron', x: 33211, y: 31830, floor: 7 },
-  { name: 'Farmine', x: 32919, y: 31023, floor: 7 },
+  { name: 'Farmine', x: 33030, y: 31500, floor: 7 },
   { name: 'Kazordoon', x: 32614, y: 31923, floor: 7 },
   { name: 'Krailos', x: 33580, y: 31584, floor: 7 },
   { name: 'Liberty Bay', x: 32309, y: 32794, floor: 7 },
@@ -113,7 +116,7 @@ const MAP_LABELS: Place[] = [
 ]
 
 type Marker = { id: string; x: number; y: number; floor: number; label: string }
-type Cluster = { x: number; y: number; z: number; count: number }
+type Cluster = { x: number; y: number; z: number; count: number; score: number }
 type ActiveCreature = {
   slug: string
   name: string
@@ -189,8 +192,22 @@ const inTileBounds = (x: number, y: number) =>
 
 // Group nearby spawns (same floor, within `threshold` tiles) into clusters so
 // "next spawn" jumps to a different hunting area, not the adjacent tile.
+// Clusters are scored for task/bounty hunting: many creatures packed into a
+// small area rank highest (kill the quota fast, walk little), so clusters[0]
+// is the recommended "best spawn".
 function clusterSpawns(spawns: Spawn[], threshold = 40): Cluster[] {
-  const acc: { sx: number; sy: number; x: number; y: number; z: number; count: number }[] = []
+  const acc: {
+    sx: number
+    sy: number
+    x: number
+    y: number
+    z: number
+    count: number
+    minx: number
+    maxx: number
+    miny: number
+    maxy: number
+  }[] = []
   for (const s of spawns) {
     let hit = null
     for (const c of acc) {
@@ -205,13 +222,23 @@ function clusterSpawns(spawns: Spawn[], threshold = 40): Cluster[] {
       hit.count++
       hit.x = Math.round(hit.sx / hit.count)
       hit.y = Math.round(hit.sy / hit.count)
+      if (s.x < hit.minx) hit.minx = s.x
+      if (s.x > hit.maxx) hit.maxx = s.x
+      if (s.y < hit.miny) hit.miny = s.y
+      if (s.y > hit.maxy) hit.maxy = s.y
     } else {
-      acc.push({ sx: s.x, sy: s.y, x: s.x, y: s.y, z: s.z, count: 1 })
+      acc.push({ sx: s.x, sy: s.y, x: s.x, y: s.y, z: s.z, count: 1, minx: s.x, maxx: s.x, miny: s.y, maxy: s.y })
     }
   }
   return acc
-    .map((c) => ({ x: c.x, y: c.y, z: c.z, count: c.count }))
-    .sort((a, b) => b.count - a.count)
+    .map((c) => {
+      // spread = longest side of the cluster's bounding box (tiles). A tight,
+      // dense cluster beats a loose one of similar size: a spread equal to the
+      // clustering threshold halves the score.
+      const spread = Math.max(c.maxx - c.minx, c.maxy - c.miny)
+      return { x: c.x, y: c.y, z: c.z, count: c.count, score: c.count / (1 + spread / threshold) }
+    })
+    .sort((a, b) => b.score - a.score)
 }
 
 // Map a Tibia world coordinate to a Leaflet (lat,lng) point under CRS.Simple:
@@ -226,10 +253,27 @@ function escapeHtml(s: string): string {
 
 // --- URL hash <-> map state ---------------------------------------------------
 // Format: #f=<floor>&z=<zoom>&x=<cx>&y=<cy>&m=<x,y,f,label>;<...>&c=<slug>,<slug>
+//         &r=<sx,sy,sf,slabel>;<ex,ey,ef,elabel>   (route: start ; end)
 function encodeMarkers(markers: Marker[]): string {
   return markers
     .map((m) => [Math.round(m.x), Math.round(m.y), m.floor, encodeURIComponent(m.label)].join(','))
     .join(';')
+}
+
+// A route endpoint as stored in the URL hash. Structurally matches the
+// component's RoutePoint so restored values drop straight into state.
+type HashRoutePoint = { x: number; y: number; floor: number; label?: string }
+
+function encodeRoutePoint(p: HashRoutePoint | null): string {
+  return p ? [Math.round(p.x), Math.round(p.y), p.floor, encodeURIComponent(p.label ?? '')].join(',') : ''
+}
+
+function decodeRoutePoint(chunk: string): HashRoutePoint | null {
+  if (!chunk) return null
+  const [rx, ry, rf, ...rest] = chunk.split(',')
+  if (!rx || !ry || !rf) return null
+  const label = decodeURIComponent(rest.join(',') || '')
+  return { x: Number(rx), y: Number(ry), floor: Number(rf), label: label || undefined }
 }
 
 function parseHash(): {
@@ -239,6 +283,8 @@ function parseHash(): {
   floor?: number
   markers: Marker[]
   creatures: string[]
+  routeStart: HashRoutePoint | null
+  routeEnd: HashRoutePoint | null
 } {
   const h = window.location.hash.replace(/^#/, '')
   const parts: Record<string, string> = {}
@@ -266,7 +312,14 @@ function parseHash(): {
     }
   }
   const creatures = parts.c ? parts.c.split(',').filter(Boolean) : []
-  return { x: num('x'), y: num('y'), z: num('z'), floor: num('f'), markers, creatures }
+  let routeStart: HashRoutePoint | null = null
+  let routeEnd: HashRoutePoint | null = null
+  if (parts.r) {
+    const [s, e] = parts.r.split(';')
+    routeStart = decodeRoutePoint(s ?? '')
+    routeEnd = decodeRoutePoint(e ?? '')
+  }
+  return { x: num('x'), y: num('y'), z: num('z'), floor: num('f'), markers, creatures, routeStart, routeEnd }
 }
 
 export function MapPage() {
@@ -312,6 +365,7 @@ export function MapPage() {
   const [levelFilter, setLevelFilter] = useState('') // '' = any difficulty
   const [bossOnly, setBossOnly] = useState(false) // show only bosses
   const [showPoi, setShowPoi] = useState(false) // imported minimap markers layer
+  const [showFilters, setShowFilters] = useState(false) // collapsible refine panel
   const [markerDraft, setMarkerDraft] = useState<{ x: number; y: number; floor: number } | null>(null)
   const [draftLabel, setDraftLabel] = useState('')
   const [shownCount, setShownCount] = useState(0) // spawns currently drawn
@@ -319,9 +373,11 @@ export function MapPage() {
   // "How to get there" routing (A* over minimap walkability). An endpoint can be
   // set by clicking the map (no label) or by picking a city (label = its name).
   type RoutePoint = { x: number; y: number; floor: number; label?: string }
-  const [routeMode, setRouteMode] = useState(false)
-  const [routeStart, setRouteStart] = useState<RoutePoint | null>(null)
-  const [routeEnd, setRouteEnd] = useState<RoutePoint | null>(null)
+  // A shared link may carry a route — open the directions panel and restore its
+  // endpoints so the plan can be recomputed (see the restore effect below).
+  const [routeMode, setRouteMode] = useState(!!(initial.routeStart || initial.routeEnd))
+  const [routeStart, setRouteStart] = useState<RoutePoint | null>(initial.routeStart)
+  const [routeEnd, setRouteEnd] = useState<RoutePoint | null>(initial.routeEnd)
   const [routePlan, setRoutePlan] = useState<RoutePlan | null>(null)
   const [routeBusy, setRouteBusy] = useState(false)
   const [routeMsg, setRouteMsg] = useState<string | null>(null)
@@ -518,7 +574,7 @@ export function MapPage() {
     for (const p of chosen) {
       const ci = p[2]
       const img = images[ci]
-        ? `<img src="${escapeHtml(images[ci]!)}" alt="" style="width:${imgPx}px;height:${imgPx}px" />`
+        ? `<img src="${escapeHtml(images[ci]!)}" alt="" loading="lazy" style="width:${imgPx}px;height:${imgPx}px" />`
         : ''
       const icon = L.divIcon({
         className: '',
@@ -583,6 +639,8 @@ export function MapPage() {
     let hash = `f=${floorRef.current}&z=${map.getZoom()}&x=${Math.round(c.lng)}&y=${Math.round(-c.lat)}`
     if (markersRef.current.length) hash += `&m=${encodeMarkers(markersRef.current)}`
     if (creaturesRef.current.length) hash += `&c=${creaturesRef.current.map((c) => c.slug).join(',')}`
+    if (routeStartRef.current || routeEndRef.current)
+      hash += `&r=${encodeRoutePoint(routeStartRef.current)};${encodeRoutePoint(routeEndRef.current)}`
     window.history.replaceState(null, '', '#' + hash)
   }
 
@@ -852,7 +910,7 @@ export function MapPage() {
       grp.clearLayers()
       for (const cr of creatures) {
         const img = cr.image
-          ? `<img src="${escapeHtml(cr.image)}" alt="" />`
+          ? `<img src="${escapeHtml(cr.image)}" alt="" loading="lazy" />`
           : ''
         for (const sp of cr.spawns) {
           if (sp.z !== floor) continue
@@ -887,26 +945,33 @@ export function MapPage() {
         if (leg.kind === 'walk') {
           if (leg.floor !== floor || leg.path.length < 2) continue
           const latlngs = leg.path.map((p) => toLatLng(p.x, p.y))
-          // White casing underneath + blue core on top, so the walking line
-          // reads over the busy minimap the way a maps app route does.
+          // Ink on parchment: a warm cream casing under a dark sepia core, so the
+          // walking line reads like a hand-drawn route over the busy minimap and
+          // matches the atlas identity (no map-app blue).
           grp.addLayer(
-            L.polyline(latlngs, { color: '#ffffff', weight: 7, opacity: 0.9, lineJoin: 'round', lineCap: 'round' }),
+            L.polyline(latlngs, { color: '#f4e7c6', weight: 7, opacity: 0.95, lineJoin: 'round', lineCap: 'round' }),
           )
           grp.addLayer(
-            L.polyline(latlngs, { color: '#2f6df0', weight: 4, opacity: 1, lineJoin: 'round', lineCap: 'round' }),
+            L.polyline(latlngs, { color: '#3b2313', weight: 3.5, opacity: 1, lineJoin: 'round', lineCap: 'round' }),
           )
         } else if (leg.kind === 'boat') {
-          if (floor !== SURFACE) continue
-          // Boat hop: a dashed teal line with a ship badge at its midpoint.
+          // Ferry hop: drawn on whichever end's floor is in view (the Kazordoon
+          // steamboat docks underground, so a crossing can span floors).
+          if (floor !== leg.fromFloor && floor !== leg.toFloor) continue
+          // Dashed crossing in the same ink-and-parchment pair (same geometry +
+          // dashArray, so the two dash patterns overlay exactly).
           const seg = [toLatLng(leg.from.x, leg.from.y), toLatLng(leg.to.x, leg.to.y)]
           grp.addLayer(
-            L.polyline(seg, { color: '#0f7c8c', weight: 3, opacity: 0.95, dashArray: '2 9', lineCap: 'round' }),
+            L.polyline(seg, { color: '#3b2313', weight: 5, opacity: 0.55, dashArray: '2 9', lineCap: 'round' }),
+          )
+          grp.addLayer(
+            L.polyline(seg, { color: '#f4e7c6', weight: 2.5, opacity: 0.95, dashArray: '2 9', lineCap: 'round' }),
           )
           grp.addLayer(
             L.marker(toLatLng((leg.from.x + leg.to.x) / 2, (leg.from.y + leg.to.y) / 2), {
               icon: L.divIcon({
                 className: '',
-                html: `<div class="tm-route-boat">⛵ ${escapeHtml(leg.toName)}</div>`,
+                html: `<div class="tm-route-boat">${iconMarkup(leg.icon)} ${escapeHtml(leg.toName)}</div>`,
                 iconSize: [0, 0],
               }),
               interactive: false,
@@ -915,8 +980,10 @@ export function MapPage() {
         } else if (leg.kind === 'stairs') {
           if (leg.floor !== floor) continue
           // A floor change happens here — a clickable badge that jumps the view
-          // to the destination floor so the route can be followed.
-          const glyph = leg.dir === 'down' ? '▼' : leg.dir === 'up' ? '▲' : '⇄'
+          // to the destination floor. Rope spots and shovel piles show their tool
+          // so the player knows what to bring.
+          const glyph =
+            leg.tool === 'rope' ? iconMarkup('rope') : leg.tool === 'shovel' ? iconMarkup('pickaxe') : leg.dir === 'down' ? '▼' : leg.dir === 'up' ? '▲' : '⇄'
           const cls = leg.dir === 'down' ? 'is-down' : leg.dir === 'up' ? 'is-up' : 'is-tp'
           grp.addLayer(
             L.marker(toLatLng(leg.from.x, leg.from.y), {
@@ -940,9 +1007,9 @@ export function MapPage() {
         interactive: false,
       })
     if (routeStart && routeStart.floor === floor)
-      grp.addLayer(pin(routeStart, t('map.routeStartLabel'), '#1f9d55'))
+      grp.addLayer(pin(routeStart, t('map.routeStartLabel'), '#4f7a3a'))
     if (routeEnd && routeEnd.floor === floor)
-      grp.addLayer(pin(routeEnd, t('map.routeEndLabel'), '#c0392b'))
+      grp.addLayer(pin(routeEnd, t('map.routeEndLabel'), '#9c3b2e'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeStart, routeEnd, routePlan, floor, mapReady])
 
@@ -1073,11 +1140,14 @@ export function MapPage() {
       .slice(0, 8)
   }, [debouncedQuery, glossary])
 
-  // Restore creatures from a shared link (once, StrictMode-safe).
+  // Restore creatures + a shared route from the link (once, StrictMode-safe).
   useEffect(() => {
     if (restoredRef.current) return
     restoredRef.current = true
     initial.creatures.forEach((slug, i) => void addCreature(slug, i === 0))
+    // Recompute the plan for a shared route once both endpoints are present.
+    if (initial.routeStart && initial.routeEnd)
+      computeRouteRef.current(initial.routeStart, initial.routeEnd)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -1142,6 +1212,19 @@ export function MapPage() {
     if (map) map.setView(toLatLng(cl.x, cl.y), Math.max(map.getZoom(), 3))
   }
 
+  // Fly straight to the recommended best spawn for a task/bounty: the densest,
+  // most compact cluster (clusters[0], since they are sorted by score).
+  function jumpToBest(slug: string) {
+    const cr = creaturesRef.current.find((c) => c.slug === slug)
+    if (!cr || cr.clusters.length === 0) return
+    setCreatures((prev) => prev.map((c) => (c.slug === slug ? { ...c, jumpIdx: 0 } : c)))
+    const cl = cr.clusters[0]
+    floorRef.current = cl.z
+    setFloor(cl.z)
+    const map = mapRef.current
+    if (map) map.setView(toLatLng(cl.x, cl.y), Math.max(map.getZoom(), 3))
+  }
+
   function goTo(l: Landmark) {
     floorRef.current = l.floor
     setFloor(l.floor)
@@ -1161,22 +1244,36 @@ export function MapPage() {
   }
 
   const spawnsOnFloor = (cr: ActiveCreature) => cr.spawns.filter((s) => s.z === floor).length
+  const activeFilterCount = [catFilter, zoneFilter, levelFilter].filter(Boolean).length
+
+  // "Most searched" rail: the site's trending creature searches. Only creatures
+  // with a slug + sprite can be plotted, so filter to those.
+  const { data: topSearched } = useTopSearches(20)
+  const hot = useMemo(
+    () =>
+      (topSearched?.data ?? [])
+        .filter((r): r is TopSearch & { slug: string; image: string } => r.type === 'creature' && !!r.slug && !!r.image)
+        .slice(0, 12),
+    [topSearched],
+  )
+  const activeSlugs = useMemo(() => new Set(creatures.map((c) => c.slug)), [creatures])
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <Seo title={t('map.title')} description={t('map.intro')} path="/map" />
-      <div>
-        <p className="text-xs font-bold uppercase tracking-widest text-accent">{t('map.kicker')}</p>
-        <h1 className="text-2xl font-black tracking-tight">{t('map.title')}</h1>
-        <p className="mt-1.5 max-w-3xl text-base leading-relaxed text-fg-dim md:text-lg">{t('map.intro')}</p>
+      {/* Compact header — title and intro share a row on wide screens so the
+          controls and map sit higher up the page. */}
+      <div className="flex flex-col gap-x-8 gap-y-1 md:flex-row md:items-baseline md:justify-between">
+        <div className="shrink-0">
+          <p className="text-xs font-bold uppercase tracking-widest text-accent">{t('map.kicker')}</p>
+          <h1 className="text-2xl font-black tracking-tight">{t('map.title')}</h1>
+        </div>
+        <p className="max-w-xl text-sm leading-relaxed text-fg-dim">{t('map.intro')}</p>
       </div>
 
-      {/* Hero creature search — the primary way to find a creature on the map */}
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="relative w-full max-w-lg">
-          <label className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-fg-mute">
-            {t('map.searchLabel')}
-          </label>
+      {/* Primary toolbar — creature search + navigation + actions, one row */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[240px] flex-1">
           <div className="relative">
             <svg
               aria-hidden="true"
@@ -1210,10 +1307,24 @@ export function MapPage() {
                   <button
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => addCreature(r.slug)}
-                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm font-semibold text-fg-dim transition hover:bg-accent/10 hover:text-fg"
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-surface-2"
                   >
-                    <span className="text-accent">+</span>
-                    <span>{r.name}</span>
+                    {r.image ? (
+                      <img
+                        src={r.image}
+                        alt=""
+                        className="h-6 w-6 shrink-0 object-contain"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <TypeIcon type={r.type} className="h-4 w-4 shrink-0 text-fg-mute" />
+                    )}
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg">
+                      {r.name}
+                    </span>
+                    <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-fg-mute">
+                      {t(`types.${r.type}`)}
+                    </span>
                   </button>
                 </li>
               ))}
@@ -1249,7 +1360,7 @@ export function MapPage() {
             }}
             className={`inline-flex h-11 items-center gap-2 rounded-lg border px-4 text-sm font-bold uppercase tracking-wider transition ${
               routeMode
-                ? 'border-[#2f6df0] bg-[#2f6df0] text-white'
+                ? 'border-accent bg-accent text-white shadow-[0_4px_14px_-6px_rgba(156,59,46,0.9)]'
                 : 'border-line bg-bg-2 text-fg-dim hover:border-line-2 hover:text-fg'
             }`}
           >
@@ -1323,12 +1434,14 @@ export function MapPage() {
         </div>
       </div>
 
-      {/* Directions bar — origin/destination pickers (city dropdown or map click) */}
+      {/* Directions bar — origin/destination pickers (city dropdown or map click).
+          Quiet paper inset like the layer panel below, so it blends with the page
+          instead of reading as a brighter plate. */}
       {routeMode && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-[#2f6df0]/40 bg-[#2f6df0]/5 px-3 py-2.5 text-sm">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-line bg-bg-2/40 px-3 py-2.5 text-sm">
           {/* Origin */}
           <div className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#1f9d55] ring-2 ring-white" />
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-canon ring-2 ring-white/80" />
             <select
               value={endpointValue(routeStart)}
               onChange={(e) => {
@@ -1336,7 +1449,7 @@ export function MapPage() {
                 if (v === '') clearRouteEndpoint('start')
                 else if (v !== '__pt__') pickCityEndpoint('start', v)
               }}
-              className="h-9 rounded-lg border border-line bg-bg-2 px-2.5 text-sm font-semibold text-fg-dim outline-none transition hover:border-line-2 focus:border-[#2f6df0]"
+              className="h-9 rounded-lg border border-line bg-bg-2 px-2.5 text-sm font-semibold text-fg-dim outline-none transition hover:border-line-2 focus:border-accent"
             >
               <option value="">{t('map.routeFrom')}</option>
               {routeStart && !routeStart.label && <option value="__pt__">{t('map.routePoint')}</option>}
@@ -1354,7 +1467,7 @@ export function MapPage() {
 
           {/* Destination */}
           <div className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#c0392b] ring-2 ring-white" />
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-accent ring-2 ring-white/80" />
             <select
               value={endpointValue(routeEnd)}
               onChange={(e) => {
@@ -1362,7 +1475,7 @@ export function MapPage() {
                 if (v === '') clearRouteEndpoint('end')
                 else if (v !== '__pt__') pickCityEndpoint('end', v)
               }}
-              className="h-9 rounded-lg border border-line bg-bg-2 px-2.5 text-sm font-semibold text-fg-dim outline-none transition hover:border-line-2 focus:border-[#2f6df0]"
+              className="h-9 rounded-lg border border-line bg-bg-2 px-2.5 text-sm font-semibold text-fg-dim outline-none transition hover:border-line-2 focus:border-accent"
             >
               <option value="">{t('map.routeTo')}</option>
               {routeEnd && !routeEnd.label && <option value="__pt__">{t('map.routePoint')}</option>}
@@ -1379,20 +1492,44 @@ export function MapPage() {
             <span className="text-fg-dim">{t('map.routeBusy')}</span>
           ) : routePlan ? (
             <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-fg-dim">
+              {routePlan.totalTiles > 0 && routePlan.legs.length > 1 && (
+                <span className="mr-1 rounded-[2px] border border-line bg-bg-2 px-2 py-0.5 font-bold tabular-nums text-fg">
+                  {routePlan.totalTiles.toLocaleString()} {t('map.routeDist')}
+                </span>
+              )}
+              {(() => {
+                // Gear the player must bring for this route (rope / shovel legs).
+                const tools = new Set(
+                  routePlan.legs.flatMap((l) => (l.kind === 'stairs' && l.tool ? [l.tool] : [])),
+                )
+                if (tools.size === 0) return null
+                const words = [
+                  ...(tools.has('rope') ? [t('map.routeNeedRope')] : []),
+                  ...(tools.has('shovel') ? [t('map.routeNeedShovel')] : []),
+                ]
+                return (
+                  <span className="mr-1 rounded-[2px] border border-theory/60 bg-theory/10 px-2 py-0.5 font-semibold text-fg-dim">
+                    {tools.has('rope') && <Icon name="rope" />} {tools.has('shovel') && <Icon name="pickaxe" />}{' '}
+                    {t('map.routeBring', { items: words.join(' + ') })}
+                  </span>
+                )
+              })()}
               {routePlan.legs
                 .filter((leg) => leg.kind !== 'walk' || leg.tiles > 2)
                 .map((leg, i) => (
                 <span key={i} className="flex items-center gap-1">
-                  {i > 0 && <span className="text-fg-mute">·</span>}
+                  {i > 0 && <span className="text-gold">·</span>}
                   {leg.kind === 'walk' ? (
                     <span className="flex items-center gap-1">
-                      <span aria-hidden>🚶</span>
+                      <Icon name="walk" />
                       {leg.tiles.toLocaleString()} {t('map.routeDist')}
                     </span>
                   ) : leg.kind === 'boat' ? (
-                    <span className="flex items-center gap-1 font-semibold text-[#0f7c8c]">
-                      <span aria-hidden>⛵</span>
-                      {t('map.routeBoatTo', { city: leg.toName })}
+                    <span className="flex items-center gap-1 font-semibold text-interp">
+                      <Icon name={leg.icon} />
+                      {leg.lineName === 'Barco'
+                        ? t('map.routeBoatTo', { city: leg.toName })
+                        : `${leg.lineName} → ${leg.toName}`}
                     </span>
                   ) : (
                     <button
@@ -1400,10 +1537,16 @@ export function MapPage() {
                       title={t('map.floor')}
                       className="flex items-center gap-1 font-semibold text-accent transition hover:text-accent-2"
                     >
-                      <span aria-hidden>{leg.dir === 'down' ? '▼' : leg.dir === 'up' ? '▲' : '⇄'}</span>
-                      {leg.dir === 'teleport'
-                        ? t('map.routeTeleport', { floor: floorLabel(leg.toFloor) })
-                        : t('map.routeStairs', { floor: floorLabel(leg.toFloor) })}
+                      <span aria-hidden>
+                        {leg.tool === 'rope' ? <Icon name="rope" /> : leg.tool === 'shovel' ? <Icon name="pickaxe" /> : leg.dir === 'down' ? '▼' : leg.dir === 'up' ? '▲' : '⇄'}
+                      </span>
+                      {leg.tool === 'rope'
+                        ? t('map.routeRope', { floor: floorLabel(leg.toFloor) })
+                        : leg.tool === 'shovel'
+                          ? t('map.routeShovel', { floor: floorLabel(leg.toFloor) })
+                          : leg.dir === 'teleport'
+                            ? t('map.routeTeleport', { floor: floorLabel(leg.toFloor) })
+                            : t('map.routeStairs', { floor: floorLabel(leg.toFloor) })}
                     </button>
                   )}
                 </span>
@@ -1433,8 +1576,8 @@ export function MapPage() {
             {(
               [
                 { key: 'hide', label: t('map.modeHide'), on: 'bg-line text-fg' },
-                { key: 'all', label: `● ${t('map.modeAll')}`, on: 'bg-[#ff7043] text-white' },
-                { key: 'boss', label: `☠ ${t('map.bosses')}`, on: 'bg-[#e0a531] text-[#2a1a00]' },
+                { key: 'all', label: `● ${t('map.modeAll')}`, on: 'bg-accent text-white' },
+                { key: 'boss', label: `☠ ${t('map.bosses')}`, on: 'bg-theory text-white' },
               ] as const
             ).map((seg) => {
               const mode = !showAll ? 'hide' : bossOnly ? 'boss' : 'all'
@@ -1469,7 +1612,7 @@ export function MapPage() {
           title={t('map.markersHint')}
           className={`h-9 rounded-lg border px-3.5 text-sm font-bold uppercase tracking-wider transition ${
             showPoi
-              ? 'border-[#3fa7d6] bg-[#3fa7d6]/15 text-[#3fa7d6]'
+              ? 'border-interp bg-interp/15 text-interp'
               : 'border-line bg-bg-2 text-fg-dim hover:border-line-2 hover:text-fg'
           }`}
         >
@@ -1478,8 +1621,38 @@ export function MapPage() {
 
         <span className="hidden h-7 w-px bg-line sm:block" />
 
-        {/* Refine what is shown */}
-        <div className="flex items-center gap-2">
+        {/* Refine — toggles the collapsible filter row below */}
+        <button
+          onClick={() => setShowFilters((v) => !v)}
+          title={t('map.filters')}
+          className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3.5 text-sm font-bold uppercase tracking-wider transition ${
+            showFilters || activeFilterCount
+              ? 'border-accent bg-accent/10 text-accent'
+              : 'border-line bg-bg-2 text-fg-dim hover:border-line-2 hover:text-fg'
+          }`}
+        >
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 6h16M7 12h10M10 18h4" />
+          </svg>
+          {t('map.filters')}
+          {activeFilterCount > 0 && (
+            <span className="grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold text-white">
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
+
+        {showAll && (
+          <span className="ml-auto text-sm font-bold tabular-nums text-fg-dim">
+            {shownCount.toLocaleString()} <span className="font-semibold text-fg-mute">{t('map.spawnsShown')}</span>
+          </span>
+        )}
+      </div>
+
+      {/* Collapsible refine panel — hidden until "Filtros" is opened, so it
+          doesn't take a permanent row above the map. */}
+      {showFilters && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-bg-2/40 px-3 py-2.5">
           <select
             value={catFilter}
             onChange={(e) => {
@@ -1531,7 +1704,7 @@ export function MapPage() {
             ))}
           </select>
 
-          {(catFilter || zoneFilter || levelFilter) && (
+          {activeFilterCount > 0 && (
             <button
               onClick={() => {
                 setCatFilter('')
@@ -1544,102 +1717,40 @@ export function MapPage() {
             </button>
           )}
         </div>
+      )}
 
-        {showAll && (
-          <span className="ml-auto text-sm font-bold tabular-nums text-fg-dim">
-            {shownCount.toLocaleString()} <span className="font-semibold text-fg-mute">{t('map.spawnsShown')}</span>
-          </span>
-        )}
-      </div>
-
-      {/* Imported-marker category legend */}
-      {showPoi && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1 text-xs font-semibold text-fg-dim">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-fg-mute">
-            {t('map.markersLegend')}
-          </span>
-          {[
-            { c: '#d23d2f', i: POI_ICONS.boss, l: t('map.poiBoss') },
-            { c: '#3fa7d6', i: POI_ICONS.travel, l: t('map.poiTravel') },
-            { c: '#6cc551', i: POI_ICONS.service, l: t('map.poiService') },
-            { c: '#e0a531', i: POI_ICONS.quest, l: t('map.poiQuest') },
-            { c: '#9b8cff', i: POI_ICONS.poi, l: t('map.poiOther') },
-          ].map((e) => (
-            <span key={e.l} className="flex items-center gap-1.5">
-              <span
-                className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white/90"
-                style={{ background: e.c }}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#fff"
-                  strokeWidth="2.4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="h-3.5 w-3.5"
+      {/* Map + "most searched" quick-access rail: a single background-less column
+          of creature icons down the left edge. Tapping one plots it on the map. */}
+      <div className="flex gap-2 sm:gap-3">
+        {hot.length > 0 && (
+          <aside className="order-1 flex h-[78vh] min-h-[440px] shrink-0 flex-col items-center gap-1.5 overflow-y-auto px-1">
+            {hot.map((r) => {
+              const on = activeSlugs.has(r.slug)
+              const name = r.name ?? r.term
+              return (
+                <button
+                  key={r.slug}
+                  onClick={() => (on ? removeCreature(r.slug) : addCreature(r.slug))}
+                  title={name}
+                  aria-label={name}
+                  className={`group grid h-11 w-11 shrink-0 place-items-center rounded-lg transition ${
+                    on ? 'bg-accent/15 ring-1 ring-inset ring-accent/50' : 'hover:bg-bg-2'
+                  }`}
                 >
-                  <path d={e.i} />
-                </svg>
-              </span>
-              {e.l}
-            </span>
-          ))}
-        </div>
-      )}
+                  <img
+                    src={r.image}
+                    alt={name}
+                    loading="lazy"
+                    className="sprite h-10 w-10 object-contain transition group-hover:scale-110"
+                  />
+                </button>
+              )
+            })}
+          </aside>
+        )}
 
-      {/* Active creature legend */}
-      {creatures.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          {creatures.map((cr) => (
-            <span
-              key={cr.slug}
-              className="flex items-center gap-2 rounded-full border border-line bg-bg-2 py-1 pl-1.5 pr-2 text-xs font-semibold text-fg-dim"
-            >
-              <span
-                className="inline-block h-3 w-3 rounded-full border border-white/70"
-                style={{ background: cr.color }}
-              />
-              {cr.image && <img src={cr.image} alt="" className="tm-legend-sprite" />}
-              <span className="text-fg">{cr.name}</span>
-              <span className="text-fg-mute">
-                {spawnsOnFloor(cr)}/{cr.spawns.length}
-              </span>
-              {cr.clusters.length > 1 && (
-                <span className="ml-0.5 flex items-center gap-1 rounded bg-line/40 px-1">
-                  <button
-                    onClick={() => cycleSpawn(cr.slug, -1)}
-                    className="text-fg-mute transition hover:text-fg"
-                    title={t('map.prevSpawn')}
-                  >
-                    ◀
-                  </button>
-                  <span className="text-[10px] tabular-nums text-fg-dim" title={t('map.spawnAreas')}>
-                    {cr.jumpIdx + 1}/{cr.clusters.length}
-                  </span>
-                  <button
-                    onClick={() => cycleSpawn(cr.slug, 1)}
-                    className="text-fg-mute transition hover:text-fg"
-                    title={t('map.nextSpawn')}
-                  >
-                    ▶
-                  </button>
-                </span>
-              )}
-              <button
-                onClick={() => removeCreature(cr.slug)}
-                className="ml-0.5 text-fg-mute transition hover:text-accent"
-                title={t('map.delete')}
-              >
-                ✕
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-
-      <div className="relative overflow-hidden rounded-lg border border-line bg-[#0e1015]">
-        <div ref={containerRef} className="h-[70vh] w-full" style={{ background: '#0e1015' }} />
+      <div className="relative order-2 flex-1 overflow-hidden rounded-lg border border-line bg-[#0e1015]">
+        <div ref={containerRef} className="h-[78vh] min-h-[440px] w-full" style={{ background: '#0e1015' }} />
 
         {/* Coordinate readout */}
         <div className="pointer-events-none absolute bottom-2 left-2 z-[1000] rounded border border-line bg-bg/85 px-2 py-1 font-mono text-[11px] tabular-nums text-fg-dim backdrop-blur-md">
@@ -1674,6 +1785,105 @@ export function MapPage() {
           })}
         </div>
       </div>
+      </div>
+
+      {/* Active creature legend — sits below the map so adding creatures never
+          pushes the map down the page. */}
+      {creatures.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          {creatures.map((cr) => (
+            <span
+              key={cr.slug}
+              className="flex items-center gap-2 rounded-full border border-line bg-bg-2 py-1 pl-1.5 pr-2 text-xs font-semibold text-fg-dim"
+            >
+              <span
+                className="inline-block h-3 w-3 rounded-full border border-white/70"
+                style={{ background: cr.color }}
+              />
+              {cr.image && <img src={cr.image} alt="" loading="lazy" className="tm-legend-sprite" />}
+              <span className="text-fg">{cr.name}</span>
+              <span className="text-fg-mute">
+                {spawnsOnFloor(cr)}/{cr.spawns.length}
+              </span>
+              {cr.clusters.length > 0 && (
+                <button
+                  onClick={() => jumpToBest(cr.slug)}
+                  className="flex items-center gap-1 rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent transition hover:bg-accent/25"
+                  title={t('map.bestSpawn')}
+                >
+                  <span aria-hidden>⭐</span>
+                  <span className="tabular-nums">{cr.clusters[0].count}×</span>
+                  <span className="text-accent/70">z{cr.clusters[0].z}</span>
+                </button>
+              )}
+              {cr.clusters.length > 1 && (
+                <span className="ml-0.5 flex items-center gap-1 rounded bg-line/40 px-1">
+                  <button
+                    onClick={() => cycleSpawn(cr.slug, -1)}
+                    className="text-fg-mute transition hover:text-fg"
+                    title={t('map.prevSpawn')}
+                  >
+                    ◀
+                  </button>
+                  <span className="text-[10px] tabular-nums text-fg-dim" title={t('map.spawnAreas')}>
+                    {cr.jumpIdx + 1}/{cr.clusters.length}
+                  </span>
+                  <button
+                    onClick={() => cycleSpawn(cr.slug, 1)}
+                    className="text-fg-mute transition hover:text-fg"
+                    title={t('map.nextSpawn')}
+                  >
+                    ▶
+                  </button>
+                </span>
+              )}
+              <button
+                onClick={() => removeCreature(cr.slug)}
+                className="ml-0.5 text-fg-mute transition hover:text-accent"
+                title={t('map.delete')}
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Imported-marker category legend — below the map, shown only with the layer on */}
+      {showPoi && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1 text-xs font-semibold text-fg-dim">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-fg-mute">
+            {t('map.markersLegend')}
+          </span>
+          {[
+            { c: '#d23d2f', i: POI_ICONS.boss, l: t('map.poiBoss') },
+            { c: '#3fa7d6', i: POI_ICONS.travel, l: t('map.poiTravel') },
+            { c: '#6cc551', i: POI_ICONS.service, l: t('map.poiService') },
+            { c: '#e0a531', i: POI_ICONS.quest, l: t('map.poiQuest') },
+            { c: '#9b8cff', i: POI_ICONS.poi, l: t('map.poiOther') },
+          ].map((e) => (
+            <span key={e.l} className="flex items-center gap-1.5">
+              <span
+                className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white/90"
+                style={{ background: e.c }}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#fff"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-3.5 w-3.5"
+                >
+                  <path d={e.i} />
+                </svg>
+              </span>
+              {e.l}
+            </span>
+          ))}
+        </div>
+      )}
 
       <p className="text-xs text-fg-mute">{t('map.disclaimer')}</p>
 

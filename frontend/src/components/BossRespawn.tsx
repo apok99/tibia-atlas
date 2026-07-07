@@ -9,8 +9,7 @@ import {
   YAxis,
 } from 'recharts'
 import { useBossRespawn, type BossRespawnData } from '../hooks/useKillStats'
-
-const GOLD = '#d8a23a'
+import { chartTooltipStyle, useChartTheme } from '../hooks/useChartTheme'
 
 const STATUS_STYLE: Record<string, string> = {
   due: 'text-canon',
@@ -26,6 +25,7 @@ const STATUS_STYLE: Record<string, string> = {
 export function BossRespawn({ slug, enabled = true }: { slug: string; enabled?: boolean }) {
   const { t } = useTranslation()
   const { data } = useBossRespawn(slug, enabled)
+  const chart = useChartTheme()
 
   if (!data?.linked || !data.is_boss) return null
 
@@ -40,7 +40,7 @@ export function BossRespawn({ slug, enabled = true }: { slug: string; enabled?: 
   return (
     <section className="panel overflow-hidden">
       <header className="flex items-center gap-3 border-b border-line px-4 py-3">
-        <span className="h-3.5 w-1 rounded-full" style={{ background: GOLD }} />
+        <span className="h-3.5 w-1 rounded-full" style={{ background: chart.gold }} />
         <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-fg">{t('ks.bossTitle')}</h2>
       </header>
 
@@ -69,32 +69,26 @@ export function BossRespawn({ slug, enabled = true }: { slug: string; enabled?: 
             </p>
             <ResponsiveContainer width="100%" height={200}>
               <AreaChart data={respawn.cdf} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
-                <CartesianGrid stroke="#2c2f38" />
+                <CartesianGrid stroke={chart.grid} strokeOpacity={0.6} />
                 <XAxis
                   dataKey="day"
-                  tick={{ fill: '#76705f', fontSize: 10 }}
-                  stroke="#2c2f38"
+                  tick={{ fill: chart.tick, fontSize: 10 }}
+                  stroke={chart.axis}
                   unit="d"
                 />
                 <YAxis
-                  tick={{ fill: '#76705f', fontSize: 10 }}
-                  stroke="#2c2f38"
+                  tick={{ fill: chart.tick, fontSize: 10 }}
+                  stroke={chart.axis}
                   width={38}
                   domain={[0, 1]}
                   tickFormatter={(v) => `${Math.round(v * 100)}%`}
                 />
                 <Tooltip
-                  contentStyle={{
-                    background: '#1b1d24',
-                    border: '1px solid #3d414c',
-                    borderRadius: 8,
-                    color: '#e9e3d6',
-                    fontSize: 12,
-                  }}
+                  contentStyle={chartTooltipStyle(chart)}
                   formatter={(v) => [`${Math.round(Number(v) * 100)}%`, t('ks.bossProb')]}
                   labelFormatter={(d) => t('ks.bossDays', { d })}
                 />
-                <Area type="monotone" dataKey="prob" stroke={GOLD} fill={GOLD} fillOpacity={0.18} strokeWidth={2} />
+                <Area type="monotone" dataKey="prob" stroke={chart.gold} fill={chart.gold} fillOpacity={0.18} strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </>
@@ -149,12 +143,13 @@ type Activity = NonNullable<BossRespawnData['activity']>
  */
 function DailyBossActivity({ activity }: { activity: Activity }) {
   const { t } = useTranslation()
+  const chart = useChartTheme()
   const { killed_today, killed_week, worlds_killed_today, worlds_total, trend } = activity
 
   return (
     <section className="panel overflow-hidden">
       <header className="flex items-center gap-3 border-b border-line px-4 py-3">
-        <span className="h-3.5 w-1 rounded-full" style={{ background: GOLD }} />
+        <span className="h-3.5 w-1 rounded-full" style={{ background: chart.gold }} />
         <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-fg">{t('ks.dailyTitle')}</h2>
       </header>
 
@@ -182,20 +177,20 @@ function DailyBossActivity({ activity }: { activity: Activity }) {
             <h3 className="mb-1 text-[10px] font-bold uppercase tracking-wider text-fg-mute">{t('ks.dailyTrend')}</h3>
             <ResponsiveContainer width="100%" height={180}>
               <AreaChart data={trend} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
-                <CartesianGrid stroke="#2c2f38" />
-                <XAxis dataKey="period" tick={{ fill: '#76705f', fontSize: 10 }} stroke="#2c2f38" tickFormatter={(d) => String(d).slice(5)} />
-                <YAxis tick={{ fill: '#76705f', fontSize: 10 }} stroke="#2c2f38" width={38} allowDecimals={false} />
+                <CartesianGrid stroke={chart.grid} strokeOpacity={0.6} />
+                <XAxis dataKey="period" tick={{ fill: chart.tick, fontSize: 10 }} stroke={chart.axis} tickFormatter={(d) => String(d).slice(5)} />
+                <YAxis tick={{ fill: chart.tick, fontSize: 10 }} stroke={chart.axis} width={38} allowDecimals={false} />
                 <Tooltip
                   contentStyle={{
-                    background: '#1b1d24',
-                    border: '1px solid #3d414c',
+                    background: chart.tooltipBg,
+                    border: `1px solid ${chart.tooltipBorder}`,
                     borderRadius: 8,
-                    color: '#e9e3d6',
+                    color: chart.tooltipText,
                     fontSize: 12,
                   }}
                   formatter={(v) => [Number(v).toLocaleString(), t('ks.dailyKills')]}
                 />
-                <Area type="monotone" dataKey="killed" stroke={GOLD} fill={GOLD} fillOpacity={0.18} strokeWidth={2} />
+                <Area type="monotone" dataKey="killed" stroke={chart.gold} fill={chart.gold} fillOpacity={0.18} strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </>

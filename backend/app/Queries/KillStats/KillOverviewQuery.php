@@ -59,7 +59,7 @@ class KillOverviewQuery
     /**
      * Global daily activity for the last ~14 snapshots.
      *
-     * @return Collection<int, \stdClass>  rows of {period, players_killed, killed}
+     * @return Collection<int, \stdClass> rows of {period, players_killed, killed}
      */
     public function activitySeries(string $latest): Collection
     {
