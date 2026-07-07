@@ -2888,54 +2888,6 @@ export function MapPage() {
         </div>
       )}
 
-      {/* Boss Watch — only in ☠ mode. The raid/world bosses ranked by spawn heat
-          (likelihood of being up now); clicking one plots its location + flies
-          there. Turns "which bosses are up?" into a map action. */}
-      {bossOnly && bosses.length > 0 && (
-        <div className="pointer-events-auto rounded-xl border border-theory/40 bg-bg-2/95 px-3 py-2.5 shadow-lg backdrop-blur-md">
-          <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-theory">
-              ☠ {t('map.bossWatch')}
-            </span>
-            <span className="text-xs text-fg-mute">{t('map.bossWatchHint')}</span>
-          </div>
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {bosses.map((b) => {
-              const hs = HEAT_STYLE[heatBucket(b.heat)]
-              const on = activeSlugs.has(b.slug)
-              return (
-                <button
-                  key={b.slug}
-                  onClick={() => (on ? removeCreature(b.slug) : addCreature(b.slug))}
-                  title={t('map.bossTip', { worlds: b.worlds_active, due: b.due, cd: b.cooldown })}
-                  className={`flex shrink-0 items-center gap-2 rounded-lg border px-2 py-1.5 transition ${
-                    on ? 'border-accent bg-accent/10' : 'border-line bg-bg-2 hover:border-line-2'
-                  }`}
-                >
-                  <img src={b.image} alt="" loading="lazy" className="sprite h-9 w-9 shrink-0 object-contain" />
-                  <span className="flex flex-col items-start pr-1">
-                    <span className="whitespace-nowrap text-sm font-bold text-fg">{b.race}</span>
-                    <span className={`whitespace-nowrap text-[10px] font-bold uppercase tracking-wider ${hs.cls}`}>
-                      {hs.glyph} {t(hs.label)} · {b.heat}%
-                    </span>
-                    {b.worlds.length > 0 && (
-                      <span className="flex items-center gap-1 whitespace-nowrap text-[10px] font-semibold text-fg-mute">
-                        <svg viewBox="0 0 24 24" className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="9" />
-                          <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
-                        </svg>
-                        {b.worlds.slice(0, 2).join(' · ')}
-                        {b.worlds.length > 2 ? ` +${b.worlds.length - 2}` : ''}
-                      </span>
-                    )}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
         </div>
       </div>
 
