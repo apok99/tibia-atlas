@@ -15,6 +15,7 @@ const ItemsPage = lazy(() => import('./pages/ItemsPage').then((m) => ({ default:
 const ItemDetailPage = lazy(() => import('./pages/ItemDetailPage').then((m) => ({ default: m.ItemDetailPage })))
 const WordlePage = lazy(() => import('./pages/WordlePage').then((m) => ({ default: m.WordlePage })))
 const AltarPage = lazy(() => import('./pages/AltarPage').then((m) => ({ default: m.AltarPage })))
+const GeoPage = lazy(() => import('./pages/GeoPage').then((m) => ({ default: m.GeoPage })))
 const AboutPage = lazy(() => import('./pages/AboutPage').then((m) => ({ default: m.AboutPage })))
 
 export default function App() {
@@ -34,6 +35,7 @@ export default function App() {
           <Route path="items/:slug" element={<ItemDetailPage />} />
           <Route path="wordle" element={<WordlePage />} />
           <Route path="altar" element={<AltarPage />} />
+          <Route path="geo" element={<GeoPage />} />
           <Route path="entry/:slug" element={<EntryPage />} />
           <Route path="map" element={<MapPage />} />
           <Route path="killstats" element={<KillStatsPage />} />

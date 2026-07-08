@@ -13,20 +13,21 @@ import { useBosses, type BossRow } from '../hooks/useKillStats'
 import { TypeIcon } from '../components/TypeIcon'
 import { Skeleton } from '../components/Skeleton'
 import type { Dropper, Entry, EntryListItem, ItemDetail, Spawn } from '../types'
-
-// Minimap tiles are 256x256, named Minimap_Color_<gameX>_<gameY>_<floor>.png,
-// aligned to a 256-unit grid in Tibia world coordinates.
-const TILE = 256
-
-// Bounds of the exported region (Tibia world coordinates), from the tile set.
-const X_MIN = 31744
-const X_MAX = 34304 // exclusive edge (last tile 34048 + 256)
-const Y_MIN = 30976
-const Y_MAX = 33024 // exclusive edge (last tile 32768 + 256)
+import {
+  TILE,
+  X_MIN,
+  X_MAX,
+  Y_MIN,
+  Y_MAX,
+  SURFACE,
+  toLatLng,
+  LANDMARKS,
+  MAP_LABELS,
+  type Landmark,
+} from '../lib/zones'
 
 // Floor 7 is the surface/ground level in Tibia; lower numbers are higher up.
 const FLOORS = Array.from({ length: 16 }, (_, i) => i) // 0..15
-const SURFACE = 7
 
 // Distinct ring colours for each creature overlay.
 const PALETTE = ['#d23d2f', '#3fa7d6', '#6cc551', '#e0a531', '#9b5de5', '#f15bb5', '#ff8c42', '#4ecdc4']
@@ -44,156 +45,6 @@ const HEAT_STYLE = {
   warm: { cls: 'text-gold', glyph: '🌡', label: 'map.bossWarm' },
   cold: { cls: 'text-interp', glyph: '❄', label: 'map.bossCold' },
 } as const
-
-// Cities/landmarks (surface floor). Coordinates are approximate centres within
-// the available tiles — tweak freely if any feels off.
-type Landmark = { name: string; x: number; y: number; floor: number }
-const LANDMARKS: Landmark[] = [
-  { name: "Ab'Dendriel", x: 32665, y: 31652, floor: 7 },
-  { name: 'Ankrahmun', x: 33146, y: 32816, floor: 7 },
-  { name: 'Carlin', x: 32343, y: 31792, floor: 7 },
-  { name: 'Cormaya', x: 33307, y: 31999, floor: 7 },
-  // NOTE: route anchors must sit on OPEN city ground. (33236,32432) is the
-  // decorative walled garden (a sealed 39-tile pocket) — routes from the
-  // dropdown died at the start there. Same for Venore's old (32947,32081).
-  { name: 'Darashia', x: 33213, y: 32453, floor: 7 },
-  { name: 'Edron', x: 33211, y: 31830, floor: 7 },
-  { name: 'Farmine', x: 33030, y: 31500, floor: 7 },
-  { name: 'Kazordoon', x: 32614, y: 31923, floor: 7 },
-  { name: 'Krailos', x: 33580, y: 31584, floor: 7 },
-  { name: 'Liberty Bay', x: 32309, y: 32794, floor: 7 },
-  { name: 'Port Hope', x: 32629, y: 32769, floor: 7 },
-  { name: 'Rathleton', x: 33607, y: 31955, floor: 7 },
-  { name: 'Rookgaard', x: 32097, y: 32219, floor: 7 },
-  { name: 'Roshamuul', x: 33524, y: 32477, floor: 7 },
-  { name: 'Svargrond', x: 32278, y: 31146, floor: 7 },
-  { name: 'Thais', x: 32365, y: 32224, floor: 7 },
-  { name: 'Venore', x: 32963, y: 32087, floor: 7 },
-  { name: 'Yalahar', x: 32805, y: 31234, floor: 7 },
-]
-
-// Named hunting regions / dungeons / islands shown as smaller on-map labels
-// (not in the navigation dropdowns). Coordinates are approximate centres within
-// the covered tile region — anchored to known landmarks or the community map
-// data — and easy to nudge if any feels off.
-type Place = Landmark & { kind: 'city' | 'region' }
-// Coordinates verified from TibiaWiki's {{Mapper Coords}} (the location field of
-// each place's article): game_x = floor*256 + offset. Underground areas are
-// labelled at their surface position so the name marks the spot on the map.
-const REGIONS: { name: string; x: number; y: number }[] = [
-  // Thais & central mainland
-  { name: 'Mount Sternum', x: 32494, y: 32072 },
-  { name: 'Femor Hills', x: 32569, y: 31803 },
-  { name: 'Fibula', x: 32261, y: 32385 },
-  { name: 'Plains of Havoc', x: 32735, y: 32297 },
-  { name: 'Demona', x: 32479, y: 31663 },
-  { name: 'Outlaw Camp', x: 32643, y: 32222 },
-  { name: 'Maze of Lost Souls', x: 32490, y: 31697 },
-  { name: 'Dark Cathedral', x: 32664, y: 32344 },
-  // Carlin & northern / western islands
-  { name: 'Folda', x: 32020, y: 31572 },
-  { name: 'Ramoa', x: 31931, y: 32567 },
-  { name: 'Goroma', x: 32095, y: 32583 },
-  { name: 'Treasure Island', x: 32156, y: 32948 },
-  { name: 'Laguna Islands', x: 32466, y: 32939 },
-  // Ab'Dendriel & orc lands
-  { name: 'Elvenbane', x: 32590, y: 31645 },
-  { name: 'Mistrock', x: 32567, y: 31442 },
-  { name: 'Orc Fortress', x: 32930, y: 31774 },
-  { name: 'Vengoth', x: 32916, y: 31516 },
-  // Edron & the east
-  { name: 'Cyclopolis', x: 33251, y: 31698 },
-  { name: 'Hero Cave', x: 33164, y: 31638 },
-  { name: 'Stonehome', x: 33303, y: 31773 },
-  { name: 'Grimvale', x: 33333, y: 31690 },
-  { name: 'Oramond', x: 33479, y: 31986 },
-  // Venore & the Ghostlands
-  { name: 'Shadowthorn', x: 33075, y: 32170 },
-  { name: 'Drefia', x: 33018, y: 32443 },
-  { name: 'Forbidden Lands', x: 32973, y: 32549 },
-  // Desert (Darashia / Ankrahmun)
-  { name: "Mal'ouquah", x: 33041, y: 32627 },
-  { name: 'Chor', x: 32952, y: 32855 },
-  // Tiquanda jungle (Port Hope)
-  { name: 'Tiquanda', x: 32812, y: 32699 },
-  { name: 'Banuta', x: 32807, y: 32542 },
-  { name: 'Trapwood', x: 32688, y: 32911 },
-  // Underground demon lairs
-  { name: 'Hellgate', x: 32675, y: 31647 },
-  // Svargrond archipelago (ice)
-  { name: 'Nibelor', x: 32353, y: 31053 },
-  { name: 'Helheim', x: 32478, y: 31179 },
-  { name: 'Okolnir', x: 32230, y: 31412 },
-  { name: 'Formorgar Glacier', x: 32102, y: 31144 },
-  { name: 'Chyllfroest', x: 32060, y: 31034 },
-  { name: 'Tyrsung', x: 32464, y: 31173 },
-  { name: 'Grimlund', x: 32021, y: 31294 },
-  { name: 'Inukaya', x: 32367, y: 31058 },
-  // Carlin & western isles
-  { name: 'Senja', x: 32020, y: 31692 },
-  { name: 'Vega', x: 31974, y: 31901 },
-  { name: 'Isle of the Kings', x: 32126, y: 31665 },
-  { name: 'Ghostlands', x: 32220, y: 31770 },
-  { name: 'Fields of Glory', x: 32440, y: 31960 },
-  { name: 'Mintwallin', x: 32540, y: 32200 },
-  // Venore surroundings
-  { name: 'Green Claw Swamp', x: 32820, y: 32020 },
-  { name: 'Amazon Camp', x: 32839, y: 31920 },
-  { name: 'Gnomebase Alpha', x: 33001, y: 31900 },
-  // Southern seas
-  { name: 'Meriana', x: 32132, y: 32912 },
-  { name: 'Marapur', x: 33842, y: 32852 },
-  { name: 'Murmuring Wilderness', x: 33690, y: 32780 },
-  { name: 'Gnomprona', x: 33600, y: 32880 },
-  // Zao & the far east
-  { name: 'Zao', x: 33350, y: 31370 },
-  { name: 'Razachai', x: 33074, y: 31100 },
-  { name: 'Zzaion', x: 33262, y: 31100 },
-  { name: 'Issavi', x: 33946, y: 31516 },
-  { name: 'Warzones 4-6', x: 33800, y: 32170 },
-  // Roshamuul & the dream realms
-  { name: 'Roshamuul Prison', x: 33520, y: 32600 },
-  { name: 'Guzzlemaw Valley', x: 33645, y: 32390 },
-  { name: 'Feyrist', x: 33540, y: 32208 },
-  { name: 'Candia', x: 33370, y: 32155 },
-  // Ankrahmun desert & the Ancient Tombs. Each of the seven tombs is labelled at
-  // its surface entrance (client marker coords); the bosses spawn on the floors
-  // below. Names match the tomb, with the boss it houses in parentheses.
-  { name: 'Mountain Tomb (Dipthrah)', x: 33133, y: 32568 },
-  { name: 'Oasis Tomb (Rahemos)', x: 33133, y: 32640 },
-  { name: 'Ancient Ruins Tomb (Vashresamun)', x: 33208, y: 32591 },
-  { name: 'Tarpit Tomb (Morguthis)', x: 33233, y: 32704 },
-  { name: 'Stone Tomb (Thalas)', x: 33282, y: 32743 },
-  { name: 'Shadow Tomb (Mahrdis)', x: 33255, y: 32833 },
-  { name: 'Library Tomb (Ashmunrah)', x: 33142, y: 32838 },
-  { name: 'Horestis Tomb', x: 33026, y: 32710 },
-  { name: 'Peninsula Tomb', x: 33027, y: 32869 },
-  { name: 'Cobra Bastion', x: 33398, y: 32655 },
-  // Tiquanda east coast
-  { name: 'Asura Palace', x: 32948, y: 32689 },
-  // The Hive & the north-eastern seas
-  { name: 'The Hive', x: 33560, y: 31255 },
-  { name: 'Hive Outpost', x: 33467, y: 31322 },
-  { name: 'Gray Island', x: 33191, y: 31985 },
-  { name: 'Orcsoberfest', x: 33779, y: 31054 },
-  // Kilmaresh south
-  { name: 'Ruins of Nuur', x: 33848, y: 31685 },
-  // Starter isles & the dream courts
-  { name: 'Island of Destiny', x: 32094, y: 32004 },
-  { name: 'Targuna', x: 33514, y: 32720 },
-  { name: 'Winter Court', x: 33697, y: 32127 },
-  { name: 'Summer Court', x: 33691, y: 32213 },
-  // Forbidden Islands (wiki Mapper Coords)
-  { name: 'Talahu', x: 31953, y: 32660 },
-  { name: 'Kharos', x: 32121, y: 32686 },
-  { name: 'Malada', x: 32016, y: 32713 },
-]
-
-// Every name drawn on the map: the cities (prominent) plus the regions (subtle).
-const MAP_LABELS: Place[] = [
-  ...LANDMARKS.map((l): Place => ({ ...l, kind: 'city' })),
-  ...REGIONS.map((r): Place => ({ ...r, floor: 7, kind: 'region' })),
-]
 
 type Marker = { id: string; x: number; y: number; floor: number; label: string }
 type Cluster = { x: number; y: number; z: number; count: number; score: number }
@@ -216,6 +67,8 @@ type AllSpawns = {
     classification: string | null
     difficulty: string | null
     boss: boolean
+    experience: number
+    loot_value: number
   }[]
   points: [number, number, number][]
 }
@@ -279,10 +132,6 @@ const ZONE_RADIUS = 200
 // de-duplication normally keeps it far below this).
 const SPRITE_CAP = 1200
 
-// The per-spawn orange dots are only drawn from this zoom in. Zoomed further out
-// they just speckle the whole map, so there we show only the grouped ×N sprites.
-const DOT_MIN_ZOOM = 2
-
 const inTileBounds = (x: number, y: number) =>
   x >= X_MIN && x < X_MAX && y >= Y_MIN && y < Y_MAX
 
@@ -336,10 +185,6 @@ function clusterSpawns(spawns: Spawn[], threshold = 40): Cluster[] {
     })
     .sort((a, b) => b.score - a.score)
 }
-
-// Map a Tibia world coordinate to a Leaflet (lat,lng) point under CRS.Simple:
-// lng = x and lat = -y so that larger game-y is lower on screen.
-const toLatLng = (x: number, y: number): L.LatLngExpression => [-y, x]
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>
@@ -407,16 +252,109 @@ function drawRouteLegs(
   }
 }
 
+// --- profit-heat ramp ---------------------------------------------------------
+// The "all creatures" dots are tinted by a per-spawn profit score (a creature's
+// loot gold + experience, amplified by local spawn density): cold blue = little
+// to gain, through teal/green/gold, to hot red = the richest hunting spots.
+const HEAT_STOPS: [number, [number, number, number]][] = [
+  [0.0, [70, 120, 214]], // blue
+  [0.32, [63, 183, 167]], // teal
+  [0.56, [127, 201, 63]], // green
+  [0.78, [224, 165, 49]], // gold
+  [1.0, [210, 61, 47]], // red
+]
+const HEAT_STEPS = 16
+function heatRgb(t: number): [number, number, number] {
+  const c = Math.max(0, Math.min(1, t))
+  for (let i = 1; i < HEAT_STOPS.length; i++) {
+    if (c <= HEAT_STOPS[i][0]) {
+      const [t0, a] = HEAT_STOPS[i - 1]
+      const [t1, b] = HEAT_STOPS[i]
+      const k = (c - t0) / (t1 - t0 || 1)
+      return [
+        Math.round(a[0] + (b[0] - a[0]) * k),
+        Math.round(a[1] + (b[1] - a[1]) * k),
+        Math.round(a[2] + (b[2] - a[2]) * k),
+      ]
+    }
+  }
+  return HEAT_STOPS[HEAT_STOPS.length - 1][1]
+}
+// Quantised palette (fill + radius per step) so the canvas paints each colour
+// bucket in a single pass; hotter spots also draw a touch larger to stand out.
+const HEAT_PALETTE = Array.from({ length: HEAT_STEPS }, (_, i) => {
+  const t = i / (HEAT_STEPS - 1)
+  const [r, g, b] = heatRgb(t)
+  return { fill: `rgb(${r},${g},${b})`, radius: 5.5 + 3.5 * t }
+})
+function heatCss(t: number): string {
+  const [r, g, b] = heatRgb(t)
+  return `rgb(${r},${g},${b})`
+}
+// The same ramp as a CSS gradient, for the on-map legend.
+const HEAT_GRADIENT_CSS = `linear-gradient(to right, ${HEAT_STOPS.map(
+  ([t, [r, g, b]]) => `rgb(${r},${g},${b}) ${Math.round(t * 100)}%`,
+).join(', ')})`
+
+// Compact gp label for the spawn money badges: 950, 12k, 1.4M.
+function fmtGold(n: number): string {
+  if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, '') + 'M'
+  if (n >= 1e3) return Math.round(n / 1e3) + 'k'
+  return String(Math.round(n))
+}
+
+// World-tile neighbourhood for the density term of the profit heat.
+const DENSITY_CELL = 32
+// Colour each spawn by a density-weighted profit heat: sum the profit scores of
+// every spawn sharing its ~32-tile cell (so a dense pack of decent earners
+// outshines one lone high-value spawn — the "cantidad de bichos" factor), then
+// map that against the floor's spread. Returns per-point palette indices aligned
+// to `points`, or null when there's no loot/exp signal at all.
+function computeHeat(
+  points: [number, number, number][],
+  scores: number[],
+): Uint8Array | null {
+  if (!points.length || !scores.length) return null
+  if (!scores.some((s) => s > 0)) return null
+  const cellHeat = new Map<string, number>()
+  const keys: string[] = new Array(points.length)
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i]
+    const k = Math.floor(p[0] / DENSITY_CELL) + '_' + Math.floor(p[1] / DENSITY_CELL)
+    keys[i] = k
+    cellHeat.set(k, (cellHeat.get(k) ?? 0) + (scores[p[2]] ?? 0))
+  }
+  // Robust top-of-scale: the ~92nd percentile of populated cells, so one blazing
+  // hotspot can't wash the rest of the map down to cold blue.
+  const heats = [...cellHeat.values()].sort((a, b) => a - b)
+  const scaleMax = Math.max(
+    1e-6,
+    heats[Math.min(heats.length - 1, Math.floor(heats.length * 0.92))],
+  )
+  const out = new Uint8Array(points.length)
+  for (let i = 0; i < points.length; i++) {
+    const h = cellHeat.get(keys[i]) ?? 0
+    const t = Math.pow(Math.min(1, h / scaleMax), 0.85) // brighten the mid-range
+    out[i] = Math.round(t * (HEAT_STEPS - 1))
+  }
+  return out
+}
+
 // --- overlay performance helpers ----------------------------------------------
 
 // The "all creatures" dots painted onto one canvas in a single pass. As
 // individual L.circleMarkers a floor carries ~10k layer objects that must be
 // rebuilt on every floor/filter change and repainted one by one — a single
-// canvas draws the same picture in a couple of milliseconds.
-type DotsLayer = L.Layer & { setPoints(pts: [number, number, number][]): void }
+// canvas draws the same picture in a couple of milliseconds. `heat` (aligned to
+// `pts`) carries each dot's profit-palette index; when omitted the dots fall
+// back to the classic uniform orange.
+type DotsLayer = L.Layer & {
+  setData(pts: [number, number, number][], heat?: Uint8Array): void
+}
 const DotCanvas = L.Layer.extend({
-  setPoints(pts: [number, number, number][]) {
+  setData(pts: [number, number, number][], heat?: Uint8Array) {
     ;(this as { _pts?: unknown })._pts = pts
+    ;(this as { _heat?: unknown })._heat = heat
     if ((this as { _map?: L.Map })._map) (this as { _redraw(): void })._redraw()
   },
   onAdd(map: L.Map) {
@@ -467,22 +405,56 @@ const DotCanvas = L.Layer.extend({
     ctx.clearRect(0, 0, size.x, size.y)
     const pts = ((this as { _pts?: [number, number, number][] })._pts ?? [])
     if (!pts.length) return
-    // Same look as the old circle markers: radius 7, dark ring, orange fill.
-    const R = 7
-    ctx.beginPath()
-    for (const p of pts) {
-      const pt = map.latLngToContainerPoint([-p[1], p[0]])
-      if (pt.x < -R || pt.y < -R || pt.x > size.x + R || pt.y > size.y + R) continue
-      ctx.moveTo(pt.x + R, pt.y)
-      ctx.arc(pt.x, pt.y, R, 0, Math.PI * 2)
-    }
-    ctx.globalAlpha = 0.9
-    ctx.fillStyle = '#ff7a33'
-    ctx.fill()
-    ctx.globalAlpha = 1
+    const heat = (this as { _heat?: Uint8Array })._heat
+    const RMAX = 9
     ctx.lineWidth = 1
     ctx.strokeStyle = '#2a0d00'
-    ctx.stroke()
+    if (!heat) {
+      // No profit signal: fall back to the classic uniform orange dot.
+      const R = 7
+      ctx.beginPath()
+      for (const p of pts) {
+        const pt = map.latLngToContainerPoint([-p[1], p[0]])
+        if (pt.x < -R || pt.y < -R || pt.x > size.x + R || pt.y > size.y + R) continue
+        ctx.moveTo(pt.x + R, pt.y)
+        ctx.arc(pt.x, pt.y, R, 0, Math.PI * 2)
+      }
+      ctx.globalAlpha = 0.9
+      ctx.fillStyle = '#ff7a33'
+      ctx.fill()
+      ctx.globalAlpha = 0.6
+      ctx.stroke()
+      ctx.globalAlpha = 1
+      return
+    }
+    // Bucket the visible dots by their heat step, so each colour paints in a
+    // single fill pass (project every point once, not once per palette step).
+    const byStep: number[][] = Array.from({ length: HEAT_STEPS }, () => [])
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i]
+      const pt = map.latLngToContainerPoint([-p[1], p[0]])
+      if (pt.x < -RMAX || pt.y < -RMAX || pt.x > size.x + RMAX || pt.y > size.y + RMAX) continue
+      const step = heat[i] ?? 0
+      const arr = byStep[step] ?? byStep[0]
+      arr.push(pt.x, pt.y)
+    }
+    // Coolest → hottest, so richer spots paint on top of the cold background.
+    for (let s = 0; s < HEAT_STEPS; s++) {
+      const arr = byStep[s]
+      if (!arr.length) continue
+      const { fill, radius } = HEAT_PALETTE[s]
+      ctx.beginPath()
+      for (let j = 0; j < arr.length; j += 2) {
+        ctx.moveTo(arr[j] + radius, arr[j + 1])
+        ctx.arc(arr[j], arr[j + 1], radius, 0, Math.PI * 2)
+      }
+      ctx.globalAlpha = 0.9
+      ctx.fillStyle = fill
+      ctx.fill()
+      ctx.globalAlpha = 0.45
+      ctx.stroke()
+    }
+    ctx.globalAlpha = 1
   },
 })
 
@@ -636,9 +608,119 @@ const QUICK_LINKS: { to: string; title: string; kicker: string; icon: string }[]
     kicker: 'altar.kicker',
     icon: 'M12 3l-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z',
   },
+  // compass (daily zone game)
+  {
+    to: '/geo',
+    title: 'nav.geo',
+    kicker: 'geo.kicker',
+    icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM16.24 7.76l-2.12 6.36-6.36 2.12 2.12-6.36z',
+  },
   // bar chart
   { to: '/killstats', title: 'nav.killstats', kicker: 'ks.kicker', icon: 'M3 3v18h18M8 17V9M13 17v-5M18 17V6' },
 ]
+
+// Route origin/destination picker. Replaces the native <select> so the popup
+// carries the atlas styling (framed paper, themed scrollbar) instead of the
+// OS's un-themable listbox. Behaves like a select: a coloured status dot, a
+// button showing the current label, and a scrollable menu of the cities.
+function RouteCityPicker({
+  placeholder,
+  valueLabel,
+  pointLabel,
+  dotClass,
+  onSelect,
+  onClear,
+}: {
+  placeholder: string
+  // The selected landmark's name, or null when unset / a raw map point.
+  valueLabel: string | null
+  // A non-landmark endpoint's display label (clicked point / plotted spawn).
+  pointLabel: string | null
+  dotClass: string
+  onSelect: (name: string) => void
+  onClear: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+  const isEmpty = !valueLabel && !pointLabel
+  const display = valueLabel ?? pointLabel ?? placeholder
+  return (
+    <div ref={ref} className="relative flex items-center gap-1.5">
+      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${dotClass} ring-2 ring-white/80`} />
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="flex h-9 min-w-[8.5rem] max-w-[12rem] items-center gap-1.5 rounded-lg border border-line bg-bg-2 pl-2.5 pr-2 text-sm font-semibold outline-none transition hover:border-line-2 focus:border-accent"
+      >
+        <span className={`min-w-0 flex-1 truncate text-left ${isEmpty ? 'text-fg-mute' : 'text-fg'}`}>
+          {display}
+        </span>
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          className={`h-4 w-4 shrink-0 text-fg-mute transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {open && (
+        <ul
+          role="listbox"
+          className="scroll-atlas absolute left-0 top-full z-[1100] mt-1 max-h-72 w-56 overflow-auto rounded-xl border-2 border-line bg-bg-2 py-1.5 shadow-2xl"
+        >
+          <li>
+            <button
+              type="button"
+              onClick={() => {
+                onClear()
+                setOpen(false)
+              }}
+              className="flex w-full items-center px-4 py-2 text-left text-sm font-medium text-fg-mute transition hover:bg-surface-2"
+            >
+              {placeholder}
+            </button>
+          </li>
+          {LANDMARKS.map((l) => {
+            const active = l.name === valueLabel
+            return (
+              <li key={l.name}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  onClick={() => {
+                    onSelect(l.name)
+                    setOpen(false)
+                  }}
+                  className={`flex w-full items-center px-4 py-2 text-left text-sm transition hover:bg-surface-2 ${
+                    active ? 'font-bold text-accent' : 'font-medium text-fg'
+                  }`}
+                >
+                  {l.name}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
 
 export function MapPage() {
   const { t } = useTranslation()
@@ -666,9 +748,17 @@ export function MapPage() {
     classifications: (string | null)[]
     difficulties: (string | null)[]
     bosses: boolean[]
-  }>({ points: [], names: [], images: [], slugs: [], classifications: [], difficulties: [], bosses: [] })
+    // Per-creature profit score (0..1): loot gold + experience, log-normalised
+    // across the floor's creatures. Empty when no loot/exp data is present.
+    scores: number[]
+    // Per-creature raw loot worth (gp), summed per spawn for the money badge.
+    lootValues: number[]
+  }>({ points: [], names: [], images: [], slugs: [], classifications: [], difficulties: [], bosses: [], scores: [], lootValues: [] })
   // Points after applying the category/zone filters — what actually gets drawn.
   const filteredRef = useRef<[number, number, number][]>([])
+  // Per-filtered-point heat-palette index (aligned to filteredRef), or null when
+  // there's no profit signal (dots then paint the classic uniform orange).
+  const filteredHeatRef = useRef<Uint8Array | null>(null)
   // Diff caches for the marker layers (see syncMarkers) so pans/zooms reuse
   // existing DOM markers instead of rebuilding every one.
   const spriteCacheRef = useRef<MarkerCache>({ epoch: '', markers: new Map() })
@@ -901,13 +991,9 @@ export function MapPage() {
     }
   }
 
-  // A route endpoint's <select> value: the city name, a sentinel for a clicked
-  // point, or '' when unset.
-  // A picked landmark shows its own name in the dropdown; anything else (a raw
-  // map click, or a spawn plotted via a creature's "how to get there" button)
-  // falls back to the synthetic "__pt__" option so the select never renders blank.
+  // Whether a route endpoint is one of the named cities (so the picker shows its
+  // name) versus a raw map click / plotted spawn (shown as a generic "point").
   const isLandmark = (p: RoutePoint | null) => !!p?.label && LANDMARKS.some((l) => l.name === p.label)
-  const endpointValue = (p: RoutePoint | null) => (p ? (isLandmark(p) ? p.label! : '__pt__') : '')
 
   // Floor label matching the selector (0 = surface, +N above, -N below).
   const floorLabel = (f: number) =>
@@ -929,34 +1015,36 @@ export function MapPage() {
       )
     if (lvl) f = f.filter((p) => difficulties[p[2]] === lvl)
     filteredRef.current = f
+    filteredHeatRef.current = computeHeat(f, allPointsRef.current.scores)
     overlayGenRef.current++ // sprite representatives may change wholesale
     setShownCount(showAllRef.current ? f.length : 0)
     renderSpritesRef.current() // paints both the ×N sprites and the (gated) dots
   }
 
-  // Render the "all creatures" sprites for the spawns in view, de-duplicated by
-  // a grid so photos show at any zoom without piling up (dense areas thin out;
-  // the orange dots underneath still show every spawn). The grid is anchored in
-  // projected (world-pixel) space rather than container pixels, so each cell's
-  // representative stays put while panning and the syncMarkers diff reuses the
-  // existing DOM nodes instead of rebuilding every sprite on each moveend.
+  // Render the "all creatures" overlay as ONE grouped marker per spawn: nearby
+  // spawns collapse into a single zoom-aware grid cell showing the dominant
+  // creature's sprite, an ×N of how many creatures the spawn holds, and a coin
+  // badge with the spawn's TOTAL loot gold (Σ each creature's loot worth). The
+  // marker's ring is tinted by the spawn's average profit score. The grid is
+  // anchored in projected (world-pixel) space so a cell's representative stays
+  // put while panning and the syncMarkers diff reuses the existing DOM nodes.
   renderSpritesRef.current = () => {
     const grp = allSpriteGroupRef.current
     const map = mapRef.current
     if (!grp || !map) return
     const points = filteredRef.current
-    const { names, images, slugs } = allPointsRef.current
+    const { names, images, slugs, scores, lootValues } = allPointsRef.current
 
     if (!showAllRef.current || !points.length) {
       syncMarkers(grp, spriteCacheRef.current, 'off', new Map())
-      dotsLayerRef.current?.setPoints([])
+      dotsLayerRef.current?.setData([])
       return
     }
 
     const zoom = map.getZoom()
-    // Orange per-spawn dots only from DOT_MIN_ZOOM in; zoomed further out the
-    // grouped sprites carry the picture and the dots would just be noise.
-    dotsLayerRef.current?.setPoints(zoom >= DOT_MIN_ZOOM ? points : [])
+    // The grouped money markers replace the raw per-spawn dots entirely, so keep
+    // the dot canvas empty (its heat colour now lives on each marker's ring).
+    dotsLayerRef.current?.setData([])
     // Scale the sprite badge with zoom so it doesn't look tiny when zoomed in,
     // and keep the de-dup grid a bit larger than the badge to avoid overlap.
     const size = Math.max(28, Math.min(64, Math.round(22 + zoom * 9)))
@@ -964,7 +1052,7 @@ export function MapPage() {
     // Grouping grid: a multiple of the badge footprint that grows as you zoom
     // out (where the badge itself is clamped small but each screen cell covers
     // far more world), so an overview collapses spawns into a few hundred
-    // sprites while a close-up separates them into individuals. `7 - zoom`,
+    // markers while a close-up separates them into individual spawns. `7 - zoom`,
     // clamped, sweeps the factor from ~8 when fully zoomed out to ~2.5 zoomed in.
     const groupFactor = Math.max(2.5, Math.min(8, 7 - zoom))
     const cell = Math.round((size + 6) * groupFactor)
@@ -973,59 +1061,85 @@ export function MapPage() {
     const maxX = view.max!.x + cell
     const minY = view.min!.y - cell
     const maxY = view.max!.y + cell
-    // How many distinct species a cell may show, by zoom: an overview keeps only
-    // the dominant creature(s) so it reads at a glance, and zooming in reveals
-    // the full species mix. Spawns beyond the cap stay visible as orange dots.
-    const perCell = zoom <= 0 ? 2 : zoom <= 2 ? 4 : zoom <= 4 ? 8 : Infinity
-    // Aggregate spawns per grid cell, then per species within each cell, so
-    // repeats of one species collapse into an ×N count. Each cell then emits its
-    // top `perCell` species (ranked by spawn count) as sprites.
-    type CellAgg = { p: [number, number, number]; n: number }
-    const cells = new Map<string, Map<number, CellAgg>>()
+    // Aggregate every spawn in a cell into one spawn group: per-species counts
+    // (to pick the dominant sprite + break it down in the popup), the total
+    // creature count, the total loot gold, and a score sum for the ring tint.
+    type SpawnAgg = {
+      bySpecies: Map<number, { p: [number, number, number]; n: number }>
+      total: number
+      gold: number
+      scoreSum: number
+      rep: [number, number, number]
+    }
+    const cells = new Map<string, SpawnAgg>()
     for (const p of points) {
       const pt = map.project(toLatLng(p[0], p[1]), zoom)
       if (pt.x < minX || pt.x > maxX || pt.y < minY || pt.y > maxY) continue
       const ck = Math.floor(pt.x / cell) + '_' + Math.floor(pt.y / cell)
-      let byName = cells.get(ck)
-      if (!byName) cells.set(ck, (byName = new Map()))
-      const hit = byName.get(p[2])
+      let agg = cells.get(ck)
+      if (!agg) cells.set(ck, (agg = { bySpecies: new Map(), total: 0, gold: 0, scoreSum: 0, rep: p }))
+      const hit = agg.bySpecies.get(p[2])
       if (hit) hit.n++
-      else byName.set(p[2], { p, n: 1 })
+      else agg.bySpecies.set(p[2], { p, n: 1 })
+      agg.total++
+      agg.gold += lootValues[p[2]] ?? 0
+      agg.scoreSum += scores[p[2]] ?? 0
     }
     const wanted = new Map<string, () => L.Marker>()
-    for (const [ck, byName] of cells) {
+    for (const [ck, agg] of cells) {
       if (wanted.size >= SPRITE_CAP) break
-      const top =
-        perCell === Infinity
-          ? [...byName.values()]
-          : [...byName.values()].sort((a, b) => b.n - a.n).slice(0, perCell)
-      for (const agg of top) {
-      const { p, n } = agg
-      // Fold cell + species + count into the marker key so a cell whose N
-      // changes while panning (points entering/leaving the edge) rebuilds it.
-      wanted.set(ck + '_' + p[2] + '_' + n, () => {
-        const ci = p[2]
+      // Dominant species (most spawns) supplies the sprite and marker position.
+      const species = [...agg.bySpecies.values()].sort((a, b) => b.n - a.n)
+      const dom = species[0]
+      const ci = dom.p[2]
+      const total = agg.total
+      const gold = agg.gold
+      const ringT = agg.scoreSum / Math.max(1, total) // avg profit → ring colour
+      const ring = heatCss(ringT)
+      // Rebuild the marker when its cell, dominant creature, count or gold change.
+      wanted.set(`${ck}|${ci}|${total}|${Math.round(gold)}`, () => {
         const img = images[ci]
           ? `<img src="${escapeHtml(images[ci]!)}" alt="" loading="lazy" style="width:${imgPx}px;height:${imgPx}px" />`
           : ''
-        const badge =
-          n > 1
-            ? `<span class="tm-spawn-count" style="left:${Math.round(size * 0.34)}px;top:-${Math.round(size * 0.4)}px">&times;${n}</span>`
+        const countBadge =
+          total > 1
+            ? `<span class="tm-spawn-count" style="left:${Math.round(size * 0.34)}px;top:-${Math.round(size * 0.4)}px">&times;${total}</span>`
+            : ''
+        const goldBadge =
+          gold > 0
+            ? `<span class="tm-spawn-gold" style="left:0;top:${Math.round(size * 0.5)}px">` +
+              `<img src="/sprites/crystal-coin.webp" alt="" />${fmtGold(gold)}</span>`
             : ''
         const icon = L.divIcon({
           className: '',
-          html: `<div class="tm-spawn-marker"><div class="tm-spawn tm-spawn-all" style="--ring:#ff7a33;width:${size}px;height:${size}px">${img}</div>${badge}</div>`,
+          html:
+            `<div class="tm-spawn-marker"><div class="tm-spawn tm-spawn-all" style="--ring:${ring};width:${size}px;height:${size}px">${img}</div>${countBadge}${goldBadge}</div>`,
           iconSize: [0, 0],
         })
-        const title = n > 1 ? escapeHtml(names[ci]) + ' (&times;' + n + ')' : escapeHtml(names[ci])
-        return L.marker(toLatLng(p[0], p[1]), { icon }).bindPopup(
-          `<div><div style="font-weight:700">${title}</div>` +
-            `<div style="opacity:.55;font-size:11px;margin:2px 0">${p[0]}, ${p[1]}, z${floorRef.current}</div>` +
-            `<a href="/entry/${escapeHtml(slugs[ci] ?? '')}" style="color:var(--color-accent);font-size:11px;font-weight:700">${escapeHtml(t('map.viewEntry'))}</a></div>`,
+        // Popup: total gold + the species breakdown (top 6), each linking out.
+        const rows = species
+          .slice(0, 6)
+          .map(
+            (s) =>
+              `<div style="display:flex;align-items:center;gap:6px;margin-top:3px">` +
+              (images[s.p[2]]
+                ? `<img src="${escapeHtml(images[s.p[2]]!)}" alt="" style="width:18px;height:18px;image-rendering:pixelated;object-fit:contain" />`
+                : '') +
+              `<a href="/entry/${escapeHtml(slugs[s.p[2]] ?? '')}" style="color:var(--color-accent);font-weight:700;font-size:12px">${escapeHtml(names[s.p[2]])}</a>` +
+              `<span style="opacity:.6;font-size:11px">&times;${s.n}</span></div>`,
+          )
+          .join('')
+        const more = species.length > 6 ? `<div style="opacity:.55;font-size:11px;margin-top:3px">+${species.length - 6}…</div>` : ''
+        return L.marker(toLatLng(dom.p[0], dom.p[1]), { icon }).bindPopup(
+          `<div style="min-width:150px"><div style="font-weight:800;display:flex;align-items:center;gap:5px">` +
+            `<img src="/sprites/crystal-coin.webp" alt="" style="width:15px;height:15px;image-rendering:pixelated" /> ${fmtGold(gold)} gp` +
+            `<span style="opacity:.55;font-weight:600;font-size:11px">· ${total} ${escapeHtml(t('map.spawnsShown'))}</span></div>` +
+            `<div style="opacity:.55;font-size:11px;margin:2px 0">${dom.p[0]}, ${dom.p[1]}, z${floorRef.current}</div>` +
+            rows +
+            more +
+            `</div>`,
         )
       })
-        if (wanted.size >= SPRITE_CAP) break
-      }
     }
     syncMarkers(grp, spriteCacheRef.current, `${zoom}|${overlayGenRef.current}`, wanted)
   }
@@ -1639,19 +1753,36 @@ export function MapPage() {
         classifications: [],
         difficulties: [],
         bosses: [],
+        scores: [],
+        lootValues: [],
       }
     } else {
       // Only keep spawns within the available tile region; the rest (other
       // continents) would just litter the empty background.
       const pts = allSpawns.points.filter(([x, y]) => inTileBounds(x, y))
+      // Blend each creature's loot gold and experience into a 0..1 "profit"
+      // score. Both span several orders of magnitude, so log-compress before
+      // normalising — otherwise one Ferumbras-tier drop table would flatten
+      // everything else to zero. Loot leads the blend; experience nuances it.
+      const cs = allSpawns.creatures
+      const logNorm = (vals: number[]) => {
+        const logs = vals.map((v) => Math.log10(1 + Math.max(0, v)))
+        const max = Math.max(1e-6, ...logs)
+        return logs.map((v) => v / max)
+      }
+      const lootN = logNorm(cs.map((c) => c.loot_value ?? 0))
+      const expN = logNorm(cs.map((c) => c.experience ?? 0))
+      const scores = cs.map((_, i) => 0.62 * lootN[i] + 0.38 * expN[i])
       allPointsRef.current = {
         points: pts,
-        names: allSpawns.creatures.map((c) => c.name),
-        images: allSpawns.creatures.map((c) => c.image),
-        slugs: allSpawns.creatures.map((c) => c.slug),
-        classifications: allSpawns.creatures.map((c) => c.classification),
-        difficulties: allSpawns.creatures.map((c) => c.difficulty),
-        bosses: allSpawns.creatures.map((c) => c.boss),
+        names: cs.map((c) => c.name),
+        images: cs.map((c) => c.image),
+        slugs: cs.map((c) => c.slug),
+        classifications: cs.map((c) => c.classification),
+        difficulties: cs.map((c) => c.difficulty),
+        bosses: cs.map((c) => c.boss),
+        scores,
+        lootValues: cs.map((c) => c.loot_value ?? 0),
       }
     }
     rebuildOverlayRef.current()
@@ -2011,7 +2142,7 @@ export function MapPage() {
           boss's location on the map. */}
       {(bossLoading || bosses.length > 0) && (
         <aside
-          className="absolute bottom-10 left-2 z-[1000] flex w-[calc(100vw-1rem)] flex-col gap-0.5 overflow-y-auto overflow-x-hidden rounded-2xl border-2 border-line bg-bg-2/95 p-2 shadow-lg backdrop-blur-md transition-[max-width] duration-300 ease-in-out sm:left-3 sm:w-[calc(100vw-1.5rem)]"
+          className="scroll-atlas absolute bottom-10 left-2 z-[1000] flex w-[calc(100vw-1rem)] flex-col gap-0.5 overflow-y-auto overflow-x-hidden rounded-2xl border-2 border-line bg-bg-2/95 p-2 shadow-lg backdrop-blur-md transition-[max-width] duration-300 ease-in-out sm:left-3 sm:w-[calc(100vw-1.5rem)]"
           style={{ top: bossTop, maxWidth: bossRailOpen ? '28rem' : '5rem' }}
           aria-busy={bossLoading}
         >
@@ -2121,8 +2252,8 @@ export function MapPage() {
           <div className="flex shrink-0 items-center gap-0.5 rounded-xl bg-bg/50 p-0.5">
             {(
               [
-                { key: 'creature', type: 'creature', label: t('map.searchModeCreature') },
-                { key: 'item', type: 'item', label: t('map.searchModeItem') },
+                { key: 'creature', icon: '/sprites/hydra.webp', label: t('map.searchModeCreature') },
+                { key: 'item', icon: '/sprites/crystal-coin.webp', label: t('map.searchModeItem') },
               ] as const
             ).map((m) => (
               <button
@@ -2136,10 +2267,14 @@ export function MapPage() {
                 aria-label={m.label}
                 aria-pressed={searchKind === m.key}
                 className={`grid h-9 w-9 place-items-center rounded-lg transition ${
-                  searchKind === m.key ? 'bg-accent text-white shadow-sm' : 'text-fg-mute hover:text-fg'
+                  searchKind === m.key ? 'bg-accent shadow-sm' : 'opacity-60 hover:opacity-100'
                 }`}
               >
-                <TypeIcon type={m.type} className="h-5 w-5" />
+                <img
+                  src={m.icon}
+                  alt=""
+                  className="h-6 w-6 object-contain [image-rendering:pixelated]"
+                />
               </button>
             ))}
           </div>
@@ -2171,7 +2306,7 @@ export function MapPage() {
             />
           </div>
           {searchOpen && debouncedQuery.trim().length >= 2 && searchKind === 'creature' && searchResults && searchResults.length > 0 && (
-            <ul className="absolute z-[1100] mt-2 max-h-80 w-full overflow-auto rounded-xl border-2 border-line bg-bg-2 py-1.5 shadow-2xl">
+            <ul className="scroll-atlas absolute z-[1100] mt-2 max-h-80 w-full overflow-auto rounded-xl border-2 border-line bg-bg-2 py-1.5 shadow-2xl">
               {searchResults.map((r) => (
                 <li key={r.slug}>
                   <button
@@ -2201,7 +2336,7 @@ export function MapPage() {
             </ul>
           )}
           {searchOpen && debouncedQuery.trim().length >= 2 && searchKind === 'item' && itemResults && itemResults.length > 0 && (
-            <ul className="absolute z-[1100] mt-2 max-h-80 w-full overflow-auto rounded-xl border-2 border-line bg-bg-2 py-1.5 shadow-2xl">
+            <ul className="scroll-atlas absolute z-[1100] mt-2 max-h-80 w-full overflow-auto rounded-xl border-2 border-line bg-bg-2 py-1.5 shadow-2xl">
               {itemResults.map((r) => (
                 <li key={r.slug}>
                   <button
@@ -2457,6 +2592,25 @@ export function MapPage() {
                 {shownCount.toLocaleString()}
               </span>
             )}
+
+            {/* Profit-heat legend — only meaningful while the dots are shown */}
+            {showAll && (
+              <div
+                className="flex items-center gap-1.5 px-1"
+                title={t('map.profitLegendHint')}
+              >
+                <span className="text-[10px] font-bold uppercase tracking-wide text-fg-mute">
+                  {t('map.profitLow')}
+                </span>
+                <span
+                  className="h-2.5 w-14 rounded-full ring-1 ring-line-2"
+                  style={{ background: HEAT_GRADIENT_CSS }}
+                />
+                <span className="text-[10px] font-bold uppercase tracking-wide text-fg-mute">
+                  {t('map.profitHigh')}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -2631,56 +2785,32 @@ export function MapPage() {
       {routeMode && (
         <div className="pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-line bg-bg-2/95 px-3 py-2.5 shadow-lg backdrop-blur-md text-sm">
           {/* Origin */}
-          <div className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-canon ring-2 ring-white/80" />
-            <select
-              value={endpointValue(routeStart)}
-              onChange={(e) => {
-                const v = e.target.value
-                if (v === '') clearRouteEndpoint('start')
-                else if (v !== '__pt__') pickCityEndpoint('start', v)
-              }}
-              className="h-9 rounded-lg border border-line bg-bg-2 px-2.5 text-sm font-semibold text-fg-dim outline-none transition hover:border-line-2 focus:border-accent"
-            >
-              <option value="">{t('map.routeFrom')}</option>
-              {routeStart && !isLandmark(routeStart) && (
-                <option value="__pt__">{routeStart.label ?? t('map.routePoint')}</option>
-              )}
-              {LANDMARKS.map((l) => (
-                <option key={l.name} value={l.name}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <RouteCityPicker
+            placeholder={t('map.routeFrom')}
+            valueLabel={routeStart && isLandmark(routeStart) ? routeStart.label! : null}
+            pointLabel={
+              routeStart && !isLandmark(routeStart) ? routeStart.label ?? t('map.routePoint') : null
+            }
+            dotClass="bg-canon"
+            onSelect={(name) => pickCityEndpoint('start', name)}
+            onClear={() => clearRouteEndpoint('start')}
+          />
 
           <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-fg-mute" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M5 12h14M13 6l6 6-6 6" />
           </svg>
 
           {/* Destination */}
-          <div className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-accent ring-2 ring-white/80" />
-            <select
-              value={endpointValue(routeEnd)}
-              onChange={(e) => {
-                const v = e.target.value
-                if (v === '') clearRouteEndpoint('end')
-                else if (v !== '__pt__') pickCityEndpoint('end', v)
-              }}
-              className="h-9 rounded-lg border border-line bg-bg-2 px-2.5 text-sm font-semibold text-fg-dim outline-none transition hover:border-line-2 focus:border-accent"
-            >
-              <option value="">{t('map.routeTo')}</option>
-              {routeEnd && !isLandmark(routeEnd) && (
-                <option value="__pt__">{routeEnd.label ?? t('map.routePoint')}</option>
-              )}
-              {LANDMARKS.map((l) => (
-                <option key={l.name} value={l.name}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <RouteCityPicker
+            placeholder={t('map.routeTo')}
+            valueLabel={routeEnd && isLandmark(routeEnd) ? routeEnd.label! : null}
+            pointLabel={
+              routeEnd && !isLandmark(routeEnd) ? routeEnd.label ?? t('map.routePoint') : null
+            }
+            dotClass="bg-accent"
+            onSelect={(name) => pickCityEndpoint('end', name)}
+            onClear={() => clearRouteEndpoint('end')}
+          />
 
           {/* Status / itinerary */}
           {routeBusy ? (

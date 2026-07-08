@@ -258,10 +258,17 @@ class EntryReadService
     {
         $locale = app()->getLocale();
 
+        // v3: `loot_value` is now the realistic expected gold per kill from
+        // `meta.gold_per_kill` (TibiaWiki loot statistics), not a loot-table sum
+        // — the suffix retires the old inflated cached copies.
         return Cache::remember(
-            "map-spawns-{$locale}-{$z}",
+            "map-spawns-v3-{$locale}-{$z}",
             600,
-            fn () => $this->spawnsTransformer->forFloor($this->spawns->creaturesWithSpawns(), $z, $locale),
+            fn () => $this->spawnsTransformer->forFloor(
+                $this->spawns->creaturesWithSpawns(),
+                $z,
+                $locale,
+            ),
         );
     }
 

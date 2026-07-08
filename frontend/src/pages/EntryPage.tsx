@@ -33,12 +33,6 @@ export function EntryPage() {
   // so it isn't duplicated. Titles for canon/interpretations are intentionally omitted.
   const canonBody = entry.content.overview ? entry.content.canon : null
 
-  // Only surface official Tibia/CipSoft sources — third-party references
-  // (TibiaWiki, generic internet, other) are intentionally not shown.
-  const officialSources = entry.sources.filter(
-    (s) => s.type === 'official_article' || s.type === 'cipsoft_publication',
-  )
-
   const related = entry.related ?? []
   const creatures = related.filter((r) => r.type === 'creature')
   const npcs = related.filter((r) => r.type === 'character')
@@ -243,29 +237,6 @@ export function EntryPage() {
               onClose={() => setZoomed(false)}
             />
           )}
-
-          <section className="panel overflow-hidden">
-            <header className="flex items-center gap-3 border-b border-line px-4 py-3">
-              <span className="h-3.5 w-1 rounded-full bg-accent" />
-              <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-fg">{t('entry.sources')}</h2>
-            </header>
-            <div className="p-4">
-              {officialSources.length > 0 ? (
-                <ul className="space-y-2 text-sm">
-                  {officialSources.map((s) => (
-                    <li key={s.id} className="flex flex-wrap items-center gap-2">
-                      <span className="rounded border border-line bg-surface-2 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-fg-mute">
-                        {t(`sourceType.${s.type}`)}
-                      </span>
-                      <span className="text-fg-dim">{s.title}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm italic text-fg-mute">{t('entry.sectionEmpty')}</p>
-              )}
-            </div>
-          </section>
         </div>
 
         <aside className="space-y-5">

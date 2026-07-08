@@ -14,9 +14,9 @@ type NavItem = { to: string; key: string; end?: boolean }
 // stays uncluttered and focused (the whole point of the redesign).
 const primaryNav: NavItem[] = [
   { to: '/', key: 'nav.home', end: true },
-  { to: '/map', key: 'nav.map' },
   { to: '/wordle', key: 'nav.wordle' },
   { to: '/altar', key: 'nav.altar' },
+  { to: '/geo', key: 'nav.geo' },
   { to: '/browse/creature', key: 'nav.bestiary' },
 ]
 
@@ -44,6 +44,7 @@ const footerCols: { heading: string; links: NavItem[] }[] = [
     links: [
       { to: '/wordle', key: 'nav.wordle' },
       { to: '/altar', key: 'nav.altar' },
+      { to: '/geo', key: 'nav.geo' },
       { to: '/items', key: 'nav.items' },
       { to: '/killstats', key: 'nav.killstats' },
       { to: '/soundtrack', key: 'nav.soundtrack' },

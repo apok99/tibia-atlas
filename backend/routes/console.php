@@ -38,6 +38,14 @@ Schedule::command('tibia:mirror-images')
     ->dailyAt('06:30')
     ->withoutOverlapping();
 
+// Realistic expected gold-per-kill for the map's spawn money badges, derived
+// from TibiaWiki loot statistics. Sampled drop data barely moves week to week
+// (and it's ~380 wiki hits), so refresh weekly, after the creature sync so any
+// newly-created creature picks up its loot value on the same night.
+Schedule::command('tibia:etl-loot-stats')
+    ->weeklyOn(1, '07:00')
+    ->withoutOverlapping();
+
 // The raw view log only feeds the trailing-window "trending" calc (72h) and the
 // all-time counter is denormalized on the entry, so anything older than 90 days
 // is dead weight. Prune daily to keep the table from growing unbounded.

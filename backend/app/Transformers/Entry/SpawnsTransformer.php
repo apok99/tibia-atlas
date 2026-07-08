@@ -27,18 +27,25 @@ class SpawnsTransformer
                     continue;
                 }
                 if ($idx === null) {
+                    // Creature names are proper nouns — keep the original English
+                    // name on the map regardless of UI locale.
+                    $enName = $e->translation('en')?->name
+                        ?? $e->translation($locale)?->name
+                        ?? $e->slug;
                     $idx = count($creatures);
                     $creatures[] = [
                         'slug' => $e->slug,
-                        // Creature names are proper nouns — keep the original
-                        // English name on the map regardless of UI locale.
-                        'name' => $e->translation('en')?->name
-                            ?? $e->translation($locale)?->name
-                            ?? $e->slug,
+                        'name' => $enName,
                         'image' => $e->primary_image,
                         'classification' => $e->meta['classification'] ?? null,
                         'difficulty' => $e->meta['difficulty'] ?? null,
                         'boss' => ($e->meta['rank'] ?? null) === 'Boss',
+                        // Signals the client turns into the spawn money badge + a
+                        // "profit" heat: realistic expected gold per kill (from
+                        // TibiaWiki loot statistics, `tibia:etl-loot-stats`) and
+                        // experience. loot_value is 0 for creatures without stats.
+                        'experience' => (int) ($e->meta['experience'] ?? 0),
+                        'loot_value' => (int) ($e->meta['gold_per_kill'] ?? 0),
                     ];
                 }
                 $points[] = [(int) $s[0], (int) $s[1], $idx];

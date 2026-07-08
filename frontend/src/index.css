@@ -334,6 +334,33 @@ html[data-theme='dark'] .ks-raid-badge {
   @apply leading-relaxed text-fg-dim whitespace-pre-line;
 }
 
+/* Themed thin scrollbar for atlas panels (boss watch, custom dropdowns,
+   legend). Colours key off the theme vars, so it recolours for the night
+   atlas automatically. The transparent border + padding-box clip insets the
+   thumb so it reads as a slim pill floating inside the track. */
+.scroll-atlas {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-2) transparent;
+}
+.scroll-atlas::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+.scroll-atlas::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-atlas::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-line-2) 75%, transparent);
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-clip: padding-box;
+}
+.scroll-atlas::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
 /* Spotify-like slider for the audio player (progress + volume). */
 .player-range {
   -webkit-appearance: none;
@@ -588,6 +615,32 @@ html[data-theme='dark'] .ks-raid-badge {
   font-variant-numeric: tabular-nums;
   pointer-events: none;
   white-space: nowrap;
+}
+/* Total loot-gold badge under a grouped spawn marker. */
+.tm-spawn-gold {
+  position: absolute;
+  transform: translate(-50%, 0);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 5px 1px 3px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  color: #ffe9a8;
+  background: #2a1c00;
+  border: 1.5px solid #e6b23c;
+  border-radius: 9999px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.tm-spawn-gold img {
+  width: 12px;
+  height: 12px;
+  image-rendering: pixelated;
+  object-fit: contain;
 }
 
 /* ---- Imported minimap POI markers (levitate spots, levers, depots…) ---- */
@@ -1209,3 +1262,59 @@ html[data-theme='dark'] .ks-raid-badge {
 @media (prefers-reduced-motion: reduce) {
   .altar-mote { animation: none; opacity: 0; }
 }
+
+/* Cartographer (guess-the-zone): a dark veil over the locked minimap with a lit
+   circle at the centre, exactly over the mystery zone. On reveal the veil fades
+   out to open the whole map. Sits above every Leaflet pane while veiled. */
+.geo-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 500;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.9s ease;
+  background: radial-gradient(
+    circle at 50% 50%,
+    transparent 0,
+    transparent 54px,
+    rgba(4, 6, 12, 0.72) 104px,
+    rgba(4, 6, 12, 0.97) 168px,
+    #04060c 240px
+  );
+}
+.geo-veil[data-hidden='true'] {
+  opacity: 0;
+}
+
+/* Reveal pins: the answer (accent) and the player's miss (muted red). */
+.geo-pin {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.geo-pin-label {
+  margin-top: 2px;
+  border-radius: 9999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+.geo-pin-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+}
+.geo-pin-correct .geo-pin-dot { background: #10b981; }
+.geo-pin-correct .geo-pin-label { background: #10b981; }
+.geo-pin-guess .geo-pin-dot { background: #d23d2f; }
+.geo-pin-guess .geo-pin-label { background: #d23d2f; }
