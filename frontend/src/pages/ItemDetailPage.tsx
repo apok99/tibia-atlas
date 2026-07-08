@@ -231,16 +231,6 @@ function ItemColumn({
         )}
       </Section>
 
-      {data.wiki_url && (
-        <a
-          href={data.wiki_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-4 inline-block text-xs font-bold uppercase tracking-wider text-fg-mute transition hover:text-accent"
-        >
-          {t('items.onWiki')} →
-        </a>
-      )}
     </div>
   )
 }

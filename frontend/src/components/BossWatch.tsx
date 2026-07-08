@@ -79,7 +79,7 @@ export function BossWatch({ bosses }: { bosses: BossRow[] }) {
     <section className="ks-panel">
       <div className="mb-3 flex items-baseline justify-between">
         <h2 className="ks-panel-title">{t('ks.raidTitle')}</h2>
-        <span className="text-[11px] text-fg-mute">{t('ks.raidSub')}</span>
+        <span className="text-xs text-fg-mute">{t('ks.raidSub')}</span>
       </div>
 
       <div className="ks-raid-box">

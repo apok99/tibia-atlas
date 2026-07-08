@@ -643,6 +643,11 @@ const QUICK_LINKS: { to: string; title: string; kicker: string; icon: string }[]
 export function MapPage() {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
+  // The immersive canvas root + the top-left control column, so the boss-watch
+  // sidebar can start right below the column (avoids overlapping the search /
+  // route / creature panels when they grow).
+  const rootRef = useRef<HTMLDivElement>(null)
+  const topColRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const layerRef = useRef<L.GridLayer | null>(null)
   const markersGroupRef = useRef<L.LayerGroup | null>(null)
@@ -704,6 +709,7 @@ export function MapPage() {
   const [showPoi, setShowPoi] = useState(false) // imported minimap markers layer
   const [showFilters, setShowFilters] = useState(false) // collapsible refine panel
   const [bossRailOpen, setBossRailOpen] = useState(true) // world-boss watch sidebar
+  const [bossTop, setBossTop] = useState(112) // sidebar top = bottom of the control column
   const [markerDraft, setMarkerDraft] = useState<{ x: number; y: number; floor: number } | null>(null)
   const [draftLabel, setDraftLabel] = useState('')
   const [shownCount, setShownCount] = useState(0) // spawns currently drawn
@@ -1083,6 +1089,26 @@ export function MapPage() {
     }
     window.history.replaceState(null, '', '#' + hash)
   }
+
+  // Keep the boss-watch sidebar pinned just below the top-left control column, so
+  // it never overlaps the search / route / creature panels as they grow or shrink.
+  useEffect(() => {
+    const col = topColRef.current
+    const root = rootRef.current
+    if (!col || !root) return
+    const measure = () => {
+      const top = col.getBoundingClientRect().bottom - root.getBoundingClientRect().top + 8
+      setBossTop(Math.max(64, Math.round(top)))
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(col)
+    window.addEventListener('resize', measure)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [])
 
   // --- map init (once) ---
   useEffect(() => {
@@ -1918,13 +1944,13 @@ export function MapPage() {
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 top-[var(--header-h,57px)] z-20 overflow-hidden bg-[#0e1015]">
+    <div ref={rootRef} className="fixed inset-x-0 bottom-0 top-[var(--header-h,57px)] z-20 overflow-hidden bg-[#336699]">
       <Seo title={t('map.title')} description={t('map.intro')} path="/map" />
       <h1 className="sr-only">{t('map.title')}</h1>
 
       {/* The atlas fills the entire immersive canvas; every control floats over it. */}
       <div className="absolute inset-0 overflow-hidden">
-        <div ref={containerRef} className="h-full w-full" style={{ background: '#0e1015' }} />
+        <div ref={containerRef} className="h-full w-full" style={{ background: '#336699' }} />
       </div>
 
       {/* Coordinate readout — bottom-left corner. */}
@@ -1983,26 +2009,37 @@ export function MapPage() {
           likely up / maybe / just killed, plus %) and the worlds it applies to.
           Hottest first; always shown (skeletons while loading). Tapping plots the
           boss's location on the map. */}
-      {(bossLoading || bosses.length > 0) &&
-        (bossRailOpen ? (
+      {(bossLoading || bosses.length > 0) && (
         <aside
-          className="absolute bottom-10 left-2 top-28 z-[1000] flex w-52 flex-col gap-0.5 overflow-y-auto rounded-xl border border-line bg-bg/85 p-1.5 backdrop-blur-md"
+          className="absolute bottom-10 left-2 z-[1000] flex w-[calc(100vw-1rem)] flex-col gap-0.5 overflow-y-auto overflow-x-hidden rounded-2xl border-2 border-line bg-bg-2/95 p-2 shadow-lg backdrop-blur-md transition-[max-width] duration-300 ease-in-out sm:left-3 sm:w-[calc(100vw-1.5rem)]"
+          style={{ top: bossTop, maxWidth: bossRailOpen ? '28rem' : '5rem' }}
           aria-busy={bossLoading}
         >
-          <div className="flex items-center justify-between gap-1.5 px-1 pb-1 text-theory">
-            <span className="flex items-center gap-1.5">
-              <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 12h.01M15 12h.01M8 20v2h8v-2M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20" />
-              </svg>
-              <span className="text-[10px] font-bold uppercase tracking-widest">{t('map.bossWatch')}</span>
-            </span>
+          <div className={`flex items-center gap-1.5 px-1 pb-1 text-theory ${bossRailOpen ? '' : 'justify-center'}`}>
+            {bossRailOpen && (
+              <span className="flex min-w-0 items-center gap-1.5">
+                <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 12h.01M15 12h.01M8 20v2h8v-2M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20" />
+                </svg>
+                <span className="truncate text-[10px] font-bold uppercase tracking-widest">{t('map.bossWatch')}</span>
+              </span>
+            )}
             <button
-              onClick={() => setBossRailOpen(false)}
-              title={t('map.modeHide')}
-              aria-label={t('map.modeHide')}
-              className="grid h-5 w-5 shrink-0 place-items-center rounded text-fg-mute transition hover:bg-line/40 hover:text-fg"
+              onClick={() => setBossRailOpen((v) => !v)}
+              title={bossRailOpen ? t('map.modeHide') : t('map.bossWatch')}
+              aria-label={bossRailOpen ? t('map.modeHide') : t('map.bossWatch')}
+              aria-expanded={bossRailOpen}
+              className={`grid h-6 w-6 shrink-0 place-items-center rounded text-fg-mute transition hover:bg-line/40 hover:text-fg ${bossRailOpen ? 'ml-auto' : ''}`}
             >
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                viewBox="0 0 24 24"
+                className={`h-4 w-4 transition-transform duration-300 ${bossRailOpen ? '' : 'rotate-180'}`}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <path d="m15 18-6-6 6-6" />
               </svg>
             </button>
@@ -2020,62 +2057,60 @@ export function MapPage() {
                     title={`${b.race} · ${t(hs.label)} ${b.heat}%${b.worlds.length ? ` · ${b.worlds.join(', ')}` : ''}`}
                     className={`group flex w-full items-center gap-2 rounded-lg border px-1.5 py-1 text-left transition ${
                       on ? 'border-accent bg-accent/10' : 'border-transparent hover:border-line-2 hover:bg-bg-2/60'
-                    }`}
+                    } ${bossRailOpen ? '' : 'justify-center'}`}
                   >
-                    <span className="relative shrink-0">
-                      <img src={b.image} alt="" loading="lazy" className="sprite h-9 w-9 object-contain transition group-hover:scale-110" />
+                    <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded bg-line/15">
+                      <img
+                        src={b.image}
+                        alt=""
+                        loading="lazy"
+                        onError={(e) => {
+                          e.currentTarget.style.visibility = 'hidden'
+                        }}
+                        className="sprite h-9 w-9 object-contain transition group-hover:scale-110"
+                      />
                       <span
                         className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-bg ${
                           b.heat >= 66 ? 'bg-accent' : b.heat >= 33 ? 'bg-gold' : 'bg-interp'
                         }`}
                       />
                     </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-xs font-bold text-fg">{b.race}</span>
-                      <span className={`flex items-center gap-1 text-[10px] font-bold ${hs.cls}`}>
-                        <span aria-hidden>{hs.glyph}</span>
-                        <span className="truncate">{t(hs.label)}</span>
-                        <span className="tabular-nums opacity-70">{b.heat}%</span>
-                      </span>
-                      {b.worlds.length > 0 && (
-                        <span className="flex items-center gap-1 text-[10px] text-fg-mute">
-                          <svg viewBox="0 0 24 24" className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="12" cy="12" r="9" />
-                            <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
-                          </svg>
-                          <span className="truncate">
-                            {worlds}
-                            {moreWorlds}
-                          </span>
+                    {bossRailOpen && (
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-bold text-fg">{b.race}</span>
+                        <span className={`flex items-center gap-1 text-[15px] font-bold ${hs.cls}`}>
+                          <span aria-hidden>{hs.glyph}</span>
+                          <span className="truncate">{t(hs.label)}</span>
+                          <span className="tabular-nums opacity-70">{b.heat}%</span>
                         </span>
-                      )}
-                    </span>
+                        {b.worlds.length > 0 && (
+                          <span className="flex items-center gap-1 text-xs text-fg-mute">
+                            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="12" r="9" />
+                              <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
+                            </svg>
+                            <span className="truncate">
+                              {worlds}
+                              {moreWorlds}
+                            </span>
+                          </span>
+                        )}
+                      </span>
+                    )}
                   </button>
                 )
               })
             : Array.from({ length: 8 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full rounded-lg" />
+                <Skeleton key={i} className="h-12 w-full shrink-0 rounded-lg" />
               ))}
         </aside>
-        ) : (
-          // Collapsed — a compact skull button that reopens the sidebar.
-          <button
-            onClick={() => setBossRailOpen(true)}
-            title={t('map.bossWatch')}
-            aria-label={t('map.bossWatch')}
-            className="absolute left-2 top-28 z-[1000] grid h-10 w-10 place-items-center rounded-xl border border-line bg-bg/85 text-theory shadow-lg backdrop-blur-md transition hover:border-line-2 hover:text-accent"
-          >
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 12h.01M15 12h.01M8 20v2h8v-2M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20" />
-            </svg>
-          </button>
-        ))}
+      )}
 
       {/* Floating control layer — pinned to the top, translucent so the map reads
           through it. The outer wrapper ignores pointer events so the map stays
           draggable in the side gutters; the inner column re-enables them. */}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-[1000] flex flex-col p-2 pt-5 sm:p-3 sm:pt-7">
-        <div className="pointer-events-none flex w-full max-w-md flex-col gap-2">
+        <div ref={topColRef} className="pointer-events-none flex w-full max-w-md flex-col gap-2">
 
       {/* Search — the hero, pinned top-left. The action/layer hotbar lives at the
           bottom of the screen (see below). */}

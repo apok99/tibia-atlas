@@ -33,6 +33,12 @@ export function EntryPage() {
   // so it isn't duplicated. Titles for canon/interpretations are intentionally omitted.
   const canonBody = entry.content.overview ? entry.content.canon : null
 
+  // Only surface official Tibia/CipSoft sources — third-party references
+  // (TibiaWiki, generic internet, other) are intentionally not shown.
+  const officialSources = entry.sources.filter(
+    (s) => s.type === 'official_article' || s.type === 'cipsoft_publication',
+  )
+
   const related = entry.related ?? []
   const creatures = related.filter((r) => r.type === 'creature')
   const npcs = related.filter((r) => r.type === 'character')
@@ -244,20 +250,14 @@ export function EntryPage() {
               <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-fg">{t('entry.sources')}</h2>
             </header>
             <div className="p-4">
-              {entry.sources.length > 0 ? (
+              {officialSources.length > 0 ? (
                 <ul className="space-y-2 text-sm">
-                  {entry.sources.map((s) => (
+                  {officialSources.map((s) => (
                     <li key={s.id} className="flex flex-wrap items-center gap-2">
                       <span className="rounded border border-line bg-surface-2 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-fg-mute">
                         {t(`sourceType.${s.type}`)}
                       </span>
-                      {s.url ? (
-                        <a href={s.url} target="_blank" rel="noreferrer" className="text-accent-2 underline-offset-2 hover:underline">
-                          {s.title}
-                        </a>
-                      ) : (
-                        <span className="text-fg-dim">{s.title}</span>
-                      )}
+                      <span className="text-fg-dim">{s.title}</span>
                     </li>
                   ))}
                 </ul>
