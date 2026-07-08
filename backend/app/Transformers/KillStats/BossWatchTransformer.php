@@ -14,15 +14,17 @@ class BossWatchTransformer
     /**
      * @param  Collection<int, \stdClass>  $rows
      * @param  list<string>  $iconic  lowercased iconic boss names (order = fame rank)
+     * @param  string|null  $world  when given, heat/status is scoped to this single
+     *                              world (see {@see BossWatchQuery::rows()}).
      * @return Collection<int, array<string, mixed>>
      */
-    public function collection(Collection $rows, array $iconic, int $limit, string $type = 'raid'): Collection
+    public function collection(Collection $rows, array $iconic, int $limit, string $type = 'raid', ?string $world = null): Collection
     {
         $mapped = $rows
             // Raid bosses are proper nouns ("Orshabaal"); killstats names common
             // summoned adds in lowercase plural ("glooth bombs") — drop those.
             ->filter(fn ($r) => mb_strtolower($r->race) !== $r->race)
-            ->map(fn ($r) => $this->shape($r, $iconic));
+            ->map(fn ($r) => $this->shape($r, $iconic, $world));
 
         if ($type === 'daily') {
             // Daily bosses: killed (<24h) in most of the worlds they appear in,
@@ -46,7 +48,7 @@ class BossWatchTransformer
      * @param  list<string>  $iconic
      * @return array<string, mixed>
      */
-    private function shape(\stdClass $r, array $iconic): array
+    private function shape(\stdClass $r, array $iconic, ?string $world = null): array
     {
         $worlds = max(1, (int) $r->worlds_active);
         $cooldown = (int) $r->cooldown;          // killed in last 24h
@@ -59,6 +61,15 @@ class BossWatchTransformer
         $list = $cooldown > 0
             ? array_filter(explode(',', (string) $r->cooldown_worlds))
             : array_filter(explode(',', (string) $r->open_worlds));
+
+        // Scoped to a single world: heat collapses to a clear up/down read —
+        // killed there in the last 24h → cold (on cooldown), otherwise hot
+        // (likely up). The world list shows just that world.
+        if ($world !== null) {
+            $killedToday = filter_var($r->world_killed_today ?? false, FILTER_VALIDATE_BOOLEAN);
+            $heat = $killedToday ? 0 : 100;
+            $list = [$world];
+        }
 
         // Fame rank (position in the iconic list) so the famous ones come first
         // in their squad regardless of how (in)active they are.

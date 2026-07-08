@@ -48,8 +48,9 @@ Schedule::command('tibia:etl-loot-stats')
 
 // House rent status for the map's "Casas" layer. TibiaData houses have no coords
 // (pins come from the baked houses.json); this only refreshes the changing bit —
-// rented / on-auction / free per world. Auctions turn over on a ~day cycle, so a
-// twice-daily snapshot for the default world is plenty.
+// rented / on-auction / free per world, across ALL regular worlds (~90 worlds ×
+// 20 house-towns ≈ a 10-15 min run). Auctions turn over on a ~day cycle, so a
+// twice-daily snapshot is plenty.
 Schedule::command('tibia:etl-houses')
     ->twiceDaily(7, 19)
     ->withoutOverlapping();

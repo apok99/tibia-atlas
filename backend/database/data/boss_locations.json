@@ -186,6 +186,12 @@
     "z": 14,
     "src": "TibiaWiki: same Otherworld rift as Aftershock/Foreshock"
   },
+  "energy-overlord": {
+    "x": 33095,
+    "y": 32095,
+    "z": 13,
+    "src": "Energy Sphere (Knight's part, The Elemental Spheres Quest), boss spawns in the south part — TibiaWiki Mapper Coords 129.71|125.95|13"
+  },
   "damage-resonance": {
     "x": 32208,
     "y": 31247,
@@ -528,7 +534,7 @@
     "z": 7,
     "src": "Rathleton Magistrate area (test-server creature)"
   },
-  "_unmapped": "No defensible public-map tile (raid-only, random world-change, off-grid instance, or unclear location) — intentionally left without a pin: captured-versperoth, cave-spider (basic creature mis-ranked as boss), court-warlock, devovorga, devovorga-invincible, earth-overlord, energy-overlord, fire-overlord, faceless-bane, fernfang, fluffy, freegoiz, furyosa.",
+  "_unmapped": "No defensible public-map tile (raid-only, random world-change, off-grid instance, or unclear location) — intentionally left without a pin: captured-versperoth, cave-spider (basic creature mis-ranked as boss), court-warlock, devovorga, devovorga-invincible, earth-overlord (Earth Sphere 33330,32076,13 — mappable, pending), fire-overlord (Fire Sphere 33180,32196,13 — pending a minimap tile fill), faceless-bane, fernfang, fluffy, freegoiz, furyosa.",
   "ferumbras": {
     "x": 32121,
     "y": 32688,

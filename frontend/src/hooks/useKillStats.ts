@@ -88,13 +88,16 @@ export interface BossRow {
   rank: number
 }
 
-/** Boss roster. type='raid' → rare world bosses; type='daily' → daily-cooldown bosses. */
-export function useBosses(type: 'raid' | 'daily' = 'raid', limit = 24, enabled = true) {
+/**
+ * Boss roster. type='raid' → rare world bosses; type='daily' → daily-cooldown bosses.
+ * `world` scopes each boss's heat/status to a single world ('all' = aggregate).
+ */
+export function useBosses(type: 'raid' | 'daily' = 'raid', limit = 24, enabled = true, world = 'all') {
   return useQuery({
-    queryKey: ['killstats', 'bosses', type, limit],
+    queryKey: ['killstats', 'bosses', type, limit, world],
     enabled,
     queryFn: async () =>
-      (await api.get<{ latest: string | null; data: BossRow[] }>('/killstats/bosses', { params: { type, limit } })).data.data,
+      (await api.get<{ latest: string | null; data: BossRow[] }>('/killstats/bosses', { params: { type, limit, world } })).data.data,
     staleTime: 60 * 1000,
   })
 }

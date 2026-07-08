@@ -100,13 +100,17 @@ class KillStatsController extends Controller
      * RAID-boss roster for the "Raid Boss Watch" module, with a spawn
      * "temperature" (heat 0-100 = probability it is up / about to spawn).
      *
-     * Query: limit (1-40, default 24).
+     * Query: limit (1-40, default 24), type=raid|daily, world=all|<Name>.
+     * A specific world scopes each boss's heat/status to that world.
      */
     public function bosses(Request $request): JsonResponse
     {
+        $world = trim((string) $request->string('world', 'all'));
+
         return response()->json($this->stats->bosses(
             limit: $this->clamp($request, 'limit', 24, 1, 40),
             type: (string) $request->string('type', 'raid') === 'daily' ? 'daily' : 'raid',
+            world: ($world === '' || $world === 'all') ? null : $world,
         ));
     }
 

@@ -50,7 +50,13 @@ class ImportBossLocations extends Command
         $data = json_decode((string) file_get_contents($path), true) ?: [];
         $force = (bool) $this->option('force');
         $dry = (bool) $this->option('dry-run');
+        // Dev keeps tiles under frontend/public/minimap; a built deploy only has
+        // them under frontend/dist/minimap. Accept whichever exists so the tile
+        // guard works in production too.
         $tileDir = base_path('../frontend/public/minimap');
+        if (! is_dir($tileDir)) {
+            $tileDir = base_path('../frontend/dist/minimap');
+        }
 
         $applied = 0;
         $skipped = 0;

@@ -163,20 +163,25 @@ class KillStatsService
     /**
      * @param  string  $type  'raid' (rare world bosses) or 'daily' (per-cooldown
      *                        bosses killed across most worlds every day).
+     * @param  string|null  $world  null → heat aggregated across all worlds;
+     *                              a world name → heat scoped to that world.
      * @return array<string, mixed>
      */
-    public function bosses(int $limit, string $type = 'raid'): array
+    public function bosses(int $limit, string $type = 'raid', ?string $world = null): array
     {
-        return KillStatsCache::remember("bosses:{$type}:{$limit}", function () use ($limit, $type) {
+        $key = "bosses:{$type}:{$limit}:".($world ?? 'all');
+
+        return KillStatsCache::remember($key, function () use ($limit, $type, $world) {
             $latest = $this->bossWatch->latestDate();
             $rows = $latest
-                ? $this->bossWatch->rows($latest, (int) config('killstats.raid_max_worlds'), $type)
+                ? $this->bossWatch->rows($latest, (int) config('killstats.raid_max_worlds'), $type, $world)
                 : collect();
 
             return [
                 'latest' => $latest,
                 'type' => $type,
-                'data' => $this->bossWatchTransformer->collection($rows, config('killstats.iconic_raid_bosses'), $limit, $type),
+                'world' => $world,
+                'data' => $this->bossWatchTransformer->collection($rows, config('killstats.iconic_raid_bosses'), $limit, $type, $world),
             ];
         });
     }

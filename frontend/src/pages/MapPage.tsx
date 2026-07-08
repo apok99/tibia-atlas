@@ -9,7 +9,7 @@ import { planRoute, type RoutePlan, type RouteLeg } from '../lib/routing'
 import { Seo } from '../lib/seo'
 import { Icon, iconMarkup } from '../lib/icons'
 import { useGlossary } from '../hooks/useGlossary'
-import { useBosses, type BossRow } from '../hooks/useKillStats'
+import { useBosses, useKillWorlds, type BossRow } from '../hooks/useKillStats'
 import { TypeIcon } from '../components/TypeIcon'
 import { Skeleton } from '../components/Skeleton'
 import { MapTutorial, mapTourSeen } from '../components/MapTutorial'
@@ -827,6 +827,85 @@ function CityJumpPicker({ label, onGo }: { label: string; onGo: (name: string) =
   )
 }
 
+// Global world switcher, rendered as a chip below the quick-links stack in the
+// bottom-right. Shows the active world by name (it drives both the Boss Watch's
+// per-world heat and the houses layer's live rent status) and pops a themed menu
+// upward — the whole stack is pinned to the bottom of the screen.
+function WorldPicker({
+  worlds,
+  value,
+  label,
+  onSelect,
+}: {
+  worlds: string[]
+  value: string
+  label: string
+  onSelect: (name: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title={`${label}: ${value}`}
+        aria-label={`${label}: ${value}`}
+        className="group flex items-center gap-2 rounded-lg border border-line-2 bg-bg-2/90 px-2.5 py-1.5 shadow-lg backdrop-blur-md transition hover:-translate-x-0.5 hover:border-accent"
+      >
+        <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-accent transition group-hover:scale-110" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
+        </svg>
+        <span className="text-[10px] font-bold uppercase leading-none tracking-widest text-fg-mute">{label}</span>
+        <span className="text-xs font-bold leading-none text-fg">{value}</span>
+      </button>
+      {open && (
+        <ul
+          role="listbox"
+          className="scroll-atlas absolute bottom-full right-0 z-[1100] mb-2 max-h-72 w-44 overflow-auto rounded-xl border-2 border-line bg-bg-2 py-1.5 shadow-2xl"
+        >
+          {worlds.map((w) => {
+            const active = w === value
+            return (
+              <li key={w}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  onClick={() => {
+                    onSelect(w)
+                    setOpen(false)
+                  }}
+                  className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition hover:bg-surface-2 ${
+                    active ? 'font-bold text-accent' : 'font-medium text-fg'
+                  }`}
+                >
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 text-fg-mute" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
+                  </svg>
+                  {w}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export function MapPage() {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -905,7 +984,24 @@ export function MapPage() {
   const [bossOnly, setBossOnly] = useState(false) // show only bosses
   const [showPoi, setShowPoi] = useState(false) // imported minimap markers layer
   const [showHouses, setShowHouses] = useState(false) // rentable houses layer
-  const [houseWorld, setHouseWorld] = useState('Antica') // world for live rent status
+  // The selected Tibia world — a GLOBAL map concern: it drives the Boss Watch's
+  // per-world heat AND the houses layer's live rent status. Persisted so the user
+  // doesn't re-pick their world every visit; defaults to Antica (a classic world
+  // that has a house-rent snapshot).
+  const [world, setWorld] = useState(() => {
+    try {
+      return localStorage.getItem('tibiaAtlas.mapWorld') || 'Antica'
+    } catch {
+      return 'Antica'
+    }
+  })
+  useEffect(() => {
+    try {
+      localStorage.setItem('tibiaAtlas.mapWorld', world)
+    } catch {
+      /* private mode / storage disabled — non-fatal */
+    }
+  }, [world])
   const [showFilters, setShowFilters] = useState(false) // collapsible refine panel
   const [showTour, setShowTour] = useState(false) // guided how-to overlay
   const [bossRailOpen, setBossRailOpen] = useState(false) // world-boss watch sidebar (starts minimized so it doesn't cover the map)
@@ -1711,8 +1807,11 @@ export function MapPage() {
     const maxY = view.max!.y + pad
     const wanted = new Map<string, () => L.Marker>()
     for (const cr of creaturesRef.current) {
+      // Eager (not lazy): a tracked creature has few markers and lazy-loading
+      // inside a Leaflet div-icon often never fires — you fly to a lone boss
+      // spawn and the sprite stays blank until you pan.
       const img = cr.image
-        ? `<img src="${escapeHtml(cr.image)}" alt="" loading="lazy" />`
+        ? `<img src="${escapeHtml(cr.image)}" alt="" />`
         : ''
       for (const sp of cr.spawns) {
         if (sp.z !== f) continue
@@ -1945,23 +2044,23 @@ export function MapPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showHouses, housesData, floor, mapReady])
 
-  // Worlds that have a live rent-status snapshot, for the map's world picker.
-  const { data: houseWorlds } = useQuery<string[]>({
-    queryKey: ['house-worlds'],
-    staleTime: 3_600_000,
-    enabled: showHouses,
-    queryFn: async () => (await (await fetch('/api/houses/worlds')).json()).data ?? [],
-  })
+  // Full world roster for the global world picker (most-populated first).
+  const { data: killWorlds } = useKillWorlds()
+  const worldNames = useMemo(() => {
+    const names = (killWorlds ?? []).map((w) => w.name)
+    // Keep the current selection selectable even before the roster loads.
+    return names.includes(world) ? names : [world, ...names]
+  }, [killWorlds, world])
 
   // Live rent status for the chosen world — only fetched while the layer is on.
   const { data: houseStatus } = useQuery<{
     houses: Record<number, { status: 'rented' | 'auctioned' | 'free'; bid?: number }>
   }>({
-    queryKey: ['house-status', houseWorld],
+    queryKey: ['house-status', world],
     staleTime: 300_000,
-    enabled: showHouses && !!houseWorld,
+    enabled: showHouses && !!world,
     queryFn: async () => {
-      const res = await fetch(`/api/houses?world=${encodeURIComponent(houseWorld)}`)
+      const res = await fetch(`/api/houses?world=${encodeURIComponent(world)}`)
       if (!res.ok) throw new Error('house status fetch failed')
       return res.json()
     },
@@ -2273,11 +2372,17 @@ export function MapPage() {
   // being up right now / about to spawn). Powers both the ☠-mode strip and the
   // always-on right-edge boss rail, so it's fetched on every map view.
   // Plottable bosses (slug + sprite) sorted hottest first.
-  const { data: bossWatch, isLoading: bossLoading } = useBosses('raid', 24)
+  const { data: bossWatch, isLoading: bossLoading } = useBosses('raid', 24, true, world)
   const bosses = useMemo(
     () =>
       (bossWatch ?? [])
-        .filter((b): b is BossRow & { slug: string; image: string } => !!b.slug && !!b.image)
+        // Skip bosses we've never recorded a kill for in the tracking window: with
+        // no "last seen" anchor their heat is a fabricated 100% ("probably up"),
+        // which is misleading — hide them until we actually have data.
+        .filter(
+          (b): b is BossRow & { slug: string; image: string } =>
+            !!b.slug && !!b.image && b.week_killed > 0,
+        )
         .sort((a, b) => b.heat - a.heat || b.due - a.due),
     [bossWatch],
   )
@@ -2347,6 +2452,9 @@ export function MapPage() {
             <span className="text-xs font-bold leading-none text-fg">{t(q.title)}</span>
           </Link>
         ))}
+        {/* Active world — sits right below "Stats"; drives the Boss Watch heat
+            and the houses layer's live rent status. */}
+        <WorldPicker worlds={worldNames} value={world} label={t('map.world')} onSelect={setWorld} />
       </div>
 
       {/* Floor selector — pinned to the right edge, living in the safe band
@@ -2829,23 +2937,6 @@ export function MapPage() {
                 <path d="M3 10l9-7 9 7M5 9v11h14V9M9 21v-6h6v6" />
               </svg>
             </button>
-
-            {/* World picker for live house rent status (only while the layer is on) */}
-            {showHouses && (
-              <select
-                value={houseWorld}
-                onChange={(e) => setHouseWorld(e.target.value)}
-                title={t('map.houseWorld')}
-                aria-label={t('map.houseWorld')}
-                className="h-11 rounded-lg border border-line/40 bg-bg-2/40 px-2 text-sm text-fg-dim transition hover:border-line-2 hover:text-fg"
-              >
-                {(houseWorlds && houseWorlds.length ? houseWorlds : [houseWorld]).map((w) => (
-                  <option key={w} value={w}>
-                    {w}
-                  </option>
-                ))}
-              </select>
-            )}
 
             {/* Refine filters */}
             <button
