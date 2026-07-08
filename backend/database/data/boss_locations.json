@@ -534,7 +534,13 @@
     "z": 7,
     "src": "Rathleton Magistrate area (test-server creature)"
   },
-  "_unmapped": "No defensible public-map tile (raid-only, random world-change, off-grid instance, or unclear location) — intentionally left without a pin: captured-versperoth, cave-spider (basic creature mis-ranked as boss), court-warlock, devovorga, devovorga-invincible, earth-overlord (Earth Sphere 33330,32076,13 — mappable, pending), fire-overlord (Fire Sphere 33180,32196,13 — pending a minimap tile fill), faceless-bane, fernfang, fluffy, freegoiz, furyosa.",
+  "furyosa": {
+    "x": 33303,
+    "y": 31829,
+    "z": 14,
+    "src": "TibiaWiki: Fury Dungeon below Edron ({{Mapper Coords|130.23|124.85|14}}) — Fury Gate MWC entrance is random, but the dungeon itself is a fixed map location"
+  },
+  "_unmapped": "No defensible public-map tile (raid-only, random world-change, off-grid instance, or unclear location) — intentionally left without a pin: captured-versperoth, cave-spider (basic creature mis-ranked as boss), court-warlock, devovorga, devovorga-invincible, earth-overlord (Earth Sphere 33330,32076,13 — mappable, pending), fire-overlord (Fire Sphere 33180,32196,13 — pending a minimap tile fill), faceless-bane, fernfang, fluffy, freegoiz.",
   "ferumbras": {
     "x": 32121,
     "y": 32688,
