@@ -2049,7 +2049,9 @@ export function MapPage() {
   const worldNames = useMemo(() => {
     const names = (killWorlds ?? []).map((w) => w.name)
     // Keep the current selection selectable even before the roster loads.
-    return names.includes(world) ? names : [world, ...names]
+    const all = names.includes(world) ? names : [world, ...names]
+    // Alphabetical so a world is easy to find in the list.
+    return all.sort((a, b) => a.localeCompare(b))
   }, [killWorlds, world])
 
   // Live rent status for the chosen world — only fetched while the layer is on.
@@ -2457,13 +2459,12 @@ export function MapPage() {
         <WorldPicker worlds={worldNames} value={world} label={t('map.world')} onSelect={setWorld} />
       </div>
 
-      {/* Floor selector — pinned to the right edge, living in the safe band
-          between the search bar up top and the quick-links stack in the
-          bottom-right corner. Explicit top/bottom insets (not vertical
-          centring) keep it clear of both; it scrolls when the floors don't fit.
-          On narrow screens the search bar spans the full width, so we start
-          lower (top-24); from sm up it's centred/narrow and can't reach us. */}
-      <div className="absolute right-2 top-24 bottom-56 z-[1000] flex flex-col gap-1 overflow-y-auto rounded-md border border-line bg-bg/90 p-2 backdrop-blur-md sm:top-6">
+      {/* Floor selector — pinned to the right edge and vertically centred, sized
+          to its content so the panel never balloons past the floor buttons. A
+          max-height keeps it clear of the search bar / quick-links and lets it
+          scroll only if the floors ever outgrow the viewport. On narrow screens
+          the search bar spans the full width, so the cap is a touch tighter. */}
+      <div className="absolute right-2 top-1/2 z-[1000] flex max-h-[calc(100dvh-11rem)] -translate-y-1/2 flex-col gap-1 overflow-y-auto rounded-md border border-line bg-bg/90 p-2 backdrop-blur-md sm:max-h-[calc(100dvh-4rem)]">
         <span className="mb-1 text-center text-[10px] font-bold uppercase tracking-widest text-fg-mute">
           {t('map.floor')}
         </span>
@@ -3127,6 +3128,17 @@ export function MapPage() {
                   </button>
                 </div>
               )}
+              <Link
+                to={`/entry/${cr.slug}`}
+                className="grid h-8 w-8 place-items-center rounded-lg text-fg-mute transition hover:bg-accent/10 hover:text-accent"
+                title={t('map.viewEntry')}
+                aria-label={t('map.viewEntry')}
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              </Link>
               {cr.clusters.length > 0 && (
                 <button
                   onClick={() => routeToSpawn(cr.slug)}
