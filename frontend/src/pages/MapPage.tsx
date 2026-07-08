@@ -304,14 +304,14 @@ function drawRouteLegs(
 
 // --- profit-heat ramp ---------------------------------------------------------
 // The "all creatures" dots are tinted by a per-spawn profit score (a creature's
-// loot gold + experience, amplified by local spawn density): cold blue = little
-// to gain, through teal/green/gold, to hot red = the richest hunting spots.
+// loot gold + experience, amplified by local spawn density). The ramp follows
+// Tibia's coin value: hot red = little to gain, through gold and teal, to cool
+// blue = the richest hunting spots (the crystal-coin end). Four stops only.
 const HEAT_STOPS: [number, [number, number, number]][] = [
-  [0.0, [70, 120, 214]], // blue
-  [0.32, [63, 183, 167]], // teal
-  [0.56, [127, 201, 63]], // green
-  [0.78, [224, 165, 49]], // gold
-  [1.0, [210, 61, 47]], // red
+  [0.0, [210, 61, 47]], // red — poorest
+  [0.34, [224, 165, 49]], // gold
+  [0.67, [63, 183, 167]], // teal
+  [1.0, [70, 120, 214]], // blue — richest (crystal)
 ]
 const HEAT_STEPS = 16
 function heatRgb(t: number): [number, number, number] {
