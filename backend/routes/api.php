@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AltarController;
 use App\Http\Controllers\Api\BookController;
 use App\Http\Controllers\Api\EntryController;
+use App\Http\Controllers\Api\HouseController;
 use App\Http\Controllers\Api\ItemController;
 use App\Http\Controllers\Api\KillStatsController;
 use App\Http\Controllers\Api\MapRouteController;
@@ -91,6 +92,17 @@ Route::prefix('killstats')->middleware(['throttle:public', 'cache.headers:public
     Route::get('/bosses', [KillStatsController::class, 'bosses']);
     Route::get('/entry/{slug}', [KillStatsController::class, 'entry']);
     Route::get('/boss/{slug}', [KillStatsController::class, 'boss']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| House rent status (TibiaData ETL) — per-world live status layered onto the
+| map's static house pins. Read-only, locale-agnostic.
+|--------------------------------------------------------------------------
+*/
+Route::prefix('houses')->middleware(['throttle:public', 'cache.headers:public;max_age=120;s_maxage=600'])->group(function () {
+    Route::get('/', [HouseController::class, 'index']);
+    Route::get('/worlds', [HouseController::class, 'worlds']);
 });
 
 /*
