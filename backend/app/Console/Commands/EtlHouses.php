@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Laravel\Telescope\Telescope;
 
 /**
  * ETL for TibiaData house rent status.
@@ -15,14 +16,14 @@ use Illuminate\Support\Facades\Http;
  * house_status, joined to those pins by the real Tibia house id. One request per
  * town per world; upsert-only (a fresh snapshot each run, no history).
  *
- *   php artisan tibia:etl-houses                      # default world (Antica)
+ *   php artisan tibia:etl-houses                      # ALL regular worlds
  *   php artisan tibia:etl-houses --worlds=Antica,Secura
  */
 class EtlHouses extends Command
 {
     protected $signature = 'tibia:etl-houses
-        {--worlds=Antica : Comma-separated world names to fetch}
-        {--sleep=250 : Delay between town requests in milliseconds}';
+        {--worlds= : Comma-separated world names (default: all regular worlds from /v4/worlds)}
+        {--sleep=200 : Delay between town requests in milliseconds}';
 
     protected $description = 'Fetch TibiaData house rent status per world into house_status';
 
@@ -42,20 +43,33 @@ class EtlHouses extends Command
 
     public function handle(): int
     {
+        // ~90 worlds × 20 towns = ~1800 HTTP calls + upserts in one process. Telescope
+        // buffers every query/request in memory and only flushes at the end, so on a
+        // run this long it exhausts PHP's memory limit (~57 worlds in). Stop it
+        // recording; this is a background ETL, not a request worth inspecting.
+        if (class_exists(Telescope::class)) {
+            Telescope::stopRecording();
+        }
+        DB::connection()->disableQueryLog();
+
         $this->base = rtrim((string) env('TIBIADATA_BASE_URL', 'https://api.tibiadata.com'), '/');
         $sleepMs = (int) $this->option('sleep');
-        $worlds = array_filter(array_map('trim', explode(',', (string) $this->option('worlds'))));
+
+        $worlds = ($opt = (string) $this->option('worlds'))
+            ? array_filter(array_map('trim', explode(',', $opt)))
+            : $this->allWorlds();
         if (! $worlds) {
-            $this->error('No worlds given.');
+            $this->error('No worlds to fetch.');
 
             return self::FAILURE;
         }
+        $this->info(count($worlds).' world(s) × '.count(self::TOWNS).' towns to fetch.');
 
         $now = now();
         $total = $failed = 0;
 
         foreach ($worlds as $world) {
-            $this->info("World {$world} — fetching ".count(self::TOWNS).' towns…');
+            $this->line("World {$world} …");
             $rows = [];
 
             foreach (self::TOWNS as $town) {
@@ -107,6 +121,30 @@ class EtlHouses extends Command
         $this->info("Done. {$total} rows across ".count($worlds)." world(s). Failed towns: {$failed}.");
 
         return self::SUCCESS;
+    }
+
+    /** Every regular world name from /v4/worlds (tournament worlds skipped). */
+    private function allWorlds(): array
+    {
+        try {
+            $resp = Http::timeout(20)->retry(3, 1000)
+                ->withHeaders(['User-Agent' => 'TibiaAtlas-ETL'])
+                ->get("{$this->base}/v4/worlds");
+
+            if (! $resp->ok()) {
+                $this->error('Failed to fetch /v4/worlds: HTTP '.$resp->status());
+
+                return [];
+            }
+
+            $list = $resp->json('worlds.regular_worlds') ?? [];
+
+            return array_values(array_filter(array_map(fn ($w) => $w['name'] ?? null, $list)));
+        } catch (\Throwable $e) {
+            $this->error('Failed to fetch /v4/worlds: '.$e->getMessage());
+
+            return [];
+        }
     }
 
     /** GET /v4/houses/{world}/{town}, merged house + guildhall lists; null on failure. */
