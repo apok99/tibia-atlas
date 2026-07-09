@@ -305,15 +305,50 @@ function drawRouteLegs(
 // --- profit-heat ramp ---------------------------------------------------------
 // The "all creatures" dots are tinted by a per-spawn profit score (a creature's
 // loot gold, averaged per spot with a light spawn-density nudge). The ramp follows
-// Tibia's coin value: hot red = little to gain, through gold and teal, to cool
-// blue = the richest hunting spots (the crystal-coin end). Four stops only.
+// Tibia's coin value: the warm half (red → orange → gold) is the poor-to-mediocre
+// range, the cool half (teal → blue) the genuinely rich spots. Five stops, so a
+// bad earner (a dragon) reads as clearly warm, not lumped in with the mid greens.
 const HEAT_STOPS: [number, [number, number, number]][] = [
-  [0.0, [210, 61, 47]], // red — poorest
-  [0.34, [224, 165, 49]], // gold
-  [0.67, [63, 183, 167]], // teal
+  [0.0, [200, 52, 44]], // red — poorest
+  [0.22, [226, 110, 42]], // orange — bad
+  [0.45, [222, 170, 55]], // gold/amber — mediocre
+  [0.72, [63, 183, 167]], // teal — good
   [1.0, [70, 120, 214]], // blue — richest (crystal)
 ]
 const HEAT_STEPS = 16
+// Profit colour is a creature's RANK among all the regular creatures we have, not
+// a log of its raw gold — a log squashes a 188-gp dragon and a 1,131-gp medusa
+// almost together, so everything decent looked mid-green. These are the gold-per-
+// kill values (loot items + coins, drop-weighted; see tibia:etl-loot-stats) at
+// each 5th percentile of our 648 regular creatures, so the scale is derived from
+// the real population. A creature richer than the top regular (or a boss) clamps
+// to 1. Update if the loot dataset shifts a lot.
+const PROFIT_PCTS = [
+  1, 6, 15, 28, 42, 65, 116, 165, 211, 317, 419, 599, 750, 967, 1225, 1514, 1856,
+  2534, 3945, 5914, 54332,
+] // index i ⇒ the i·5th percentile gold-per-kill
+// Fraction (0..1) of regular creatures a given gold-per-kill outranks, by linear
+// interpolation between the baked percentile breakpoints.
+function profitPercentile(gpk: number): number {
+  const bp = PROFIT_PCTS
+  const last = bp.length - 1
+  if (gpk <= bp[0]) return 0
+  if (gpk >= bp[last]) return 1
+  for (let i = 0; i < last; i++) {
+    if (gpk < bp[i + 1]) {
+      const frac = (gpk - bp[i]) / (bp[i + 1] - bp[i] || 1)
+      return (i + frac) / last
+    }
+  }
+  return 1
+}
+// The colour score: percentile rank, then a smoothstep so the warm half stays
+// warm (poor earners → red/orange) but everything past mid-table climbs quickly
+// into teal/blue — decent hunts should read as decent, not lukewarm.
+function profitScore(gpk: number): number {
+  const p = profitPercentile(Math.max(0, gpk))
+  return p * p * (3 - 2 * p)
+}
 function heatRgb(t: number): [number, number, number] {
   const c = Math.max(0, Math.min(1, t))
   for (let i = 1; i < HEAT_STOPS.length; i++) {
@@ -352,61 +387,35 @@ function fmtGold(n: number): string {
   return String(Math.round(n))
 }
 
-// World-tile neighbourhood for the density term of the profit heat.
+// World-tile neighbourhood that a dot's colour is averaged over.
 const DENSITY_CELL = 32
-// Colour each spawn by how rich its spot is: take the *average* loot score of the
-// spawns sharing its ~32-tile cell (so the colour tracks loot value, not merely
-// how crowded a corner is), nudged up a little where several good earners pack
-// together. The richest cells then genuinely reach the blue end of the ramp.
-// Bosses are painted like anything else, but they DON'T set the top of the scale
-// (a lone once-a-week boss kill shouldn't decide what "richest" means) — only
-// regular creatures anchor the max. A boss rich enough still clamps to full blue.
+// Colour each spawn by how rich its spot is: the average loot score (an absolute
+// rank, see profitScore) of the spawns sharing its ~32-tile cell. Scores already
+// mean the same thing on every floor, so there's no per-floor renormalisation —
+// a poor corner stays warm and a rich one is blue wherever it is. Bosses average
+// in like anything else and, being top-rank, pull their own cell to blue.
 // Returns per-point palette indices aligned to `points`, or null when there's no
 // loot signal at all.
 function computeHeat(
   points: [number, number, number][],
   scores: number[],
-  bosses: boolean[] = [],
 ): Uint8Array | null {
   if (!points.length || !scores.length) return null
   if (!scores.some((s) => s > 0)) return null
   const cellSum = new Map<string, number>()
   const cellCount = new Map<string, number>()
-  // Same, but counting regular creatures only — these anchor the scale.
-  const normSum = new Map<string, number>()
-  const normCount = new Map<string, number>()
   const keys: string[] = new Array(points.length)
   for (let i = 0; i < points.length; i++) {
     const p = points[i]
     const k = Math.floor(p[0] / DENSITY_CELL) + '_' + Math.floor(p[1] / DENSITY_CELL)
     keys[i] = k
-    const s = scores[p[2]] ?? 0
-    cellSum.set(k, (cellSum.get(k) ?? 0) + s)
+    cellSum.set(k, (cellSum.get(k) ?? 0) + (scores[p[2]] ?? 0))
     cellCount.set(k, (cellCount.get(k) ?? 0) + 1)
-    if (!bosses[p[2]]) {
-      normSum.set(k, (normSum.get(k) ?? 0) + s)
-      normCount.set(k, (normCount.get(k) ?? 0) + 1)
-    }
   }
-  // Cell richness = average loot score, lifted gently by a log density bonus so a
-  // dense pack of decent earners still edges out a lone spawn of equal value —
-  // without letting crowding alone dominate the way a raw sum did.
-  const heat = (sum: number, n: number) => (sum / n) * (1 + 0.2 * Math.log2(1 + n))
-  const cellHeat = new Map<string, number>()
-  for (const [k, sum] of cellSum) cellHeat.set(k, heat(sum, cellCount.get(k) ?? 1))
-  // Anchor the top of the ramp to the richest *regular-creature* cell, so the best
-  // normal hunting spot always reaches full blue — regular creatures decide the
-  // max. Fall back to the overall max if a floor has only bosses.
-  let scaleMax = 1e-6
-  for (const [k, sum] of normSum) {
-    const h = heat(sum, normCount.get(k) ?? 1)
-    if (h > scaleMax) scaleMax = h
-  }
-  if (scaleMax <= 1e-6) for (const h of cellHeat.values()) if (h > scaleMax) scaleMax = h
   const out = new Uint8Array(points.length)
   for (let i = 0; i < points.length; i++) {
-    const h = cellHeat.get(keys[i]) ?? 0
-    const t = Math.pow(Math.min(1, h / scaleMax), 0.85) // brighten the mid-range
+    const k = keys[i]
+    const t = Math.min(1, (cellSum.get(k) ?? 0) / (cellCount.get(k) ?? 1))
     out[i] = Math.round(t * (HEAT_STEPS - 1))
   }
   return out
@@ -1290,7 +1299,7 @@ export function MapPage() {
       )
     if (lvl) f = f.filter((p) => difficulties[p[2]] === lvl)
     filteredRef.current = f
-    filteredHeatRef.current = computeHeat(f, allPointsRef.current.scores, allPointsRef.current.bosses)
+    filteredHeatRef.current = computeHeat(f, allPointsRef.current.scores)
     overlayGenRef.current++ // sprite representatives may change wholesale
     renderSpritesRef.current() // paints both the ×N sprites and the (gated) dots
   }
@@ -2151,19 +2160,13 @@ export function MapPage() {
       // Only keep spawns within the available tile region; the rest (other
       // continents) would just litter the empty background.
       const pts = allSpawns.points.filter(([x, y]) => inTileBounds(x, y))
-      // Score each creature purely by its loot gold — that's the wealth a hunt
-      // actually yields, and what we tint the map by (experience is deliberately
-      // left out). Loot spans several orders of magnitude, so log-compress first.
-      // The 1.0 ceiling is the richest *regular* creature on the floor, NOT a
-      // rare boss — otherwise a boss's Ferumbras-tier drop table would flatten
-      // every normal creature toward the cold end (a 2k-gp mob looking as poor as
-      // a rat just because it shares a floor with a million-gp boss). Bosses are
-      // still scored; they simply overshoot 1.0 and clamp to full blue later.
+      // Score each creature by its loot gold — the wealth a hunt actually yields
+      // (loot items + coins per kill; experience is deliberately left out). The
+      // score is an absolute rank against every regular creature we have (see
+      // profitScore), so a dragon reads the same poor colour on every floor and a
+      // boss's million-gp table can't distort the scale — it just clamps to blue.
       const cs = allSpawns.creatures
-      const logs = cs.map((c) => Math.log10(1 + Math.max(0, c.loot_value ?? 0)))
-      let normMax = 1e-6
-      for (let i = 0; i < cs.length; i++) if (!cs[i].boss && logs[i] > normMax) normMax = logs[i]
-      const scores = logs.map((v) => v / normMax)
+      const scores = cs.map((c) => profitScore(c.loot_value ?? 0))
       allPointsRef.current = {
         points: pts,
         names: cs.map((c) => c.name),
