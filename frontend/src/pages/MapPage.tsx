@@ -358,40 +358,51 @@ const DENSITY_CELL = 32
 // spawns sharing its ~32-tile cell (so the colour tracks loot value, not merely
 // how crowded a corner is), nudged up a little where several good earners pack
 // together. The richest cells then genuinely reach the blue end of the ramp.
+// Bosses are painted like anything else, but they DON'T set the top of the scale
+// (a lone once-a-week boss kill shouldn't decide what "richest" means) — only
+// regular creatures anchor the max. A boss rich enough still clamps to full blue.
 // Returns per-point palette indices aligned to `points`, or null when there's no
 // loot signal at all.
 function computeHeat(
   points: [number, number, number][],
   scores: number[],
+  bosses: boolean[] = [],
 ): Uint8Array | null {
   if (!points.length || !scores.length) return null
   if (!scores.some((s) => s > 0)) return null
   const cellSum = new Map<string, number>()
   const cellCount = new Map<string, number>()
+  // Same, but counting regular creatures only — these anchor the scale.
+  const normSum = new Map<string, number>()
+  const normCount = new Map<string, number>()
   const keys: string[] = new Array(points.length)
   for (let i = 0; i < points.length; i++) {
     const p = points[i]
     const k = Math.floor(p[0] / DENSITY_CELL) + '_' + Math.floor(p[1] / DENSITY_CELL)
     keys[i] = k
-    cellSum.set(k, (cellSum.get(k) ?? 0) + (scores[p[2]] ?? 0))
+    const s = scores[p[2]] ?? 0
+    cellSum.set(k, (cellSum.get(k) ?? 0) + s)
     cellCount.set(k, (cellCount.get(k) ?? 0) + 1)
+    if (!bosses[p[2]]) {
+      normSum.set(k, (normSum.get(k) ?? 0) + s)
+      normCount.set(k, (normCount.get(k) ?? 0) + 1)
+    }
   }
   // Cell richness = average loot score, lifted gently by a log density bonus so a
   // dense pack of decent earners still edges out a lone spawn of equal value —
   // without letting crowding alone dominate the way a raw sum did.
+  const heat = (sum: number, n: number) => (sum / n) * (1 + 0.2 * Math.log2(1 + n))
   const cellHeat = new Map<string, number>()
-  for (const [k, sum] of cellSum) {
-    const n = cellCount.get(k) ?? 1
-    cellHeat.set(k, (sum / n) * (1 + 0.2 * Math.log2(1 + n)))
+  for (const [k, sum] of cellSum) cellHeat.set(k, heat(sum, cellCount.get(k) ?? 1))
+  // Anchor the top of the ramp to the richest *regular-creature* cell, so the best
+  // normal hunting spot always reaches full blue — regular creatures decide the
+  // max. Fall back to the overall max if a floor has only bosses.
+  let scaleMax = 1e-6
+  for (const [k, sum] of normSum) {
+    const h = heat(sum, normCount.get(k) ?? 1)
+    if (h > scaleMax) scaleMax = h
   }
-  // Anchor the top of the ramp near the richest cells (95th percentile) so the
-  // best hunting spots actually saturate to full blue, while a single freak
-  // spike still can't wash the rest of the map cold.
-  const heats = [...cellHeat.values()].sort((a, b) => a - b)
-  const scaleMax = Math.max(
-    1e-6,
-    heats[Math.min(heats.length - 1, Math.floor(heats.length * 0.95))],
-  )
+  if (scaleMax <= 1e-6) for (const h of cellHeat.values()) if (h > scaleMax) scaleMax = h
   const out = new Uint8Array(points.length)
   for (let i = 0; i < points.length; i++) {
     const h = cellHeat.get(keys[i]) ?? 0
@@ -1017,6 +1028,31 @@ export function MapPage() {
   const [showFilters, setShowFilters] = useState(false) // collapsible refine panel
   const [showTour, setShowTour] = useState(false) // guided how-to overlay
   const [bossRailOpen, setBossRailOpen] = useState(false) // world-boss watch sidebar (starts minimized so it doesn't cover the map)
+  const [bossQuery, setBossQuery] = useState('') // free-text filter for the boss watch rail
+  // Bosses the player has pinned to "follow" — kept at the top of the rail and
+  // never dropped by the hottest-16 cut. Persisted so a watch survives reloads.
+  const [pinnedBosses, setPinnedBosses] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('tibiaAtlas.pinnedBosses')
+      return new Set(raw ? (JSON.parse(raw) as string[]) : [])
+    } catch {
+      return new Set()
+    }
+  })
+  useEffect(() => {
+    try {
+      localStorage.setItem('tibiaAtlas.pinnedBosses', JSON.stringify([...pinnedBosses]))
+    } catch {
+      /* private mode / storage disabled — non-fatal */
+    }
+  }, [pinnedBosses])
+  const togglePin = (slug: string) =>
+    setPinnedBosses((prev) => {
+      const next = new Set(prev)
+      if (next.has(slug)) next.delete(slug)
+      else next.add(slug)
+      return next
+    })
   const [bossTop, setBossTop] = useState(112) // sidebar top = bottom of the control column
   const [markerDraft, setMarkerDraft] = useState<{ x: number; y: number; floor: number } | null>(null)
   const [draftLabel, setDraftLabel] = useState('')
@@ -1254,7 +1290,7 @@ export function MapPage() {
       )
     if (lvl) f = f.filter((p) => difficulties[p[2]] === lvl)
     filteredRef.current = f
-    filteredHeatRef.current = computeHeat(f, allPointsRef.current.scores)
+    filteredHeatRef.current = computeHeat(f, allPointsRef.current.scores, allPointsRef.current.bosses)
     overlayGenRef.current++ // sprite representatives may change wholesale
     renderSpritesRef.current() // paints both the ×N sprites and the (gated) dots
   }
@@ -2399,6 +2435,21 @@ export function MapPage() {
         .sort((a, b) => b.heat - a.heat || b.due - a.due),
     [bossWatch],
   )
+  // Free-text filter for the rail: match the boss name or any of its worlds. When
+  // empty the rail keeps its default "hottest 16" cut; a query searches the whole
+  // roster and shows every match. Pinned ("followed") bosses always float to the
+  // top and are exempt from the 16-cap, so a watch never scrolls out of view.
+  const shownBosses = useMemo(() => {
+    const q = bossQuery.trim().toLowerCase()
+    const matched = q
+      ? bosses.filter(
+          (b) => b.race.toLowerCase().includes(q) || b.worlds.some((w) => w.toLowerCase().includes(q)),
+        )
+      : bosses
+    const pinned = matched.filter((b) => pinnedBosses.has(b.slug))
+    const rest = matched.filter((b) => !pinnedBosses.has(b.slug))
+    return [...pinned, ...(q ? rest : rest.slice(0, 16))]
+  }, [bosses, bossQuery, pinnedBosses])
 
   // Published community routes, most-loaded first. Only fetched once the gallery
   // is opened.
@@ -2542,62 +2593,114 @@ export function MapPage() {
               </svg>
             </button>
           </div>
+          {/* Boss filter — only when the rail is expanded (collapsed it's a 5rem strip) */}
+          {bossRailOpen && (
+            <div className="mb-1 flex items-center gap-1.5 rounded-lg border border-line bg-bg/50 px-2 focus-within:border-accent">
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 text-fg-mute" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <input
+                type="search"
+                value={bossQuery}
+                onChange={(e) => setBossQuery(e.target.value)}
+                placeholder={t('map.bossSearch')}
+                aria-label={t('map.bossSearch')}
+                className="min-w-0 flex-1 border-0 bg-transparent py-1.5 text-sm text-fg outline-none placeholder:text-fg-mute"
+              />
+            </div>
+          )}
           {bosses.length > 0
-            ? bosses.slice(0, 16).map((b) => {
+            ? shownBosses.length > 0
+              ? shownBosses.map((b) => {
                 const hs = HEAT_STYLE[heatBucket(b.heat)]
                 const on = activeSlugs.has(b.slug)
+                const pinned = pinnedBosses.has(b.slug)
                 const worlds = b.worlds.slice(0, 3).join(', ')
                 const moreWorlds = b.worlds.length > 3 ? ` +${b.worlds.length - 3}` : ''
                 return (
-                  <button
+                  <div
                     key={b.slug}
-                    onClick={() => (on ? removeCreature(b.slug) : addCreature(b.slug))}
-                    title={`${b.race} · ${t(hs.label)} ${b.heat}%${b.worlds.length ? ` · ${b.worlds.join(', ')}` : ''}`}
-                    className={`group flex w-full items-center gap-2 rounded-lg border px-1.5 py-1 text-left transition ${
-                      on ? 'border-accent bg-accent/10' : 'border-transparent hover:border-line-2 hover:bg-bg-2/60'
+                    className={`group flex w-full items-center gap-1 rounded-lg border px-1.5 py-1 transition ${
+                      on ? 'border-accent bg-accent/10' : pinned ? 'border-gold/40 bg-gold/5' : 'border-transparent hover:border-line-2 hover:bg-bg-2/60'
                     } ${bossRailOpen ? '' : 'justify-center'}`}
                   >
-                    <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded bg-line/15">
-                      <img
-                        src={b.image}
-                        alt=""
-                        loading="lazy"
-                        onError={(e) => {
-                          e.currentTarget.style.visibility = 'hidden'
-                        }}
-                        className="sprite h-9 w-9 object-contain transition group-hover:scale-110"
-                      />
-                      <span
-                        className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-bg ${
-                          b.heat >= 66 ? 'bg-accent' : b.heat >= 33 ? 'bg-gold' : 'bg-interp'
-                        }`}
-                      />
-                    </span>
-                    {bossRailOpen && (
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-bold text-fg">{b.race}</span>
-                        <span className={`flex items-center gap-1 text-[15px] font-bold ${hs.cls}`}>
-                          <span aria-hidden>{hs.glyph}</span>
-                          <span className="truncate">{t(hs.label)}</span>
-                          <span className="tabular-nums opacity-70">{b.heat}%</span>
-                        </span>
-                        {b.worlds.length > 0 && (
-                          <span className="flex items-center gap-1 text-xs text-fg-mute">
-                            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <circle cx="12" cy="12" r="9" />
-                              <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
-                            </svg>
-                            <span className="truncate">
-                              {worlds}
-                              {moreWorlds}
-                            </span>
-                          </span>
-                        )}
+                    <button
+                      onClick={() => (on ? removeCreature(b.slug) : addCreature(b.slug))}
+                      title={`${b.race} · ${t(hs.label)} ${b.heat}%${b.worlds.length ? ` · ${b.worlds.join(', ')}` : ''}`}
+                      className={`flex min-w-0 flex-1 items-center gap-2 text-left ${bossRailOpen ? '' : 'justify-center'}`}
+                    >
+                      <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded bg-line/15">
+                        <img
+                          src={b.image}
+                          alt=""
+                          loading="lazy"
+                          onError={(e) => {
+                            e.currentTarget.style.visibility = 'hidden'
+                          }}
+                          className="sprite h-9 w-9 object-contain transition group-hover:scale-110"
+                        />
+                        <span
+                          className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-bg ${
+                            b.heat >= 66 ? 'bg-accent' : b.heat >= 33 ? 'bg-gold' : 'bg-interp'
+                          }`}
+                        />
                       </span>
+                      {bossRailOpen && (
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-bold text-fg">{b.race}</span>
+                          <span className={`flex items-center gap-1 text-[15px] font-bold ${hs.cls}`}>
+                            <span aria-hidden>{hs.glyph}</span>
+                            <span className="truncate">{t(hs.label)}</span>
+                            <span className="tabular-nums opacity-70">{b.heat}%</span>
+                          </span>
+                          {b.worlds.length > 0 && (
+                            <span className="flex items-center gap-1 text-xs text-fg-mute">
+                              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="9" />
+                                <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
+                              </svg>
+                              <span className="truncate">
+                                {worlds}
+                                {moreWorlds}
+                              </span>
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </button>
+                    {bossRailOpen && (
+                      <button
+                        onClick={() => togglePin(b.slug)}
+                        title={pinned ? t('map.bossUnpin') : t('map.bossPin')}
+                        aria-label={pinned ? t('map.bossUnpin') : t('map.bossPin')}
+                        aria-pressed={pinned}
+                        className={`grid h-7 w-7 shrink-0 place-items-center rounded transition hover:bg-line/40 ${
+                          pinned ? 'text-gold' : 'text-fg-mute hover:text-fg'
+                        }`}
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill={pinned ? 'currentColor' : 'none'}
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M12 17v5" />
+                          <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
+                        </svg>
+                      </button>
                     )}
-                  </button>
+                  </div>
                 )
               })
+              : (
+                <p className="px-2 py-4 text-center text-xs text-fg-mute">
+                  {t('map.bossSearchEmpty', { q: bossQuery.trim() })}
+                </p>
+              )
             : Array.from({ length: 8 }).map((_, i) => (
                 <Skeleton key={i} className="h-12 w-full shrink-0 rounded-lg" />
               ))}
