@@ -332,7 +332,7 @@ export function KillStatsPage() {
 
   const { data: deadliest } = useKillRanking({ world, metric: 'players_killed', window: 'day', limit: 10 })
   const { data: hunted } = useKillRanking({ world, metric: 'killed', window: 'day', limit: 20 })
-  const { data: bosses } = useBosses('raid', 24)
+  const { data: bosses } = useBosses('raid', 40)
   const { data: dailyBosses } = useBosses('daily', 12)
   const { data: topSearched } = useTopSearches(10)
 

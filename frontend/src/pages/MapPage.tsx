@@ -304,7 +304,7 @@ function drawRouteLegs(
 
 // --- profit-heat ramp ---------------------------------------------------------
 // The "all creatures" dots are tinted by a per-spawn profit score (a creature's
-// loot gold + experience, amplified by local spawn density). The ramp follows
+// loot gold, averaged per spot with a light spawn-density nudge). The ramp follows
 // Tibia's coin value: hot red = little to gain, through gold and teal, to cool
 // blue = the richest hunting spots (the crystal-coin end). Four stops only.
 const HEAT_STOPS: [number, [number, number, number]][] = [
@@ -354,31 +354,43 @@ function fmtGold(n: number): string {
 
 // World-tile neighbourhood for the density term of the profit heat.
 const DENSITY_CELL = 32
-// Colour each spawn by a density-weighted profit heat: sum the profit scores of
-// every spawn sharing its ~32-tile cell (so a dense pack of decent earners
-// outshines one lone high-value spawn — the "cantidad de bichos" factor), then
-// map that against the floor's spread. Returns per-point palette indices aligned
-// to `points`, or null when there's no loot/exp signal at all.
+// Colour each spawn by how rich its spot is: take the *average* loot score of the
+// spawns sharing its ~32-tile cell (so the colour tracks loot value, not merely
+// how crowded a corner is), nudged up a little where several good earners pack
+// together. The richest cells then genuinely reach the blue end of the ramp.
+// Returns per-point palette indices aligned to `points`, or null when there's no
+// loot signal at all.
 function computeHeat(
   points: [number, number, number][],
   scores: number[],
 ): Uint8Array | null {
   if (!points.length || !scores.length) return null
   if (!scores.some((s) => s > 0)) return null
-  const cellHeat = new Map<string, number>()
+  const cellSum = new Map<string, number>()
+  const cellCount = new Map<string, number>()
   const keys: string[] = new Array(points.length)
   for (let i = 0; i < points.length; i++) {
     const p = points[i]
     const k = Math.floor(p[0] / DENSITY_CELL) + '_' + Math.floor(p[1] / DENSITY_CELL)
     keys[i] = k
-    cellHeat.set(k, (cellHeat.get(k) ?? 0) + (scores[p[2]] ?? 0))
+    cellSum.set(k, (cellSum.get(k) ?? 0) + (scores[p[2]] ?? 0))
+    cellCount.set(k, (cellCount.get(k) ?? 0) + 1)
   }
-  // Robust top-of-scale: the ~92nd percentile of populated cells, so one blazing
-  // hotspot can't wash the rest of the map down to cold blue.
+  // Cell richness = average loot score, lifted gently by a log density bonus so a
+  // dense pack of decent earners still edges out a lone spawn of equal value —
+  // without letting crowding alone dominate the way a raw sum did.
+  const cellHeat = new Map<string, number>()
+  for (const [k, sum] of cellSum) {
+    const n = cellCount.get(k) ?? 1
+    cellHeat.set(k, (sum / n) * (1 + 0.2 * Math.log2(1 + n)))
+  }
+  // Anchor the top of the ramp near the richest cells (95th percentile) so the
+  // best hunting spots actually saturate to full blue, while a single freak
+  // spike still can't wash the rest of the map cold.
   const heats = [...cellHeat.values()].sort((a, b) => a - b)
   const scaleMax = Math.max(
     1e-6,
-    heats[Math.min(heats.length - 1, Math.floor(heats.length * 0.92))],
+    heats[Math.min(heats.length - 1, Math.floor(heats.length * 0.95))],
   )
   const out = new Uint8Array(points.length)
   for (let i = 0; i < points.length; i++) {
@@ -933,8 +945,8 @@ export function MapPage() {
     classifications: (string | null)[]
     difficulties: (string | null)[]
     bosses: boolean[]
-    // Per-creature profit score (0..1): loot gold + experience, log-normalised
-    // across the floor's creatures. Empty when no loot/exp data is present.
+    // Per-creature profit score (0..1): loot gold, log-normalised across the
+    // floor's creatures. Empty when no loot data is present.
     scores: number[]
     // Per-creature raw loot worth (gp), summed per spawn for the money badge.
     lootValues: number[]
@@ -2103,19 +2115,18 @@ export function MapPage() {
       // Only keep spawns within the available tile region; the rest (other
       // continents) would just litter the empty background.
       const pts = allSpawns.points.filter(([x, y]) => inTileBounds(x, y))
-      // Blend each creature's loot gold and experience into a 0..1 "profit"
-      // score. Both span several orders of magnitude, so log-compress before
-      // normalising — otherwise one Ferumbras-tier drop table would flatten
-      // everything else to zero. Loot leads the blend; experience nuances it.
+      // Score each creature purely by its loot gold — that's the wealth a hunt
+      // actually yields, and what we tint the map by (experience is deliberately
+      // left out). Loot spans several orders of magnitude, so log-compress before
+      // normalising, otherwise one Ferumbras-tier drop table would flatten
+      // everything else to zero.
       const cs = allSpawns.creatures
       const logNorm = (vals: number[]) => {
         const logs = vals.map((v) => Math.log10(1 + Math.max(0, v)))
         const max = Math.max(1e-6, ...logs)
         return logs.map((v) => v / max)
       }
-      const lootN = logNorm(cs.map((c) => c.loot_value ?? 0))
-      const expN = logNorm(cs.map((c) => c.experience ?? 0))
-      const scores = cs.map((_, i) => 0.62 * lootN[i] + 0.38 * expN[i])
+      const scores = logNorm(cs.map((c) => c.loot_value ?? 0))
       allPointsRef.current = {
         points: pts,
         names: cs.map((c) => c.name),
