@@ -2153,16 +2153,17 @@ export function MapPage() {
       const pts = allSpawns.points.filter(([x, y]) => inTileBounds(x, y))
       // Score each creature purely by its loot gold — that's the wealth a hunt
       // actually yields, and what we tint the map by (experience is deliberately
-      // left out). Loot spans several orders of magnitude, so log-compress before
-      // normalising, otherwise one Ferumbras-tier drop table would flatten
-      // everything else to zero.
+      // left out). Loot spans several orders of magnitude, so log-compress first.
+      // The 1.0 ceiling is the richest *regular* creature on the floor, NOT a
+      // rare boss — otherwise a boss's Ferumbras-tier drop table would flatten
+      // every normal creature toward the cold end (a 2k-gp mob looking as poor as
+      // a rat just because it shares a floor with a million-gp boss). Bosses are
+      // still scored; they simply overshoot 1.0 and clamp to full blue later.
       const cs = allSpawns.creatures
-      const logNorm = (vals: number[]) => {
-        const logs = vals.map((v) => Math.log10(1 + Math.max(0, v)))
-        const max = Math.max(1e-6, ...logs)
-        return logs.map((v) => v / max)
-      }
-      const scores = logNorm(cs.map((c) => c.loot_value ?? 0))
+      const logs = cs.map((c) => Math.log10(1 + Math.max(0, c.loot_value ?? 0)))
+      let normMax = 1e-6
+      for (let i = 0; i < cs.length; i++) if (!cs[i].boss && logs[i] > normMax) normMax = logs[i]
+      const scores = logs.map((v) => v / normMax)
       allPointsRef.current = {
         points: pts,
         names: cs.map((c) => c.name),
@@ -2435,21 +2436,50 @@ export function MapPage() {
         .sort((a, b) => b.heat - a.heat || b.due - a.due),
     [bossWatch],
   )
-  // Free-text filter for the rail: match the boss name or any of its worlds. When
-  // empty the rail keeps its default "hottest 16" cut; a query searches the whole
-  // roster and shows every match. Pinned ("followed") bosses always float to the
-  // top and are exempt from the 16-cap, so a watch never scrolls out of view.
-  const shownBosses = useMemo(() => {
+  // Rail row shape — heat-tracked bosses carry a heat/worlds read; bosses pulled
+  // from the glossary (rare ones with no kill-stats) carry heat = null.
+  type RailBoss = { race: string; slug: string; image: string | null; heat: number | null; worlds: string[] }
+  // Free-text filter for the rail. When empty it keeps the default "hottest 16"
+  // cut (plus any pins). A query searches the whole boss roster — both the
+  // heat-tracked API list AND every published boss from the glossary, so rare
+  // bosses missing from kill-stats (e.g. Gaz'haragoth) are still findable and
+  // followable. Pinned ("followed") bosses always float to the top and skip the
+  // 16-cap, so a watch never scrolls out of view.
+  const shownBosses = useMemo<RailBoss[]>(() => {
     const q = bossQuery.trim().toLowerCase()
-    const matched = q
-      ? bosses.filter(
-          (b) => b.race.toLowerCase().includes(q) || b.worlds.some((w) => w.toLowerCase().includes(q)),
-        )
-      : bosses
-    const pinned = matched.filter((b) => pinnedBosses.has(b.slug))
-    const rest = matched.filter((b) => !pinnedBosses.has(b.slug))
-    return [...pinned, ...(q ? rest : rest.slice(0, 16))]
-  }, [bosses, bossQuery, pinnedBosses])
+    const heatList: RailBoss[] = bosses.map((b) => ({
+      race: b.race,
+      slug: b.slug,
+      image: b.image,
+      heat: b.heat,
+      worlds: b.worlds,
+    }))
+    const heatSlugs = new Set(heatList.map((b) => b.slug))
+    // Published bosses the heat roster doesn't cover (floor-independent).
+    const glossaryBosses: RailBoss[] = (glossary ?? [])
+      .filter((g) => g.boss && g.type === 'creature' && !heatSlugs.has(g.slug))
+      .map((g) => ({ race: g.name, slug: g.slug, image: g.image, heat: null, worlds: [] }))
+    const resolve = (slug: string): RailBoss | undefined =>
+      heatList.find((b) => b.slug === slug) ?? glossaryBosses.find((b) => b.slug === slug)
+
+    if (q) {
+      const match = (b: RailBoss) =>
+        b.race.toLowerCase().includes(q) || b.worlds.some((w) => w.toLowerCase().includes(q))
+      const heatMatched = heatList.filter(match)
+      const glossMatched = glossaryBosses.filter(match).sort((a, b) => a.race.localeCompare(b.race))
+      const matched = [...heatMatched, ...glossMatched]
+      const pinned = matched.filter((b) => pinnedBosses.has(b.slug))
+      const rest = matched.filter((b) => !pinnedBosses.has(b.slug))
+      return [...pinned, ...rest]
+    }
+
+    // No query: pins first (resolved from either source so a followed rare boss
+    // stays visible), then the hottest 16 heat-tracked bosses.
+    const pinnedList = [...pinnedBosses].map(resolve).filter((b): b is RailBoss => !!b)
+    const pinnedSlugs = new Set(pinnedList.map((b) => b.slug))
+    const rest = heatList.filter((b) => !pinnedSlugs.has(b.slug)).slice(0, 16)
+    return [...pinnedList, ...rest]
+  }, [bosses, bossQuery, pinnedBosses, glossary])
 
   // Published community routes, most-loaded first. Only fetched once the gallery
   // is opened.
@@ -2613,7 +2643,9 @@ export function MapPage() {
           {bosses.length > 0
             ? shownBosses.length > 0
               ? shownBosses.map((b) => {
-                const hs = HEAT_STYLE[heatBucket(b.heat)]
+                // Glossary-sourced bosses have no kill-stats heat (heat === null):
+                // render them as a plain "follow/plot" row without the heat read.
+                const hs = b.heat !== null ? HEAT_STYLE[heatBucket(b.heat)] : null
                 const on = activeSlugs.has(b.slug)
                 const pinned = pinnedBosses.has(b.slug)
                 const worlds = b.worlds.slice(0, 3).join(', ')
@@ -2627,12 +2659,16 @@ export function MapPage() {
                   >
                     <button
                       onClick={() => (on ? removeCreature(b.slug) : addCreature(b.slug))}
-                      title={`${b.race} · ${t(hs.label)} ${b.heat}%${b.worlds.length ? ` · ${b.worlds.join(', ')}` : ''}`}
+                      title={
+                        hs
+                          ? `${b.race} · ${t(hs.label)} ${b.heat}%${b.worlds.length ? ` · ${b.worlds.join(', ')}` : ''}`
+                          : `${b.race} · ${t('map.bossNoHeat')}`
+                      }
                       className={`flex min-w-0 flex-1 items-center gap-2 text-left ${bossRailOpen ? '' : 'justify-center'}`}
                     >
                       <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded bg-line/15">
                         <img
-                          src={b.image}
+                          src={b.image ?? ''}
                           alt=""
                           loading="lazy"
                           onError={(e) => {
@@ -2642,18 +2678,22 @@ export function MapPage() {
                         />
                         <span
                           className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-bg ${
-                            b.heat >= 66 ? 'bg-accent' : b.heat >= 33 ? 'bg-gold' : 'bg-interp'
+                            b.heat === null ? 'bg-line-2' : b.heat >= 66 ? 'bg-accent' : b.heat >= 33 ? 'bg-gold' : 'bg-interp'
                           }`}
                         />
                       </span>
                       {bossRailOpen && (
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-bold text-fg">{b.race}</span>
-                          <span className={`flex items-center gap-1 text-[15px] font-bold ${hs.cls}`}>
-                            <span aria-hidden>{hs.glyph}</span>
-                            <span className="truncate">{t(hs.label)}</span>
-                            <span className="tabular-nums opacity-70">{b.heat}%</span>
-                          </span>
+                          {hs ? (
+                            <span className={`flex items-center gap-1 text-[15px] font-bold ${hs.cls}`}>
+                              <span aria-hidden>{hs.glyph}</span>
+                              <span className="truncate">{t(hs.label)}</span>
+                              <span className="tabular-nums opacity-70">{b.heat}%</span>
+                            </span>
+                          ) : (
+                            <span className="block truncate text-xs italic text-fg-mute">{t('map.bossNoHeat')}</span>
+                          )}
                           {b.worlds.length > 0 && (
                             <span className="flex items-center gap-1 text-xs text-fg-mute">
                               <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
