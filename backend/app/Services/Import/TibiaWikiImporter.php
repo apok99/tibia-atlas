@@ -564,6 +564,14 @@ class TibiaWikiImporter
             $params[$key] = $val;
         }
 
+        // The attack/ability list is a multi-line {{Ability List|…}} template, so
+        // capture it with balanced-brace matching rather than the single-line
+        // regex above (which would stop at the first newline).
+        $abilities = $this->extractBalancedField($wikitext, 'abilities');
+        if ($abilities !== null) {
+            $params['abilities'] = $abilities;
+        }
+
         // Entities the lore cross-references, from [[wiki links]] in prose fields.
         $linkText = implode(' ', array_filter([
             $params['bestiarytext'] ?? '', $params['notes'] ?? '',
@@ -795,7 +803,239 @@ class TibiaWikiImporter
             }
         }
 
+        // Attacks & abilities (melee, spells, self-healing, summons, …).
+        if (! empty($p['abilities'])) {
+            $abilities = $this->parseAbilities($p['abilities']);
+            if ($abilities) {
+                $meta['abilities'] = $abilities;
+            }
+        }
+
         return $meta;
+    }
+
+    /**
+     * Parse a TibiaWiki {{Ability List|…}} block into a flat, render-ready list of
+     * attacks. Each child template ({{Melee}}, {{Ability|Name|dmg|element=…}},
+     * {{Healing}}, {{Summon}}, {{Haste}}, …) becomes one entry; scene/animation
+     * arguments are dropped. Returns [] when the field isn't an ability list.
+     *
+     * @return list<array<string,string>>
+     */
+    private function parseAbilities(string $raw): array
+    {
+        $raw = trim($raw);
+        if (! str_starts_with($raw, '{{')) {
+            return [];
+        }
+        $children = $this->splitTopLevelPipes(substr($raw, 2, -2));
+        $head = strtolower(str_replace([' ', '_'], '', trim(array_shift($children) ?? '')));
+        // If the wrapper isn't an Ability List, treat the whole block as one ability.
+        if ($head !== 'abilitylist') {
+            $children = [$raw];
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ($children as $child) {
+            $child = trim($child);
+            if ($child === '' || ! str_starts_with($child, '{{')) {
+                continue;
+            }
+            $ability = $this->parseAbilityTemplate($child);
+            if ($ability === null) {
+                continue;
+            }
+            $key = json_encode($ability);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = $ability;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Turn a single ability template into { kind?, name?, damage?, element? }.
+     * Generic kinds (melee/healing/haste/summon) carry a `kind` the frontend can
+     * translate; named spells pass their proper name through unchanged.
+     *
+     * @return array<string,string>|null
+     */
+    private function parseAbilityTemplate(string $tpl): ?array
+    {
+        $parts = $this->splitTopLevelPipes(substr(trim($tpl), 2, -2));
+        $tname = strtolower(str_replace([' ', '_'], '', trim(array_shift($parts) ?? '')));
+        if ($tname === '') {
+            return null;
+        }
+
+        $pos = [];
+        $kv = [];
+        foreach ($parts as $part) {
+            if (preg_match('/^\s*([A-Za-z0-9_]+)\s*=(.*)$/s', $part, $m)) {
+                $kv[strtolower($m[1])] = trim($m[2]);
+            } elseif (($t = trim($part)) !== '') {
+                $pos[] = $t;
+            }
+        }
+
+        // Element can be a named arg (element=fire) or a positional word
+        // ({{Ability|Great Fireball|150-250|fire}}). Named wins.
+        $kvElement = isset($kv['element']) || isset($kv['elements'])
+            ? $this->normalizeElement($kv['element'] ?? $kv['elements'])
+            : null;
+        $prune = static fn (array $a): array => array_filter($a, static fn ($v) => $v !== null && $v !== '');
+
+        switch ($tname) {
+            case 'melee':
+                [$dmg, $el] = $this->damageAndElement($pos);
+                return $prune(['kind' => 'melee', 'damage' => $dmg, 'element' => $kvElement ?? $el ?? 'physical']);
+            case 'healing':
+                [$dmg] = $this->damageAndElement($pos);
+                return $prune(['kind' => 'healing', 'damage' => $kv['range'] ?? $dmg]);
+            case 'haste':
+                return ['kind' => 'haste'];
+            case 'summon':
+            case 'summons':
+                $names = array_values(array_filter($pos, static fn ($v) => ! preg_match('/^\d/', $v) && ! str_contains($v, '=')));
+                return $prune(['kind' => 'summon', 'name' => $names ? $this->cleanWikitext(implode(', ', $names)) : null]);
+            case 'ability':
+                $name = $this->cleanWikitext($pos[0] ?? '');
+                if ($name === '') {
+                    return null;
+                }
+                [$dmg, $el] = $this->damageAndElement(array_slice($pos, 1));
+                return $prune(['name' => $name, 'damage' => $dmg, 'element' => $kvElement ?? $el]);
+            default:
+                $name = $this->cleanWikitext($pos[0] ?? ucfirst($tname));
+                if ($name === '') {
+                    return null;
+                }
+                [$dmg, $el] = $this->damageAndElement(array_slice($pos, 1));
+                return $prune(['name' => $name, 'damage' => $dmg, 'element' => $kvElement ?? $el]);
+        }
+    }
+
+    /**
+     * From an ability's positional args, pull the first numeric damage range
+     * ("0-120", "150-250", "160-240 …" → "160-240") and the first short element
+     * or status word ("fire", "life drain", "slowed"), normalized.
+     *
+     * @param  list<string>  $pos
+     * @return array{0:?string,1:?string} [damage, element]
+     */
+    private function damageAndElement(array $pos): array
+    {
+        $damage = null;
+        $element = null;
+        foreach ($pos as $raw) {
+            $r = trim((string) $raw);
+            if ($damage === null && preg_match('/^\d[\d\s]*(?:[-–]\s*\d[\d\s]*)?\+?/u', $r, $m)) {
+                $damage = trim($m[0]);
+
+                continue;
+            }
+            if ($element === null && preg_match('/^[a-zA-Z][a-zA-Z ]{0,14}$/', $r)) {
+                $element = $this->normalizeElement($r);
+            }
+        }
+
+        return [$damage, $element];
+    }
+
+    /** Map a TibiaWiki element name to the frontend element id (or null). */
+    private function normalizeElement(string $raw): ?string
+    {
+        $key = strtolower(trim(explode(',', $raw)[0]));
+
+        return match ($key) {
+            'physical', 'phys' => 'physical',
+            'fire' => 'fire',
+            'energy' => 'energy',
+            'ice' => 'ice',
+            'earth' => 'earth',
+            'holy' => 'holy',
+            'death' => 'death',
+            'drown' => 'drown',
+            'lifedrain', 'life drain', 'hpdrain' => 'life_drain',
+            'manadrain', 'mana drain' => 'mana_drain',
+            default => $key !== '' ? $key : null,
+        };
+    }
+
+    /**
+     * Capture a multi-line infobox field whose value is a {{template}} (e.g.
+     * `| abilities = {{Ability List|…}}`), matching nested braces so the whole
+     * block is returned. Null when the field is absent or not a template.
+     */
+    private function extractBalancedField(string $wikitext, string $field): ?string
+    {
+        if (! preg_match('/(?im)^\s*\|\s*'.preg_quote($field, '/').'\s*=\s*/', $wikitext, $m, PREG_OFFSET_CAPTURE)) {
+            return null;
+        }
+        $rest = ltrim(substr($wikitext, $m[0][1] + strlen($m[0][0])));
+        if (! str_starts_with($rest, '{{')) {
+            return null;
+        }
+        $depth = 0;
+        $len = strlen($rest);
+        $out = '';
+        for ($i = 0; $i < $len; $i++) {
+            $two = substr($rest, $i, 2);
+            if ($two === '{{') {
+                $depth++;
+                $out .= '{{';
+                $i++;
+            } elseif ($two === '}}') {
+                $depth--;
+                $out .= '}}';
+                $i++;
+                if ($depth === 0) {
+                    break;
+                }
+            } else {
+                $out .= $rest[$i];
+            }
+        }
+
+        return $depth === 0 ? $out : null;
+    }
+
+    /**
+     * Split a template body on top-level "|", ignoring pipes nested inside
+     * {{templates}} or [[links]].
+     *
+     * @return list<string>
+     */
+    private function splitTopLevelPipes(string $s): array
+    {
+        $parts = [];
+        $buf = '';
+        $depth = 0;
+        $len = strlen($s);
+        for ($i = 0; $i < $len; $i++) {
+            $two = substr($s, $i, 2);
+            if ($two === '{{' || $two === '[[') {
+                $depth++;
+                $buf .= $two;
+                $i++;
+            } elseif ($two === '}}' || $two === ']]') {
+                $depth = max(0, $depth - 1);
+                $buf .= $two;
+                $i++;
+            } elseif ($s[$i] === '|' && $depth === 0) {
+                $parts[] = $buf;
+                $buf = '';
+            } else {
+                $buf .= $s[$i];
+            }
+        }
+        $parts[] = $buf;
+
+        return $parts;
     }
 
     /**

@@ -8,6 +8,25 @@ import { api } from '../lib/api'
 import { planRoute, type RoutePlan, type RouteLeg } from '../lib/routing'
 import { Seo } from '../lib/seo'
 import { Icon, iconMarkup } from '../lib/icons'
+import {
+  type Watch,
+  isAvailable,
+  isHouseWatched,
+  isTownWatched,
+  isWorldWatched,
+  loadWatches,
+  saveWatches,
+  toggleHouseWatch,
+  toggleTownWatch,
+  toggleWorldWatch,
+  loadSeen,
+  saveSeen,
+  toStatusMap,
+  diffFreed,
+  notifyPermission,
+  requestNotifyPermission,
+  osNotify,
+} from '../lib/houseWatch'
 import { useGlossary } from '../hooks/useGlossary'
 import { useBosses, useKillWorlds, type BossRow } from '../hooks/useKillStats'
 import { TypeIcon } from '../components/TypeIcon'
@@ -150,6 +169,10 @@ const ZONE_RADIUS = 200
 // de-duplication normally keeps it far below this).
 const SPRITE_CAP = 1200
 
+// Max rows rendered in the houses panel list (the "rented" / "all" filters can
+// match ~1000 houses; cap keeps the DOM light, with a "+N more" note).
+const HOUSE_LIST_CAP = 150
+
 const inTileBounds = (x: number, y: number) =>
   x >= X_MIN && x < X_MAX && y >= Y_MIN && y < Y_MAX
 
@@ -210,9 +233,11 @@ function escapeHtml(s: string): string {
   )
 }
 
-// Leaflet popup HTML for a house marker: name, type + town, size/beds, rent and
-// (when the ETL has run for the chosen world) its live rent status.
-function housePopup(h: House, t: (k: string) => string): string {
+// Leaflet popup HTML for a house marker: name, type + town, size/beds, rent,
+// (when the ETL has run for the chosen world) its live rent status, and a bell
+// button to add/remove it from the client-side alert list. `watched` colours the
+// bell; the button carries data-house-watch so renderHouses can wire the click.
+function housePopup(h: House, t: (k: string) => string, watched: boolean): string {
   const kind = h.guild ? t('map.houseGuildhall') : t('map.houseHouse')
   const where = h.town ? `${kind} · ${escapeHtml(h.town)}` : kind
   const meta = [
@@ -232,13 +257,25 @@ function housePopup(h: House, t: (k: string) => string): string {
     const col = h.live.status === 'free' ? '#2f9e5a' : h.live.status === 'auctioned' ? '#d08a1e' : '#a13d3d'
     live = `<div style="margin-top:3px;font-size:11px;font-weight:600;color:${col}">${label}</div>`
   }
+  const bellLabel = watched ? t('map.houseUnwatch') : t('map.houseWatch')
+  const bellCol = watched ? '#b3873f' : 'currentColor'
+  const bell =
+    `<button type="button" data-house-watch="${h.id}" ` +
+    `style="margin-top:6px;display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:6px;` +
+    `border:1px solid ${watched ? '#b3873f' : 'rgba(140,140,140,.55)'};background:${watched ? 'rgba(179,135,63,.14)' : 'transparent'};` +
+    `color:${bellCol};font-size:11px;font-weight:600;cursor:pointer;line-height:1.2">` +
+    `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ` +
+    `stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>` +
+    `<path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span data-bell-label>${escapeHtml(bellLabel)}</span></button>`
   return (
     `<div style="min-width:150px"><div style="font-weight:700">${escapeHtml(h.name)}</div>` +
     `<div style="opacity:.6;font-size:11px;margin-top:1px">${where}</div>` +
     `<div style="opacity:.6;font-size:11px">${meta}</div>` +
     `<div style="font-size:11px;margin-top:2px">${t('map.houseRent')}: ${fmtGold(h.rent)} ${t('map.houseGoldMonth')}</div>` +
     live +
-    `<div style="opacity:.45;font-size:10px;margin-top:2px">${h.x}, ${h.y}, z${h.z}</div></div>`
+    `<div style="opacity:.45;font-size:10px;margin-top:2px">${h.x}, ${h.y}, z${h.z}</div>` +
+    bell +
+    `</div>`
   )
 }
 
@@ -1016,6 +1053,16 @@ export function MapPage() {
   const [bossOnly, setBossOnly] = useState(false) // show only bosses
   const [showPoi, setShowPoi] = useState(false) // imported minimap markers layer
   const [showHouses, setShowHouses] = useState(false) // rentable houses layer
+  const [houseStatusFilter, setHouseStatusFilter] = useState<'all' | 'available' | 'rented'>('all') // rent-status filter
+  const [houseKind, setHouseKind] = useState<'all' | 'house' | 'guild'>('all') // guildhall filter
+  const [panelPos, setPanelPos] = useState<{ x: number; y: number } | null>(null) // draggable window position
+  const [houseSearch, setHouseSearch] = useState('') // house-list name filter
+  const [housePanelOpen, setHousePanelOpen] = useState(false) // "available houses" + alerts panel
+  const [watches, setWatches] = useState<Watch[]>(() => loadWatches()) // client-side alert list
+  const [notifPerm, setNotifPerm] = useState<NotificationPermission>(() => notifyPermission())
+  const [freedToast, setFreedToast] = useState<string | null>(null) // "a house opened up" banner
+  const [freedIds, setFreedIds] = useState<Set<number>>(() => new Set()) // ids just freed this session
+  const [townSel, setTownSel] = useState('') // town picked in the "watch a whole town" control
   // The selected Tibia world — a GLOBAL map concern: it drives the Boss Watch's
   // per-world heat AND the houses layer's live rent status. Persisted so the user
   // doesn't re-pick their world every visit; defaults to Antica (a classic world
@@ -1155,6 +1202,19 @@ export function MapPage() {
   // Bumped when live status is merged, so the marker diff's epoch changes and the
   // (otherwise key-cached) pins get rebuilt with their new rent-status colour.
   const houseLiveVerRef = useRef(0)
+  const houseStatusFilterRef = useRef(houseStatusFilter)
+  const houseKindRef = useRef(houseKind)
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  const watchesRef = useRef(watches)
+  // Bumped on every watch toggle so open/cached house pins rebuild and reflect
+  // the new bell state (the marker diff caches by key+epoch).
+  const houseWatchVerRef = useRef(0)
+  const worldRef = useRef(world)
+  // Toggle a single house on the alert list; updates the ref synchronously so a
+  // popup click handler can re-read the fresh state immediately after.
+  const toggleHouseWatchRef = useRef<(id: number, name: string, town: string | null) => void>(
+    () => {},
+  )
   const addMarkerRef = useRef<(m: Marker) => void>(() => {})
   const removeMarkerRef = useRef<(id: string) => void>(() => {})
   const openMarkerModalRef = useRef<(d: { x: number; y: number; floor: number }) => void>(() => {})
@@ -1163,6 +1223,77 @@ export function MapPage() {
   const renderHousesRef = useRef<() => void>(() => {})
   const renderCreaturesRef = useRef<() => void>(() => {})
   const rebuildOverlayRef = useRef<() => void>(() => {})
+  worldRef.current = world
+  // Commit a new watch list: sync the ref, persist, bump the pin-rebuild version,
+  // and update state — all callers go through here so nothing drifts.
+  const applyWatches = (next: Watch[]) => {
+    watchesRef.current = next
+    saveWatches(next)
+    houseWatchVerRef.current++
+    setWatches(next)
+  }
+  toggleHouseWatchRef.current = (id, name, town) =>
+    applyWatches(toggleHouseWatch(watchesRef.current, world, id, name, town))
+
+  // Build a house popup as a DOM element with a live-wired bell button. Shared by
+  // the map pins and the "fly to" action from the panel so both behave the same.
+  function buildHousePopupEl(hl: House): HTMLElement {
+    const watched = isHouseWatched(watchesRef.current, world, hl.id)
+    const el = document.createElement('div')
+    el.innerHTML = housePopup(hl, t, watched)
+    const btn = el.querySelector<HTMLButtonElement>('[data-house-watch]')
+    if (btn) {
+      btn.addEventListener('click', (ev) => {
+        ev.preventDefault()
+        toggleHouseWatchRef.current(hl.id, hl.name, hl.town)
+        const on = isHouseWatched(watchesRef.current, world, hl.id)
+        const lbl = btn.querySelector('[data-bell-label]')
+        if (lbl) lbl.textContent = on ? t('map.houseUnwatch') : t('map.houseWatch')
+        btn.style.borderColor = on ? '#b3873f' : 'rgba(140,140,140,.55)'
+        btn.style.background = on ? 'rgba(179,135,63,.14)' : 'transparent'
+        btn.style.color = on ? '#b3873f' : 'currentColor'
+      })
+    }
+    return el
+  }
+
+  // Centre the map on a house (switching floor if needed) and pop its details.
+  function flyToHouse(h: House) {
+    const map = mapRef.current
+    if (!map) return
+    if (h.z !== floorRef.current) setFloor(h.z)
+    const ll = toLatLng(h.x, h.y)
+    map.flyTo(ll, Math.max(map.getZoom(), 5), { duration: 0.6 })
+    const live = houseLiveRef.current?.[h.id] ?? null
+    const hl: House = live ? { ...h, live } : h
+    L.popup({ offset: [0, -8] }).setLatLng(ll).setContent(buildHousePopupEl(hl)).openOn(map)
+  }
+
+  // Drag the houses window by its header. Grabs the pointer offset once, then
+  // tracks moves on window (self-removing listeners), clamped to the viewport so
+  // it can't be lost behind the nav/hotbar. Ignores drags starting on a button.
+  function startPanelDrag(e: React.PointerEvent) {
+    if ((e.target as HTMLElement).closest('button')) return
+    const el = panelRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const dx = e.clientX - rect.left
+    const dy = e.clientY - rect.top
+    const move = (ev: PointerEvent) => {
+      const w = el.offsetWidth
+      const h = el.offsetHeight
+      const x = Math.max(4, Math.min(window.innerWidth - w - 4, ev.clientX - dx))
+      const y = Math.max(4, Math.min(window.innerHeight - h - 4, ev.clientY - dy))
+      setPanelPos({ x, y })
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
   addMarkerRef.current = (m) => setMarkers((prev) => [...prev, m])
   removeMarkerRef.current = (id) => setMarkers((prev) => prev.filter((m) => m.id !== id))
   openMarkerModalRef.current = (d) => {
@@ -1490,15 +1621,25 @@ export function MapPage() {
     const maxX = view.max!.x + cell
     const minY = view.min!.y - cell
     const maxY = view.max!.y + cell
+    const sf = houseStatusFilterRef.current
+    const kind = houseKindRef.current
     const wanted = new Map<string, () => L.Marker>()
     for (const h of housesRef.current) {
       if (h.z !== f) continue
+      // Guildhall filter: guild > 0 marks a guildhall.
+      if (kind === 'guild' && !h.guild) continue
+      if (kind === 'house' && h.guild) continue
+      const live = houseLiveRef.current?.[h.id] ?? null
+      // Rent-status filter, applied BEFORE the per-cell dedupe so a matching house
+      // isn't hidden behind a non-matching neighbour sharing its screen cell.
+      if (sf === 'available' && !(live && isAvailable(live.status))) continue
+      if (sf === 'rented' && live?.status !== 'rented') continue
       const pt = map.project(toLatLng(h.x, h.y), zoom)
       if (pt.x < minX || pt.x > maxX || pt.y < minY || pt.y > maxY) continue
       const key = Math.floor(pt.x / cell) + '_' + Math.floor(pt.y / cell)
       if (wanted.has(key)) continue
-      const live = houseLiveRef.current?.[h.id] ?? null
       const hl: House = live ? { ...h, live } : h
+      const watched = isHouseWatched(watchesRef.current, worldRef.current, hl.id)
       wanted.set(key, () => {
         const fill = hl.live
           ? hl.live.status === 'free'
@@ -1509,21 +1650,30 @@ export function MapPage() {
           : hl.guild
             ? '#7c6cf0'
             : '#b3873f'
+        // A gold ring flags houses on the alert list at a glance.
+        const ring = watched ? ';outline:2px solid #f0c674;outline-offset:1px' : ''
         const icon = L.divIcon({
           className: '',
           html:
             `<div style="display:grid;place-items:center;width:22px;height:22px;margin:-11px 0 0 -11px;` +
-            `border-radius:6px;background:${fill};box-shadow:0 1px 3px rgba(0,0,0,.55);border:1.5px solid rgba(255,255,255,.85)">` +
+            `border-radius:6px;background:${fill};box-shadow:0 1px 3px rgba(0,0,0,.55);border:1.5px solid rgba(255,255,255,.85)${ring}">` +
             `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" ` +
             `stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-7 9 7M5 9v11h14V9"/></svg></div>`,
           iconSize: [0, 0],
         })
+        // Popup as a DOM node so the bell button gets a live click handler
+        // (Leaflet accepts an element as popup content).
         return L.marker(toLatLng(hl.x, hl.y), { icon })
           .bindTooltip(escapeHtml(hl.name), { direction: 'top', offset: [0, -12] })
-          .bindPopup(housePopup(hl, t))
+          .bindPopup(buildHousePopupEl(hl))
       })
     }
-    syncMarkers(grp, houseCacheRef.current, `${f}|${zoom}|${houseLiveVerRef.current}`, wanted)
+    syncMarkers(
+      grp,
+      houseCacheRef.current,
+      `${f}|${zoom}|${houseLiveVerRef.current}|${sf}|${kind}|${houseWatchVerRef.current}`,
+      wanted,
+    )
   }
 
   function writeHash() {
@@ -2111,13 +2261,20 @@ export function MapPage() {
     return all.sort((a, b) => a.localeCompare(b))
   }, [killWorlds, world])
 
-  // Live rent status for the chosen world — only fetched while the layer is on.
+  // Live rent status for the chosen world. Fetched while the layer is on OR the
+  // user has any alerts (so re-opening the site catches what freed up while
+  // away). Refetches on focus + every 10 min so an open tab picks up the ETL's
+  // twice-daily refresh.
   const { data: houseStatus } = useQuery<{
+    world: string
+    synced_at: string | null
     houses: Record<number, { status: 'rented' | 'auctioned' | 'free'; bid?: number }>
   }>({
     queryKey: ['house-status', world],
     staleTime: 300_000,
-    enabled: showHouses && !!world,
+    enabled: (showHouses || watches.length > 0) && !!world,
+    refetchOnWindowFocus: true,
+    refetchInterval: 600_000,
     queryFn: async () => {
       const res = await fetch(`/api/houses?world=${encodeURIComponent(world)}`)
       if (!res.ok) throw new Error('house status fetch failed')
@@ -2133,6 +2290,108 @@ export function MapPage() {
     renderHousesRef.current()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [houseStatus])
+
+  // Keep the availability- and guildhall-filter refs in sync and repaint.
+  useEffect(() => {
+    houseStatusFilterRef.current = houseStatusFilter
+    houseKindRef.current = houseKind
+    renderHousesRef.current()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [houseStatusFilter, houseKind])
+
+  // Keep the watches ref in sync and repaint so pin rings reflect the alert list.
+  useEffect(() => {
+    watchesRef.current = watches
+    renderHousesRef.current()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watches])
+
+  // "Just freed" detection — the only notification path, fully client-side. On
+  // each status snapshot, diff against the last one stored for this world; any
+  // watched house that went rented → available raises an in-app toast and (if the
+  // user granted permission) a browser notification. First snapshot per world is
+  // silent (no prior baseline to diff).
+  useEffect(() => {
+    if (!houseStatus?.houses) return
+    const curr = toStatusMap(houseStatus.houses)
+    const prev = loadSeen(world)
+    const townOf = (id: number) => housesRef.current.find((h) => h.id === id)?.town ?? null
+    const freed = diffFreed(prev, curr, watchesRef.current, world, townOf)
+    saveSeen(world, curr)
+    if (!freed.length) return
+    setFreedIds((s) => new Set([...s, ...freed]))
+    const firstName = housesRef.current.find((h) => h.id === freed[0])?.name ?? ''
+    const msg =
+      freed.length === 1
+        ? t('map.houseFreedOne', { name: firstName, world })
+        : t('map.houseFreedMany', { n: freed.length, world })
+    setFreedToast(msg)
+    osNotify(t('map.houseFreedTitle'), msg)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [houseStatus, world])
+
+  // Houses for the panel list — respecting BOTH the guildhall (kind) and
+  // rent-status filters — sorted by town then rent. Empty until the static pins
+  // and the live status have loaded.
+  const panelHouses = useMemo(() => {
+    const live = houseStatus?.houses
+    const all = housesData?.houses
+    type Row = { h: House; status: 'auctioned' | 'free' | 'rented'; bid?: number }
+    if (!live || !all) return [] as Row[]
+    const q = houseSearch.trim().toLowerCase()
+    const out: Row[] = []
+    for (const h of all) {
+      if (houseKind === 'guild' && !h.guild) continue
+      if (houseKind === 'house' && h.guild) continue
+      const s = live[h.id]?.status
+      if (!s) continue
+      if (houseStatusFilter === 'available' && !(s === 'free' || s === 'auctioned')) continue
+      if (houseStatusFilter === 'rented' && s !== 'rented') continue
+      if (q && !h.name.toLowerCase().includes(q) && !(h.town ?? '').toLowerCase().includes(q)) continue
+      out.push({ h, status: s, bid: live[h.id]?.bid })
+    }
+    out.sort((a, b) => (a.h.town ?? '').localeCompare(b.h.town ?? '') || a.h.rent - b.h.rent)
+    return out
+  }, [houseStatus, housesData, houseKind, houseStatusFilter, houseSearch])
+
+  // Count of currently-available houses (kind-filtered) — drives the green badge
+  // on the panel toggle, independent of the status filter.
+  const availableCount = useMemo(() => {
+    const live = houseStatus?.houses
+    const all = housesData?.houses
+    if (!live || !all) return 0
+    let n = 0
+    for (const h of all) {
+      if (houseKind === 'guild' && !h.guild) continue
+      if (houseKind === 'house' && h.guild) continue
+      const s = live[h.id]?.status
+      if (s === 'free' || s === 'auctioned') n++
+    }
+    return n
+  }, [houseStatus, housesData, houseKind])
+
+  // Distinct towns that have houses, for the "watch a whole town" picker.
+  const houseTowns = useMemo(() => {
+    const s = new Set<string>()
+    for (const h of housesData?.houses ?? []) if (h.town) s.add(h.town)
+    return [...s].sort((a, b) => a.localeCompare(b))
+  }, [housesData])
+
+  // The chosen world's watched-specific houses, for the "my alerts" list.
+  const watchedHouses = useMemo(
+    () =>
+      watches.filter(
+        (w): w is Extract<Watch, { kind: 'house' }> => w.kind === 'house' && w.world === world,
+      ),
+    [watches, world],
+  )
+
+  // Auto-dismiss the "a house opened up" toast after a while.
+  useEffect(() => {
+    if (!freedToast) return
+    const id = setTimeout(() => setFreedToast(null), 14_000)
+    return () => clearTimeout(id)
+  }, [freedToast])
 
   // Classifications present on the current floor, for the category filter.
   const categories = useMemo(() => {
@@ -3083,18 +3342,63 @@ export function MapPage() {
               </svg>
             </button>
 
-            {/* Rentable houses */}
-            <button
-              onClick={() => setShowHouses((v) => !v)}
-              title={t('map.housesLayer')}
-              aria-label={t('map.housesLayer')}
-              aria-pressed={showHouses}
-              className={`${SLOT} ${showHouses ? 'border-[#b3873f] bg-[#b3873f]/15 text-[#b3873f]' : SLOT_OFF}`}
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 10l9-7 9 7M5 9v11h14V9M9 21v-6h6v6" />
-              </svg>
-            </button>
+            {/* Rentable houses — the layer toggle. When the layer is on, its
+                sub-controls (available-only filter + availability/alerts panel)
+                sprout straight UP from it like a little tree, connected by a
+                trunk, so it reads clearly as "these belong to Houses". */}
+            <div className="relative flex items-center">
+              {showHouses && (
+                <div className="absolute bottom-full left-1/2 mb-2 flex -translate-x-1/2 flex-col-reverse items-center gap-1.5">
+                  {/* trunk connecting the branch down to the house icon */}
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute left-1/2 top-1 -bottom-2.5 -z-10 w-0.5 -translate-x-1/2 rounded bg-[#b3873f]/45"
+                  />
+                  <button
+                    onClick={() =>
+                      setHouseStatusFilter((v) => (v === 'available' ? 'all' : 'available'))
+                    }
+                    title={t('map.houseAvailOnly')}
+                    aria-label={t('map.houseAvailOnly')}
+                    aria-pressed={houseStatusFilter === 'available'}
+                    className={`${SLOT} ${houseStatusFilter === 'available' ? 'border-[#2f9e5a] bg-[#2f9e5a]/15 text-[#2f9e5a]' : SLOT_OFF}`}
+                  >
+                    {/* filter funnel */}
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 4h18l-7 8v6l-4 2v-8z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => setHousePanelOpen((v) => !v)}
+                    title={t('map.houseAvailPanel')}
+                    aria-label={t('map.houseAvailPanel')}
+                    aria-pressed={housePanelOpen}
+                    className={`relative ${SLOT} ${housePanelOpen ? SLOT_ON : SLOT_OFF}`}
+                  >
+                    {/* list */}
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+                    </svg>
+                    {availableCount > 0 && (
+                      <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[#2f9e5a] px-1 text-[10px] font-bold text-white">
+                        {availableCount}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              )}
+              <button
+                onClick={() => setShowHouses((v) => !v)}
+                title={t('map.housesLayer')}
+                aria-label={t('map.housesLayer')}
+                aria-pressed={showHouses}
+                className={`${SLOT} ${showHouses ? 'border-[#b3873f] bg-[#b3873f]/15 text-[#b3873f]' : SLOT_OFF}`}
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 10l9-7 9 7M5 9v11h14V9M9 21v-6h6v6" />
+                </svg>
+              </button>
+            </div>
 
             {/* Refine filters */}
             <button
@@ -3191,6 +3495,354 @@ export function MapPage() {
           ) : (
             <p className="py-2 text-sm text-fg-mute">{t('map.routesEmpty')}</p>
           )}
+        </div>
+      )}
+
+      {/* Houses panel — houses on the chosen world (filterable by type + rent
+          status) + the client-side alert list. A small, draggable window (grab
+          the header) so it never gets stuck behind the nav or hotbar. Starts
+          centred; `panelPos` overrides once dragged. */}
+      {showHouses && housePanelOpen && (
+        <div className="pointer-events-none fixed inset-0 z-[1002]">
+        <div
+          ref={panelRef}
+          className="pointer-events-auto absolute flex max-h-[min(70vh,440px)] w-[19rem] max-w-[92vw] flex-col overflow-hidden rounded-xl border border-line bg-bg-2/95 shadow-2xl backdrop-blur-md"
+          style={
+            panelPos
+              ? { left: panelPos.x, top: panelPos.y }
+              : { left: '50%', top: '50%', transform: 'translate(-50%,-50%)' }
+          }
+        >
+          <div
+            onPointerDown={startPanelDrag}
+            className="flex cursor-move touch-none select-none items-center justify-between gap-2 border-b border-line/70 px-3 py-2"
+          >
+            <div className="flex min-w-0 items-center gap-1.5">
+              {/* grip dots */}
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 text-fg-mute" fill="currentColor">
+                <circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" />
+                <circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" />
+                <circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" />
+              </svg>
+              <span className="truncate text-[10px] font-bold uppercase tracking-widest text-[#b3873f]">
+                {t('map.houseBrowseTitle')} · {world}
+              </span>
+            </div>
+            <button
+              onClick={() => setHousePanelOpen(false)}
+              className="shrink-0 text-fg-mute transition hover:text-fg"
+              aria-label={t('map.close')}
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Filters — type (house/guildhall) + rent status. Both drive this list
+              AND the map pins. */}
+          <div className="flex flex-col gap-1 border-b border-line/70 px-3 py-2">
+            <div className="flex gap-1">
+              {(['all', 'house', 'guild'] as const).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => setHouseKind(k)}
+                  aria-pressed={houseKind === k}
+                  className={`flex-1 rounded-md border px-1 py-1 text-[11px] font-semibold transition ${
+                    houseKind === k
+                      ? 'border-[#b3873f] bg-[#b3873f]/15 text-[#b3873f]'
+                      : 'border-line-2 text-fg-dim hover:border-line hover:text-fg'
+                  }`}
+                >
+                  {k === 'all' ? t('map.houseKindAll') : k === 'house' ? t('map.houseKindHouse') : t('map.houseKindGuild')}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-1">
+              {(['all', 'available', 'rented'] as const).map((s) => {
+                const on = houseStatusFilter === s
+                const col = s === 'available' ? '#2f9e5a' : s === 'rented' ? '#a13d3d' : '#b3873f'
+                return (
+                  <button
+                    key={s}
+                    onClick={() => setHouseStatusFilter(s)}
+                    aria-pressed={on}
+                    className="flex-1 rounded-md border px-1 py-1 text-[11px] font-semibold transition"
+                    style={
+                      on
+                        ? { borderColor: col, background: `${col}26`, color: col }
+                        : undefined
+                    }
+                  >
+                    <span className={on ? '' : 'text-fg-dim'}>
+                      {s === 'all' ? t('map.houseStatusAll') : s === 'available' ? t('map.houseFree') : t('map.houseRented')}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+            {/* Name search */}
+            <div className="relative">
+              <svg viewBox="0 0 24 24" className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-mute" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <input
+                value={houseSearch}
+                onChange={(e) => setHouseSearch(e.target.value)}
+                placeholder={t('map.houseSearchPlaceholder')}
+                aria-label={t('map.houseSearchPlaceholder')}
+                className="w-full rounded-md border border-line-2 bg-bg-2 py-1 pl-7 pr-6 text-[11px] text-fg placeholder:text-fg-mute focus:border-accent focus:outline-none"
+              />
+              {houseSearch && (
+                <button
+                  onClick={() => setHouseSearch('')}
+                  aria-label={t('map.close')}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-fg-mute transition hover:text-fg"
+                >
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-3 py-2.5">
+            {/* Alerts controls */}
+            <div className="mb-3 rounded-lg border border-line/70 bg-bg/40 p-2.5">
+              <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-fg-dim">
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+                </svg>
+                {t('map.houseWatchlist')}
+              </div>
+
+              {/* Browser-alert permission */}
+              {notifPerm === 'granted' ? (
+                <p className="mb-2 text-[11px] font-semibold text-[#2f9e5a]">{t('map.houseNotifOn')}</p>
+              ) : notifPerm === 'denied' ? (
+                <p className="mb-2 text-[11px] text-fg-mute">{t('map.houseNotifBlocked')}</p>
+              ) : (
+                <button
+                  onClick={async () => setNotifPerm(await requestNotifyPermission())}
+                  className="mb-2 rounded-md border border-accent/50 bg-accent/10 px-2 py-1 text-[11px] font-bold text-accent transition hover:bg-accent/20"
+                >
+                  {t('map.houseNotifEnable')}
+                </button>
+              )}
+
+              {/* Whole-world / whole-town watches */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  onClick={() => applyWatches(toggleWorldWatch(watches, world))}
+                  className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition ${
+                    isWorldWatched(watches, world)
+                      ? 'border-[#b3873f] bg-[#b3873f]/15 text-[#b3873f]'
+                      : 'border-line-2 text-fg-dim hover:border-line hover:text-fg'
+                  }`}
+                >
+                  {t('map.houseWatchWorld', { world })}
+                </button>
+                {houseTowns.length > 0 && (
+                  <span className="inline-flex items-center gap-1">
+                    <select
+                      value={townSel}
+                      onChange={(e) => setTownSel(e.target.value)}
+                      className="rounded-md border border-line-2 bg-bg-2 px-1.5 py-1 text-[11px] text-fg"
+                    >
+                      <option value="">{t('map.houseWatchTown', { town: '…' })}</option>
+                      {houseTowns.map((tn) => (
+                        <option key={tn} value={tn}>
+                          {tn}
+                        </option>
+                      ))}
+                    </select>
+                    {townSel && (
+                      <button
+                        onClick={() => applyWatches(toggleTownWatch(watches, world, townSel))}
+                        className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition ${
+                          isTownWatched(watches, world, townSel)
+                            ? 'border-[#b3873f] bg-[#b3873f]/15 text-[#b3873f]'
+                            : 'border-line-2 text-fg-dim hover:border-line hover:text-fg'
+                        }`}
+                      >
+                        {isTownWatched(watches, world, townSel) ? t('map.houseUnwatch') : t('map.houseWatch')}
+                      </button>
+                    )}
+                  </span>
+                )}
+              </div>
+
+              {/* Active town watches as removable chips */}
+              {watches.some((w) => w.kind === 'town' && w.world === world) && (
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {watches
+                    .filter((w): w is Extract<Watch, { kind: 'town' }> => w.kind === 'town' && w.world === world)
+                    .map((w) => (
+                      <button
+                        key={w.town}
+                        onClick={() => applyWatches(toggleTownWatch(watches, world, w.town))}
+                        className="inline-flex items-center gap-1 rounded-full border border-[#b3873f]/50 bg-[#b3873f]/10 px-2 py-0.5 text-[10px] font-semibold text-[#b3873f]"
+                        title={t('map.houseUnwatch')}
+                      >
+                        {w.town}
+                        <span className="text-[11px] leading-none">×</span>
+                      </button>
+                    ))}
+                </div>
+              )}
+
+              {/* Watched specific houses */}
+              {watchedHouses.length > 0 && (
+                <div className="mt-2 flex flex-col gap-1">
+                  {watchedHouses.map((w) => {
+                    const st = houseStatus?.houses[w.id]?.status
+                    const full = housesRef.current.find((h) => h.id === w.id)
+                    return (
+                      <div key={w.id} className="flex items-center gap-2 text-[11px]">
+                        <button
+                          onClick={() => full && flyToHouse(full)}
+                          className="min-w-0 flex-1 truncate text-left font-semibold text-fg transition hover:text-accent"
+                        >
+                          {w.name}
+                          {w.town ? <span className="font-normal text-fg-mute"> · {w.town}</span> : null}
+                        </button>
+                        {st && (
+                          <span
+                            className="shrink-0 font-bold"
+                            style={{ color: st === 'free' ? '#2f9e5a' : st === 'auctioned' ? '#d08a1e' : '#a13d3d' }}
+                          >
+                            {st === 'free' ? t('map.houseFree') : st === 'auctioned' ? t('map.houseAuctioned') : t('map.houseRented')}
+                          </span>
+                        )}
+                        <button
+                          onClick={() => applyWatches(toggleHouseWatch(watches, world, w.id, w.name, w.town))}
+                          className="shrink-0 text-fg-mute transition hover:text-[#a13d3d]"
+                          aria-label={t('map.houseUnwatch')}
+                        >
+                          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M18 6 6 18M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {watchedHouses.length === 0 &&
+                !watches.some((w) => (w.kind === 'town' || w.kind === 'world') && w.world === world) && (
+                  <p className="mt-1.5 text-[11px] leading-snug text-fg-mute">{t('map.houseWatchlistEmpty')}</p>
+                )}
+
+              <p className="mt-2 text-[10px] leading-snug text-fg-mute/80">{t('map.houseNotifNote')}</p>
+            </div>
+
+            {/* Houses list (filtered) */}
+            {!houseStatus ? (
+              <p className="py-2 text-sm text-fg-mute">{t('map.houseAvailLoading')}</p>
+            ) : panelHouses.length === 0 ? (
+              <p className="py-2 text-sm text-fg-mute">{t('map.houseListNone', { world })}</p>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {panelHouses.slice(0, HOUSE_LIST_CAP).map(({ h, status, bid }) => {
+                  const watched = isHouseWatched(watches, world, h.id)
+                  const stCol = status === 'free' ? '#2f9e5a' : status === 'auctioned' ? '#d08a1e' : '#a13d3d'
+                  const stLabel = status === 'free' ? t('map.houseFree') : status === 'auctioned' ? t('map.houseAuctioned') : t('map.houseRented')
+                  return (
+                    <div
+                      key={h.id}
+                      className="flex items-center gap-2 rounded-lg border border-line bg-bg px-2.5 py-1.5"
+                    >
+                      <button
+                        onClick={() => flyToHouse(h)}
+                        className="min-w-0 flex-1 text-left"
+                        title={t('map.houseFlyTo')}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <span className="truncate text-sm font-bold text-fg">{h.name}</span>
+                          {freedIds.has(h.id) && (
+                            <span className="shrink-0 rounded-full bg-[#2f9e5a]/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#2f9e5a]">
+                              {t('map.houseJustFreed')}
+                            </span>
+                          )}
+                        </span>
+                        <span className="block truncate text-[11px] text-fg-mute">
+                          {h.town ? `${h.town} · ` : ''}
+                          <span style={{ color: stCol }} className="font-semibold">
+                            {stLabel}
+                            {status === 'auctioned' && bid ? ` · ${fmtGold(bid)}` : ''}
+                          </span>
+                          {' · '}
+                          {fmtGold(h.rent)} {t('map.houseGoldMonth')}
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => applyWatches(toggleHouseWatch(watches, world, h.id, h.name, h.town))}
+                        title={watched ? t('map.houseUnwatch') : t('map.houseWatch')}
+                        aria-label={watched ? t('map.houseUnwatch') : t('map.houseWatch')}
+                        className={`shrink-0 rounded-md border p-1.5 transition ${
+                          watched
+                            ? 'border-[#b3873f] bg-[#b3873f]/15 text-[#b3873f]'
+                            : 'border-line-2 text-fg-mute hover:border-line hover:text-fg'
+                        }`}
+                      >
+                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+                        </svg>
+                      </button>
+                    </div>
+                  )
+                })}
+                {panelHouses.length > HOUSE_LIST_CAP && (
+                  <p className="pt-1 text-center text-[10px] text-fg-mute">
+                    {t('map.houseListCap', { shown: HOUSE_LIST_CAP, total: panelHouses.length })}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {houseStatus?.synced_at && (
+              <p className="mt-2 text-right text-[10px] text-fg-mute/70">
+                {t('map.houseSynced', { when: new Date(houseStatus.synced_at).toLocaleString() })}
+              </p>
+            )}
+          </div>
+        </div>
+        </div>
+      )}
+
+      {/* "A house opened up" toast — the client-side alert surface. */}
+      {freedToast && (
+        <div className="pointer-events-auto flex items-start gap-2.5 rounded-xl border border-[#2f9e5a]/50 bg-bg-2/95 px-3 py-2.5 shadow-lg backdrop-blur-md">
+          <svg viewBox="0 0 24 24" className="mt-0.5 h-5 w-5 shrink-0 text-[#2f9e5a]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+          </svg>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-fg">{t('map.houseFreedTitle')}</p>
+            <p className="text-xs text-fg-dim">{freedToast}</p>
+            <button
+              onClick={() => {
+                setFreedToast(null)
+                setShowHouses(true)
+                setHousePanelOpen(true)
+                setHouseStatusFilter('available')
+              }}
+              className="mt-1 text-[11px] font-bold uppercase tracking-wider text-accent transition hover:underline"
+            >
+              {t('map.houseAvailPanel')}
+            </button>
+          </div>
+          <button
+            onClick={() => setFreedToast(null)}
+            className="shrink-0 text-fg-mute transition hover:text-fg"
+            aria-label={t('map.close')}
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
         </div>
       )}
 

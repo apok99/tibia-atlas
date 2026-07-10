@@ -9,6 +9,7 @@ import { LoreText } from '../components/LoreText'
 import { CreatureKillStats } from '../components/CreatureKillStats'
 import { CreatureLoot } from '../components/CreatureLoot'
 import { DamageAffinity } from '../components/DamageAffinity'
+import { CreatureAbilities } from '../components/CreatureAbilities'
 import { BossRespawn } from '../components/BossRespawn'
 import { Lightbox } from '../components/Lightbox'
 import { Seo, articleJsonLd, breadcrumbJsonLd, entrySeoTitle, entrySeoDescription } from '../lib/seo'
@@ -194,6 +195,8 @@ export function EntryPage() {
               </div>
             </div>
           )}
+
+          {entry.type === 'creature' && <CreatureAbilities meta={entry.meta} />}
 
           {entry.type === 'creature' && <DamageAffinity meta={entry.meta} />}
 
