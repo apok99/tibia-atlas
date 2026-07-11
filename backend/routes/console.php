@@ -46,6 +46,13 @@ Schedule::command('tibia:etl-loot-stats')
     ->weeklyOn(1, '07:00')
     ->withoutOverlapping();
 
+// Daily "yesterday on your world" digest for the map news ticker — top creature,
+// top bosses and total kills, derived from the kill-stats warehouse. Runs in the
+// morning, after the overnight creature sync, so the day's numbers are settled.
+Schedule::command('tibia:build-world-news --worlds=Antica')
+    ->dailyAt('07:15')
+    ->withoutOverlapping();
+
 // House rent status for the map's "Casas" layer. TibiaData houses have no coords
 // (pins come from the baked houses.json); this only refreshes the changing bit —
 // rented / on-auction / free per world, across ALL regular worlds (~90 worlds ×

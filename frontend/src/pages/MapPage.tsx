@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { api } from '../lib/api'
+import { compact } from '../lib/format'
 import { planRoute, type RoutePlan, type RouteLeg } from '../lib/routing'
 import { Seo } from '../lib/seo'
 import { Icon, iconMarkup } from '../lib/icons'
@@ -114,26 +115,41 @@ type House = {
   live?: { status: 'rented' | 'auctioned' | 'free'; owner?: string | null; bid?: number } | null
 }
 
-// A live "what's happening on your world" event from GET /api/events, produced
-// by the house-status ETL diff. Generic shape so more producers can feed the
-// ticker later; today `type` is always one of the house_* transitions.
+// A live "what's happening on your world" event from GET /api/events. Two
+// producers feed it: the house-status ETL diff (house_* transitions) and the
+// daily kill-stats digest (digest_* — most-hunted creature, top bosses, total
+// kills "yesterday"). Generic shape so more producers can be added later.
 type WorldEvent = {
   id: number
   type: string
   ref_id: number | null
   title: string | null
   town: string | null
-  meta: { from?: string; to?: string; bid?: number } | null
+  meta: {
+    from?: string
+    to?: string
+    bid?: number
+    count?: number // digest_*: how many were killed
+    slug?: string // digest creature/boss: lore slug, for click-to-plot
+    image?: string | null // digest creature/boss: sprite
+  } | null
   occurred_at: string
 }
 
-// Icon + accent colour per event type, so the ticker reads at a glance:
-// red = a house was taken (new tenant), green = one just freed up, gold = auction.
+// Icon + accent colour per event type, so the ticker reads at a glance.
 const EVENT_STYLE: Record<string, { icon: string; color: string }> = {
+  // Houses: red = taken (new tenant), green = freed up, gold = auction.
   house_rented: { icon: '🏠', color: 'var(--color-accent)' },
   house_freed: { icon: '🔑', color: '#2f9e5a' },
   house_auctioned: { icon: '🔨', color: '#e0a531' },
+  // Daily digest: sword = total slain, paw = most-hunted creature, skull = boss.
+  digest_total: { icon: '⚔️', color: 'var(--color-accent-2)' },
+  digest_top_creature: { icon: '🐾', color: '#6cc551' },
+  digest_boss: { icon: '☠', color: 'var(--color-accent)' },
 }
+
+// Whether an event is a daily-digest headline (vs a real-time house change).
+const isDigest = (type: string) => type.startsWith('digest_')
 
 // "hace 3 h" / "3h ago" — coarse relative time; events land ~twice a day so
 // minute precision would be noise.
@@ -144,69 +160,130 @@ function eventAgo(iso: string, t: (k: string, o?: Record<string, unknown>) => st
   return t('map.evtAgoDay', { n: Math.round(s / 86400) })
 }
 
-// Full-width "breaking news" marquee of live world events (houses changing
-// hands, etc.) pinned to the top of the map. The list is duplicated so the CSS
-// translate loop is seamless; hovering pauses it (.ks-ticker CSS) so an item
-// can be clicked to fly to that house.
-function EventsTicker({
+// Short label for an event, by type.
+function eventLabel(ev: WorldEvent, t: (k: string, o?: Record<string, unknown>) => string): string {
+  switch (ev.type) {
+    case 'house_freed':
+      return t('map.evtFreed')
+    case 'house_auctioned':
+      return t('map.evtAuction')
+    case 'digest_total':
+      return t('map.evtTotalKills')
+    case 'digest_top_creature':
+      return t('map.evtTopCreature')
+    case 'digest_boss':
+      return t('map.evtBoss')
+    default:
+      return t('map.evtNewOwner')
+  }
+}
+
+// Live "world news" rail docked to the RIGHT edge. Collapsed by default to a
+// small 📰 button (with an unread-style count badge) so it never covers the map;
+// clicking slides it open (same maxWidth animation as the Boss Watch rail) into a
+// scrollable vertical list. It's an absolute overlay, so opening it doesn't shift
+// any other control. Each row: sprite/icon + label + title + kills/relative-time;
+// clicking plots the creature (digest) or flies to the house (house event).
+function NewsRail({
   events,
+  open,
+  onToggle,
   t,
   onPick,
-  onClose,
 }: {
   events: WorldEvent[]
+  open: boolean
+  onToggle: () => void
   t: (k: string, o?: Record<string, unknown>) => string
   onPick: (ev: WorldEvent) => void
-  onClose: () => void
 }) {
   if (!events.length) return null
-  // Duplicate a short list so the marquee still fills the width and loops.
-  const loop = events.length < 8 ? [...events, ...events] : [...events]
-  const label = (ev: WorldEvent) =>
-    ev.type === 'house_freed'
-      ? t('map.evtFreed')
-      : ev.type === 'house_auctioned'
-        ? t('map.evtAuction')
-        : t('map.evtNewOwner')
   return (
-    <div className="ks-ticker w-full">
-      <span className="ks-ticker-tag">{t('map.eventsLive')}</span>
-      <div className="ks-ticker-mask">
-        <div className="ks-ticker-track">
-          {loop.map((ev, i) => {
+    <aside
+      className="scroll-atlas absolute right-2 top-3 z-[1101] flex max-h-[calc(50vh-3rem)] flex-col gap-0.5 overflow-y-auto overflow-x-hidden rounded-2xl border-2 border-line bg-bg-2/95 p-2 shadow-lg backdrop-blur-md transition-[max-width] duration-300 ease-in-out sm:right-3"
+      style={{ maxWidth: open ? 'min(21rem, calc(100vw - 1rem))' : '2.9rem' }}
+    >
+      <div className={`flex items-center gap-1.5 ${open ? 'px-0.5 pb-1' : 'justify-center'}`}>
+        {open && (
+          <span className="flex min-w-0 flex-1 items-center gap-1.5 text-accent">
+            <span className="text-[13px] leading-none">📰</span>
+            <span className="truncate text-[10px] font-bold uppercase tracking-widest">{t('map.newsTitle')}</span>
+            <span className="ks-ticker-tag shrink-0" style={{ padding: '2px 6px', fontSize: 9, borderRadius: 9999 }}>
+              {t('map.eventsLive')}
+            </span>
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={onToggle}
+          title={open ? t('map.modeHide') : t('map.newsTitle')}
+          aria-label={open ? t('map.modeHide') : t('map.newsTitle')}
+          aria-expanded={open}
+          className="relative grid h-7 w-7 shrink-0 place-items-center rounded text-fg-mute transition hover:bg-line/40 hover:text-fg"
+        >
+          {open ? (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          ) : (
+            <>
+              <span className="text-[15px] leading-none">📰</span>
+              <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none text-white">
+                {events.length}
+              </span>
+            </>
+          )}
+        </button>
+      </div>
+      {open && (
+        <div className="flex flex-col gap-0.5">
+          {events.map((ev) => {
             const st = EVENT_STYLE[ev.type] ?? EVENT_STYLE.house_rented
+            const digest = isDigest(ev.type)
+            const can = digest ? !!ev.meta?.slug : !!ev.ref_id
             return (
               <button
+                key={ev.id}
                 type="button"
-                key={`${ev.id}-${i}`}
                 onClick={() => onPick(ev)}
-                className="ks-ticker-item"
-                style={{ background: 'none', border: 0, cursor: ev.ref_id ? 'pointer' : 'default' }}
+                className="flex w-full items-center gap-2 rounded-lg px-1 py-1 text-left transition hover:bg-line/40"
+                style={{ cursor: can ? 'pointer' : 'default' }}
                 title={ev.title ?? ''}
               >
-                <span className="ks-ticker-skull" style={{ color: st.color }}>{st.icon}</span>
-                <span className="ks-ticker-count" style={{ color: st.color }}>{label(ev)}</span>
-                <span className="ks-ticker-name" style={{ textTransform: 'none' }}>
-                  {ev.title ?? '—'}
-                  {ev.town ? ` · ${ev.town}` : ''}
+                {digest && ev.meta?.image ? (
+                  <img src={ev.meta.image} alt="" loading="lazy" className="h-6 w-6 shrink-0 object-contain [image-rendering:pixelated]" />
+                ) : (
+                  <span className="grid h-6 w-6 shrink-0 place-items-center text-[15px] leading-none" style={{ color: st.color }}>
+                    {st.icon}
+                  </span>
+                )}
+                <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                  <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: st.color }}>
+                    {eventLabel(ev, t)}
+                  </span>
+                  {ev.title && (
+                    <span className="truncate text-xs font-semibold text-fg-dim">
+                      {ev.title}
+                      {ev.town ? ` · ${ev.town}` : ''}
+                    </span>
+                  )}
                 </span>
-                <span className="ks-ticker-name" style={{ opacity: 0.55, fontWeight: 600 }}>
-                  {eventAgo(ev.occurred_at, t)}
+                <span
+                  className="shrink-0 text-[11px] font-bold tabular-nums"
+                  style={{ color: digest ? 'var(--color-accent-2)' : 'var(--color-fg-mute)' }}
+                >
+                  {digest
+                    ? typeof ev.meta?.count === 'number'
+                      ? compact(ev.meta.count)
+                      : ''
+                    : eventAgo(ev.occurred_at, t)}
                 </span>
               </button>
             )
           })}
         </div>
-      </div>
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label={t('map.close')}
-        style={{ flexShrink: 0, padding: '0 0.75rem', color: 'var(--color-fg-mute)', background: 'none', border: 0, cursor: 'pointer', fontSize: 13, fontWeight: 700 }}
-      >
-        ✕
-      </button>
-    </div>
+      )}
+    </aside>
   )
 }
 
@@ -1280,7 +1357,7 @@ export function MapPage() {
   const [watches, setWatches] = useState<Watch[]>(() => loadWatches()) // client-side alert list
   const [notifPerm, setNotifPerm] = useState<NotificationPermission>(() => notifyPermission())
   const [freedToast, setFreedToast] = useState<string | null>(null) // "a house opened up" banner
-  const [eventsDismissed, setEventsDismissed] = useState(false) // news-ticker dismissed this session
+  const [newsOpen, setNewsOpen] = useState(false) // right-edge world-news rail (collapsed by default)
   const [freedIds, setFreedIds] = useState<Set<number>>(() => new Set()) // ids just freed this session
   const [townSel, setTownSel] = useState('') // town picked in the "watch a whole town" control
   // The selected Tibia world — a GLOBAL map concern: it drives the Boss Watch's
@@ -1491,10 +1568,14 @@ export function MapPage() {
     L.popup({ offset: [0, -8] }).setLatLng(ll).setContent(buildHousePopupEl(hl)).openOn(map)
   }
 
-  // Clicking a house event in the news ticker flies to that house (turning the
-  // layer on so its pin is visible). Resolved by the real house id against the
-  // static houses.json; a house not in our baked set is simply a no-op.
+  // Clicking a news-ticker item: a daily-digest creature/boss plots its spawns
+  // (reusing the creature search machinery); a house event flies to that house
+  // (turning the layer on so its pin shows). Both are no-ops when unresolvable.
   function onPickEvent(ev: WorldEvent) {
+    if (ev.type.startsWith('digest_')) {
+      if (ev.meta?.slug) void addCreature(ev.meta.slug)
+      return
+    }
     if (!ev.ref_id) return
     const h = houseByIdRef.current.get(ev.ref_id)
     if (!h) return
@@ -3248,31 +3329,22 @@ export function MapPage() {
         </aside>
       )}
 
-      {/* Live news ticker — "what's happening on your world" (houses changing
-          hands, etc.), a full-width marquee pinned to the very top. Click an
-          item to fly to that house. */}
-      {!eventsDismissed && worldEvents.length > 0 && (
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-[1001] flex justify-center p-2 sm:p-3">
-          <div className="pointer-events-auto w-full max-w-3xl">
-            <EventsTicker
-              events={worldEvents}
-              t={t}
-              onPick={onPickEvent}
-              onClose={() => setEventsDismissed(true)}
-            />
-          </div>
-        </div>
-      )}
+      {/* Live world-news rail — "what's happening on your world" (houses changing
+          hands + the daily kill-stats digest), docked to the RIGHT edge and
+          collapsed to a 📰 button by default so it never shifts the layout.
+          Clicking an item plots the creature / flies to the house. */}
+      <NewsRail
+        events={worldEvents}
+        open={newsOpen}
+        onToggle={() => setNewsOpen((v) => !v)}
+        t={t}
+        onPick={onPickEvent}
+      />
 
       {/* Floating control layer — pinned to the top, translucent so the map reads
           through it. The outer wrapper ignores pointer events so the map stays
-          draggable in the side gutters; the inner column re-enables them. The top
-          padding grows to clear the news ticker when it's showing. */}
-      <div
-        className={`pointer-events-none absolute inset-x-0 top-0 z-[1000] flex flex-col p-2 sm:p-3 ${
-          !eventsDismissed && worldEvents.length > 0 ? 'pt-16 sm:pt-20' : 'pt-5 sm:pt-7'
-        }`}
-      >
+          draggable in the side gutters; the inner column re-enables them. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-[1000] flex flex-col p-2 pt-5 sm:p-3 sm:pt-7">
         <div ref={topColRef} className="pointer-events-none flex w-full max-w-md flex-col gap-2">
 
       {/* Search — the hero, pinned top-left. The action/layer hotbar lives at the
