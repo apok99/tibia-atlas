@@ -39,6 +39,16 @@ class EtlHouses extends Command
         'Venore', 'Yalahar',
     ];
 
+    /**
+     * Destination status → ticker event type. A house arriving at one of these
+     * states (from a different prior state) is what the map's news ticker shows.
+     */
+    private const EVENT_TYPES = [
+        'rented' => 'house_rented',
+        'free' => 'house_freed',
+        'auctioned' => 'house_auctioned',
+    ];
+
     private string $base;
 
     public function handle(): int
@@ -66,11 +76,21 @@ class EtlHouses extends Command
         $this->info(count($worlds).' world(s) × '.count(self::TOWNS).' towns to fetch.');
 
         $now = now();
-        $total = $failed = 0;
+        $total = $failed = $eventsTotal = 0;
 
         foreach ($worlds as $world) {
             $this->line("World {$world} …");
             $rows = [];
+            $events = [];
+
+            // Prior status per house on this world, so we can diff transitions
+            // into ticker events. Empty on the first-ever run for a world → we
+            // stay silent that run (no phantom "changed" events on a cold table).
+            $prior = DB::table('house_status')
+                ->where('world', $world)
+                ->pluck('status', 'house_id')
+                ->all();
+            $hadPrior = $prior !== [];
 
             foreach (self::TOWNS as $town) {
                 $houses = $this->fetchTown($world, $town);
@@ -91,15 +111,40 @@ class EtlHouses extends Command
                     }
                     $rented = (bool) ($h['rented'] ?? false);
                     $auctioned = (bool) ($h['auctioned'] ?? false);
+                    $bid = (int) ($h['auction']['current_bid'] ?? 0);
+                    $status = $rented ? 'rented' : ($auctioned ? 'auctioned' : 'free');
                     $rows[] = [
                         'world' => $world,
                         'house_id' => $id,
-                        'status' => $rented ? 'rented' : ($auctioned ? 'auctioned' : 'free'),
-                        'bid' => (int) ($h['auction']['current_bid'] ?? 0),
+                        'status' => $status,
+                        'bid' => $bid,
                         'synced_at' => $now,
                         'created_at' => $now,
                         'updated_at' => $now,
                     ];
+
+                    // A status change on a house we've seen before = one ticker
+                    // event. A brand-new house id (old === null) is skipped —
+                    // there's no transition to describe, only noise.
+                    $old = $prior[$id] ?? null;
+                    if ($hadPrior && $old !== null && $old !== $status
+                        && ($type = self::EVENT_TYPES[$status] ?? null) !== null) {
+                        $events[] = [
+                            'world' => $world,
+                            'type' => $type,
+                            'ref_id' => $id,
+                            'title' => mb_substr((string) ($h['name'] ?? ''), 0, 120) ?: null,
+                            'town' => $town,
+                            'meta' => json_encode(array_filter([
+                                'from' => $old,
+                                'to' => $status,
+                                'bid' => $bid ?: null,
+                            ], fn ($v) => $v !== null)),
+                            'occurred_at' => $now,
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ];
+                    }
                 }
 
                 if ($sleepMs > 0) {
@@ -114,11 +159,20 @@ class EtlHouses extends Command
                     ['status', 'bid', 'synced_at', 'updated_at'],
                 );
             }
+            foreach (array_chunk($events, 500) as $chunk) {
+                DB::table('world_events')->insert($chunk);
+            }
             $total += count($rows);
-            $this->info("  {$world}: ".count($rows).' houses upserted.');
+            $eventsTotal += count($events);
+            $this->info("  {$world}: ".count($rows).' houses upserted, '.count($events).' event(s).');
         }
 
-        $this->info("Done. {$total} rows across ".count($worlds)." world(s). Failed towns: {$failed}.");
+        // Keep the feed bounded — a month of history is more than a ticker shows.
+        DB::table('world_events')
+            ->where('occurred_at', '<', $now->copy()->subDays(30))
+            ->delete();
+
+        $this->info("Done. {$total} rows, {$eventsTotal} event(s) across ".count($worlds)." world(s). Failed towns: {$failed}.");
 
         return self::SUCCESS;
     }

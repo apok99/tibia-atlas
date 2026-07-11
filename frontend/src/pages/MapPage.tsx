@@ -114,6 +114,102 @@ type House = {
   live?: { status: 'rented' | 'auctioned' | 'free'; owner?: string | null; bid?: number } | null
 }
 
+// A live "what's happening on your world" event from GET /api/events, produced
+// by the house-status ETL diff. Generic shape so more producers can feed the
+// ticker later; today `type` is always one of the house_* transitions.
+type WorldEvent = {
+  id: number
+  type: string
+  ref_id: number | null
+  title: string | null
+  town: string | null
+  meta: { from?: string; to?: string; bid?: number } | null
+  occurred_at: string
+}
+
+// Icon + accent colour per event type, so the ticker reads at a glance:
+// red = a house was taken (new tenant), green = one just freed up, gold = auction.
+const EVENT_STYLE: Record<string, { icon: string; color: string }> = {
+  house_rented: { icon: '🏠', color: 'var(--color-accent)' },
+  house_freed: { icon: '🔑', color: '#2f9e5a' },
+  house_auctioned: { icon: '🔨', color: '#e0a531' },
+}
+
+// "hace 3 h" / "3h ago" — coarse relative time; events land ~twice a day so
+// minute precision would be noise.
+function eventAgo(iso: string, t: (k: string, o?: Record<string, unknown>) => string): string {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
+  if (s < 3600) return t('map.evtAgoMin', { n: Math.max(1, Math.round(s / 60)) })
+  if (s < 86400) return t('map.evtAgoHour', { n: Math.round(s / 3600) })
+  return t('map.evtAgoDay', { n: Math.round(s / 86400) })
+}
+
+// Full-width "breaking news" marquee of live world events (houses changing
+// hands, etc.) pinned to the top of the map. The list is duplicated so the CSS
+// translate loop is seamless; hovering pauses it (.ks-ticker CSS) so an item
+// can be clicked to fly to that house.
+function EventsTicker({
+  events,
+  t,
+  onPick,
+  onClose,
+}: {
+  events: WorldEvent[]
+  t: (k: string, o?: Record<string, unknown>) => string
+  onPick: (ev: WorldEvent) => void
+  onClose: () => void
+}) {
+  if (!events.length) return null
+  // Duplicate a short list so the marquee still fills the width and loops.
+  const loop = events.length < 8 ? [...events, ...events] : [...events]
+  const label = (ev: WorldEvent) =>
+    ev.type === 'house_freed'
+      ? t('map.evtFreed')
+      : ev.type === 'house_auctioned'
+        ? t('map.evtAuction')
+        : t('map.evtNewOwner')
+  return (
+    <div className="ks-ticker w-full">
+      <span className="ks-ticker-tag">{t('map.eventsLive')}</span>
+      <div className="ks-ticker-mask">
+        <div className="ks-ticker-track">
+          {loop.map((ev, i) => {
+            const st = EVENT_STYLE[ev.type] ?? EVENT_STYLE.house_rented
+            return (
+              <button
+                type="button"
+                key={`${ev.id}-${i}`}
+                onClick={() => onPick(ev)}
+                className="ks-ticker-item"
+                style={{ background: 'none', border: 0, cursor: ev.ref_id ? 'pointer' : 'default' }}
+                title={ev.title ?? ''}
+              >
+                <span className="ks-ticker-skull" style={{ color: st.color }}>{st.icon}</span>
+                <span className="ks-ticker-count" style={{ color: st.color }}>{label(ev)}</span>
+                <span className="ks-ticker-name" style={{ textTransform: 'none' }}>
+                  {ev.title ?? '—'}
+                  {ev.town ? ` · ${ev.town}` : ''}
+                </span>
+                <span className="ks-ticker-name" style={{ opacity: 0.55, fontWeight: 600 }}>
+                  {eventAgo(ev.occurred_at, t)}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label={t('map.close')}
+        style={{ flexShrink: 0, padding: '0 0.75rem', color: 'var(--color-fg-mute)', background: 'none', border: 0, cursor: 'pointer', fontSize: 13, fontWeight: 700 }}
+      >
+        ✕
+      </button>
+    </div>
+  )
+}
+
 // A published community route from GET /api/routes (ranked by load count).
 type CommunityRoute = {
   id: number
@@ -975,6 +1071,129 @@ function WorldPicker({
   )
 }
 
+// Floor stepper — a compact "current floor + up/down arrows" control pinned to
+// the right edge. The arrows step one floor at a time (up = toward the sky, i.e.
+// a higher altitude / lower internal index); tapping the current-floor number
+// opens a scrollable list of every floor to jump directly. Replaces the tall
+// 16-button pad that crowded the right edge and overlapped the other controls.
+function FloorStepper({
+  floor,
+  surface,
+  floors,
+  floorWord,
+  onSelect,
+}: {
+  floor: number
+  surface: number
+  floors: number[]
+  floorWord: string
+  onSelect: (f: number) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLUListElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+  // Centre the current floor in the list each time it opens.
+  useEffect(() => {
+    if (!open) return
+    const active = listRef.current?.querySelector('[data-active="true"]') as HTMLElement | null
+    active?.scrollIntoView({ block: 'center' })
+  }, [open])
+  const relLabel = (f: number) => {
+    const rel = surface - f // +N above surface, -N below
+    return rel === 0 ? '0' : rel > 0 ? `+${rel}` : `${rel}`
+  }
+  const canUp = floor > 0 // a higher floor (toward +N)
+  const canDown = floor < floors.length - 1
+  return (
+    <div
+      ref={ref}
+      className="pointer-events-auto relative flex flex-col items-center gap-1 rounded-xl border border-line bg-bg/90 p-1.5 shadow-lg backdrop-blur-md"
+    >
+      <button
+        type="button"
+        onClick={() => onSelect(Math.max(0, floor - 1))}
+        disabled={!canUp}
+        title={`${floorWord} +`}
+        aria-label={`${floorWord} +`}
+        className="grid h-7 w-9 place-items-center rounded-lg text-fg-mute transition hover:bg-line/40 hover:text-fg disabled:pointer-events-none disabled:opacity-30"
+      >
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m6 15 6-6 6 6" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title={floorWord}
+        className={`grid h-9 w-9 place-items-center rounded-lg text-[13px] font-bold tabular-nums transition ${
+          open ? 'bg-accent text-white' : 'bg-line/40 text-fg hover:bg-line'
+        }`}
+      >
+        {relLabel(floor)}
+      </button>
+      <button
+        type="button"
+        onClick={() => onSelect(Math.min(floors.length - 1, floor + 1))}
+        disabled={!canDown}
+        title={`${floorWord} -`}
+        aria-label={`${floorWord} -`}
+        className="grid h-7 w-9 place-items-center rounded-lg text-fg-mute transition hover:bg-line/40 hover:text-fg disabled:pointer-events-none disabled:opacity-30"
+      >
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {/* Full floor list — opens to the LEFT of the stepper (it's pinned to the
+          right edge) so it never spills off-screen; scrolls if the floors
+          outgrow the viewport. */}
+      {open && (
+        <ul
+          ref={listRef}
+          role="listbox"
+          className="scroll-atlas absolute right-full top-1/2 z-[1100] mr-2 max-h-[85vh] -translate-y-1/2 space-y-0.5 overflow-y-auto rounded-xl border-2 border-line bg-bg-2 p-1.5 shadow-2xl"
+        >
+          {floors.map((f) => {
+            const active = f === floor
+            return (
+              <li key={f}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  data-active={active}
+                  onClick={() => {
+                    onSelect(f)
+                    setOpen(false)
+                  }}
+                  className={`flex w-12 items-center justify-center rounded px-2 py-1.5 text-sm font-bold tabular-nums transition ${
+                    active
+                      ? 'bg-accent text-white'
+                      : f === surface
+                        ? 'bg-line/40 text-fg hover:bg-line'
+                        : 'text-fg-mute hover:bg-surface-2 hover:text-fg'
+                  }`}
+                >
+                  {relLabel(f)}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export function MapPage() {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -1061,6 +1280,7 @@ export function MapPage() {
   const [watches, setWatches] = useState<Watch[]>(() => loadWatches()) // client-side alert list
   const [notifPerm, setNotifPerm] = useState<NotificationPermission>(() => notifyPermission())
   const [freedToast, setFreedToast] = useState<string | null>(null) // "a house opened up" banner
+  const [eventsDismissed, setEventsDismissed] = useState(false) // news-ticker dismissed this session
   const [freedIds, setFreedIds] = useState<Set<number>>(() => new Set()) // ids just freed this session
   const [townSel, setTownSel] = useState('') // town picked in the "watch a whole town" control
   // The selected Tibia world — a GLOBAL map concern: it drives the Boss Watch's
@@ -1198,6 +1418,8 @@ export function MapPage() {
   const poiRef = useRef<Poi[]>([])
   const showHousesRef = useRef(showHouses)
   const housesRef = useRef<House[]>([])
+  // House lookup by real Tibia id, so the news ticker can fly to an event's house.
+  const houseByIdRef = useRef<Map<number, House>>(new Map())
   const houseLiveRef = useRef<Record<number, { status: 'rented' | 'auctioned' | 'free'; owner?: string | null; bid?: number }> | null>(null)
   // Bumped when live status is merged, so the marker diff's epoch changes and the
   // (otherwise key-cached) pins get rebuilt with their new rent-status colour.
@@ -1267,6 +1489,17 @@ export function MapPage() {
     const live = houseLiveRef.current?.[h.id] ?? null
     const hl: House = live ? { ...h, live } : h
     L.popup({ offset: [0, -8] }).setLatLng(ll).setContent(buildHousePopupEl(hl)).openOn(map)
+  }
+
+  // Clicking a house event in the news ticker flies to that house (turning the
+  // layer on so its pin is visible). Resolved by the real house id against the
+  // static houses.json; a house not in our baked set is simply a no-op.
+  function onPickEvent(ev: WorldEvent) {
+    if (!ev.ref_id) return
+    const h = houseByIdRef.current.get(ev.ref_id)
+    if (!h) return
+    if (!showHouses) setShowHouses(true)
+    flyToHouse(h)
   }
 
   // Drag the houses window by its header. Grabs the pointer offset once, then
@@ -2240,6 +2473,30 @@ export function MapPage() {
     },
   })
 
+  // Index houses by id once loaded, for the news ticker's fly-to.
+  useEffect(() => {
+    const m = new Map<number, House>()
+    for (const h of housesData?.houses ?? []) m.set(h.id, h)
+    houseByIdRef.current = m
+  }, [housesData])
+
+  // Live world-events feed (house status changes on the selected world) that
+  // powers the top news ticker. Short staleTime + a 5-min poll + refetch-on-focus
+  // so an open tab picks up the ETL's twice-daily refresh without a reload.
+  const { data: worldEventsData } = useQuery<{ world: string; events: WorldEvent[] }>({
+    queryKey: ['world-events', world],
+    queryFn: async () => {
+      const { data } = await api.get<{ world: string; events: WorldEvent[] }>('/events', {
+        params: { world },
+      })
+      return data
+    },
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+    refetchOnWindowFocus: true,
+  })
+  const worldEvents = worldEventsData?.events ?? []
+
   // Load the houses into the ref and (re)draw when toggled, floor changes, or the
   // map remounts.
   useEffect(() => {
@@ -2813,43 +3070,18 @@ export function MapPage() {
         <WorldPicker worlds={worldNames} value={world} label={t('map.world')} onSelect={setWorld} />
       </div>
 
-      {/* Floor selector — pinned to the right edge and vertically centred within
-          the space ABOVE the bottom-right quick-links (the band reserves ~15rem
-          at the bottom so the panel can never overlap them). Laid out as two
-          compact columns — surface-and-above on the left, underground on the
-          right — so the 16 floors stack half as tall. Scrolls only on very short
-          viewports. The band is inset top (clears the full-width search bar on
-          narrow screens) and bottom (clears the quick-links), so the panel is
-          centred in the free space between them and can't overlap either. */}
-      <div className="pointer-events-none absolute right-2 top-[96px] bottom-[244px] z-[1000] flex items-center">
-        <div className="pointer-events-auto flex max-h-full flex-col gap-1 overflow-y-auto rounded-md border border-line bg-bg/90 p-2 backdrop-blur-md">
-          <span className="text-center text-[10px] font-bold uppercase tracking-widest text-fg-mute">
-            {t('map.floor')}
-          </span>
-          <div className="grid grid-flow-col grid-rows-[repeat(8,minmax(0,1fr))] gap-1">
-            {FLOORS.map((f) => {
-              const rel = SURFACE - f // +N above surface, -N below
-              const label = rel === 0 ? '0' : rel > 0 ? `+${rel}` : `${rel}`
-              const active = f === floor
-              return (
-                <button
-                  key={f}
-                  onClick={() => setFloor(f)}
-                  title={`${t('map.floor')} ${f}`}
-                  className={`h-6 w-9 rounded text-[11px] font-bold tabular-nums transition ${
-                    active
-                      ? 'bg-accent text-white'
-                      : f === SURFACE
-                        ? 'bg-line/40 text-fg hover:bg-line'
-                        : 'text-fg-mute hover:bg-line/40 hover:text-fg'
-                  }`}
-                >
-                  {label}
-                </button>
-              )
-            })}
-          </div>
-        </div>
+      {/* Floor selector — a compact stepper pinned to the right edge and
+          vertically centred: the current floor with up/down arrows, and a tap on
+          the number opens the full floor list to jump directly. Tiny footprint,
+          so it clears the search bar above and the quick-links below. */}
+      <div className="absolute right-2 top-1/2 z-[1100] -translate-y-1/2">
+        <FloorStepper
+          floor={floor}
+          surface={SURFACE}
+          floors={FLOORS}
+          floorWord={t('map.floor')}
+          onSelect={setFloor}
+        />
       </div>
 
       {/* World-boss watch — a vertical list down the left edge (the normal-mob
@@ -3016,10 +3248,31 @@ export function MapPage() {
         </aside>
       )}
 
+      {/* Live news ticker — "what's happening on your world" (houses changing
+          hands, etc.), a full-width marquee pinned to the very top. Click an
+          item to fly to that house. */}
+      {!eventsDismissed && worldEvents.length > 0 && (
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-[1001] flex justify-center p-2 sm:p-3">
+          <div className="pointer-events-auto w-full max-w-3xl">
+            <EventsTicker
+              events={worldEvents}
+              t={t}
+              onPick={onPickEvent}
+              onClose={() => setEventsDismissed(true)}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Floating control layer — pinned to the top, translucent so the map reads
           through it. The outer wrapper ignores pointer events so the map stays
-          draggable in the side gutters; the inner column re-enables them. */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-[1000] flex flex-col p-2 pt-5 sm:p-3 sm:pt-7">
+          draggable in the side gutters; the inner column re-enables them. The top
+          padding grows to clear the news ticker when it's showing. */}
+      <div
+        className={`pointer-events-none absolute inset-x-0 top-0 z-[1000] flex flex-col p-2 sm:p-3 ${
+          !eventsDismissed && worldEvents.length > 0 ? 'pt-16 sm:pt-20' : 'pt-5 sm:pt-7'
+        }`}
+      >
         <div ref={topColRef} className="pointer-events-none flex w-full max-w-md flex-col gap-2">
 
       {/* Search — the hero, pinned top-left. The action/layer hotbar lives at the

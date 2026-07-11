@@ -21,8 +21,9 @@ class BossRespawnTransformer
     {
         $worlds = $current
             ->map(fn ($w) => $this->shapeWorld($w, $lastKills, $today))
-            // Most "due" first (long quiet → likely available), then recent, cooldown.
-            ->sortBy(fn ($w) => ['due' => 0, 'recent' => 1, 'cooldown' => 2][$w['status']])
+            // Most "due" first (long quiet → likely available), then recent,
+            // cooldown, and finally the ones we simply have no kill record for.
+            ->sortBy(fn ($w) => ['due' => 0, 'recent' => 1, 'cooldown' => 2, 'unknown' => 3][$w['status']])
             ->values();
 
         return [
@@ -32,6 +33,7 @@ class BossRespawnTransformer
                 'cooldown' => $worlds->where('status', 'cooldown')->count(),
                 'recent' => $worlds->where('status', 'recent')->count(),
                 'due' => $worlds->where('status', 'due')->count(),
+                'unknown' => $worlds->where('status', 'unknown')->count(),
             ],
         ];
     }
@@ -43,15 +45,23 @@ class BossRespawnTransformer
     private function shapeWorld(\stdClass $w, Collection $lastKills, Carbon $today): array
     {
         $lastKill = $lastKills[$w->world_id] ?? null;
-        $daysSince = $lastKill ? $today->diffInDays(Carbon::parse($lastKill)) : null;
+        // diffInDays is signed by direction (today → a past date is negative), so
+        // take the magnitude — we want "N days ago", never "-N".
+        $daysSince = $lastKill ? (int) abs($today->diffInDays(Carbon::parse($lastKill))) : null;
 
         // Status bucket: infer from the rolling windows of the latest snapshot.
         if ($w->day_killed > 0) {
             $status = 'cooldown';        // killed within last 24h
         } elseif ($w->week_killed > 0) {
             $status = 'recent';          // killed 2-7 days ago
+        } elseif ($lastKill !== null) {
+            $status = 'due';             // has a real kill anchor, now 7+ days quiet → likely up
         } else {
-            $status = 'due';             // not killed in 7+ days → likely up
+            // No kill ever recorded on this world: "0 kills" is not evidence the
+            // boss is up (it's usually a rare/summoned boss we've simply never
+            // seen die). Report it as no-data, matching the map's Boss Watch,
+            // instead of the misleading "likely up".
+            $status = 'unknown';
         }
 
         return [

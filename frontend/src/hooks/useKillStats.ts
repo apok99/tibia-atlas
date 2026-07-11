@@ -200,7 +200,7 @@ export function useKillExperience(params: { world: string; window: 'day' | 'week
 
 export interface BossWorld {
   world: string
-  status: 'cooldown' | 'recent' | 'due'
+  status: 'cooldown' | 'recent' | 'due' | 'unknown'
   last_kill: string | null
   days_since: number | null
 }
@@ -211,7 +211,7 @@ export interface BossRespawnData {
   is_boss?: boolean
   type?: 'raid' | 'daily'
   latest_date?: string | null
-  summary?: { worlds_total: number; cooldown: number; recent: number; due: number }
+  summary?: { worlds_total: number; cooldown: number; recent: number; due: number; unknown: number }
   worlds?: BossWorld[]
   respawn?: {
     method: 'empirical' | 'collecting'
