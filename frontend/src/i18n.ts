@@ -412,6 +412,8 @@ const resources = {
         routeToSpawn: 'How to get there',
         viewEntry: 'View creature page',
         goTo: 'Go to…',
+        routesGroup: 'Routes',
+        markersGroup: 'My markers',
         addMarker: '+ Add marker',
         placing: 'Click on the map…',
         clear: 'Clear markers',
@@ -441,6 +443,7 @@ const resources = {
         houseKindGuild: 'Guildhalls',
         houseStatusAll: 'All',
         houseBrowseTitle: 'Houses',
+        houseWorldRent: 'Server rent',
         houseListNone: 'No houses match on {{world}}.',
         houseListCap: 'Showing {{shown}} of {{total}}',
         houseSearchPlaceholder: 'Search by name…',
@@ -510,7 +513,7 @@ const resources = {
         routesEmpty: 'No published routes yet',
         // "Your character" overlay
         charTitle: 'Your character',
-        charHint: 'Type your name to plot your house and deaths on the map',
+        charHint: 'Type your name to load your profile: house, guild and recent deaths',
         charPlaceholder: 'Character name',
         charSave: 'Save',
         charClear: 'Forget',
@@ -597,6 +600,18 @@ const resources = {
             routes: {
               title: 'Create, save & share',
               body: 'Build your own route by dropping points, name it and publish it for others. Browse community routes, drop your own markers, and share any view with the link button.',
+            },
+            houses: {
+              title: 'Houses & guildhalls',
+              body: 'Turn on the Houses layer to see every house and guildhall on the map. Open “Available houses” to browse what’s free or up for auction right now, with live rent and owner from the server — and ring the bell on any house to get notified when it frees up.',
+            },
+            news: {
+              title: 'Live world news',
+              body: 'The ● LIVE ticker up top streams what’s happening on your world right now: houses freeing up, auctions, boss activity and the day’s most-hunted creature. It refreshes with each server save.',
+            },
+            character: {
+              title: 'Your character',
+              body: 'Open Your character and type your name to load your profile — level, vocation, guild, house and recent deaths — straight from the official server, so the map is centred on your own adventure.',
             },
           },
         },
@@ -1251,6 +1266,8 @@ const resources = {
         routeToSpawn: 'Cómo llegar',
         viewEntry: 'Ver ficha de la criatura',
         goTo: 'Ir a…',
+        routesGroup: 'Rutas',
+        markersGroup: 'Mis marcadores',
         addMarker: '+ Añadir marcador',
         placing: 'Haz clic en el mapa…',
         clear: 'Limpiar marcadores',
@@ -1280,6 +1297,7 @@ const resources = {
         houseKindGuild: 'Guildhalls',
         houseStatusAll: 'Todas',
         houseBrowseTitle: 'Casas',
+        houseWorldRent: 'Renta del server',
         houseListNone: 'Ninguna casa coincide en {{world}}.',
         houseListCap: 'Mostrando {{shown}} de {{total}}',
         houseSearchPlaceholder: 'Buscar por nombre…',
@@ -1349,7 +1367,7 @@ const resources = {
         routesEmpty: 'Aún no hay rutas publicadas',
         // Overlay "tu personaje"
         charTitle: 'Tu personaje',
-        charHint: 'Escribe tu nombre para ver tu casa y tus muertes en el mapa',
+        charHint: 'Escribe tu nombre para cargar tu perfil: casa, guild y muertes recientes',
         charPlaceholder: 'Nombre del personaje',
         charSave: 'Guardar',
         charClear: 'Olvidar',
@@ -1436,6 +1454,18 @@ const resources = {
             routes: {
               title: 'Crea, guarda y comparte',
               body: 'Crea tu propia ruta colocando puntos, ponle nombre y publícala para los demás. Explora rutas de la comunidad, coloca tus marcadores y comparte cualquier vista con el botón de enlace.',
+            },
+            houses: {
+              title: 'Casas y guildhalls',
+              body: 'Activa la capa Casas para ver todas las casas y guildhalls en el mapa. Abre «Casas disponibles» para explorar las que están libres o en subasta ahora mismo, con el alquiler y el dueño en vivo desde el servidor — y toca la campana de cualquier casa para avisarte cuando quede libre.',
+            },
+            news: {
+              title: 'Noticias en vivo',
+              body: 'El marcador ● EN VIVO de arriba transmite lo que pasa en tu mundo ahora mismo: casas que quedan libres, subastas, actividad de jefes y la criatura más cazada del día. Se actualiza con cada server save.',
+            },
+            character: {
+              title: 'Tu personaje',
+              body: 'Abre Tu personaje y escribe tu nombre para cargar tu perfil — nivel, vocación, guild, casa y muertes recientes — directo del servidor oficial, para centrar el mapa en tu propia aventura.',
             },
           },
         },

@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\CharacterController;
 use App\Http\Controllers\Api\EntryController;
 use App\Http\Controllers\Api\EventController;
 use App\Http\Controllers\Api\HouseController;
+use App\Http\Controllers\Api\HuntController;
 use App\Http\Controllers\Api\ItemController;
 use App\Http\Controllers\Api\KillStatsController;
 use App\Http\Controllers\Api\MapRouteController;
@@ -34,6 +35,8 @@ Route::middleware([SetLocale::class, 'throttle:public'])->group(function () {
         Route::get('/items', [ItemController::class, 'index']);
         Route::get('/items/facets', [ItemController::class, 'facets']);
         Route::get('/items/loadout', [ItemController::class, 'loadout']);
+        // Hunt Finder: best hunting zones for a level + vocation + solo/team.
+        Route::get('/hunts', [HuntController::class, 'index']);
         // Detail must come AFTER the literal item routes or it'd bind them as a slug.
         Route::get('/items/{slug}', [ItemController::class, 'show']);
     });

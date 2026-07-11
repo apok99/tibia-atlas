@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
@@ -894,6 +894,75 @@ const SLOT = 'grid h-11 w-11 place-items-center rounded-lg border transition'
 const SLOT_OFF =
   'border-line-2 bg-bg-2 text-fg hover:border-accent hover:bg-surface hover:text-accent'
 const SLOT_ON = 'border-accent bg-accent text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]'
+
+// A collapsible cluster of hotbar slots that belong to the same family (routes,
+// markers…). It mirrors the Houses layer's "sprout up" pattern: a single primary
+// slot in the bar; when opened, its sibling actions grow straight UP from it,
+// joined by a little trunk, so they read clearly as "these belong together". The
+// primary slot lights up (and shows a count badge) whenever any child is engaged,
+// so nothing is hidden — you can always tell a group is active at a glance.
+// Self-contained open state; clicking outside closes it.
+function HotbarGroup({
+  icon,
+  label,
+  accent = 'var(--color-accent)',
+  active = false,
+  badge,
+  children,
+}: {
+  icon: ReactNode
+  label: string
+  // Trunk colour + primary tint when engaged (defaults to the accent).
+  accent?: string
+  // Whether any child action is currently on (lights the primary slot).
+  active?: boolean
+  badge?: number
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+  return (
+    <div ref={ref} className="relative flex items-center">
+      {open && (
+        <div className="absolute bottom-full left-1/2 mb-2 flex -translate-x-1/2 flex-col-reverse items-center gap-1.5">
+          {/* trunk connecting the branch down to the primary slot */}
+          <span
+            aria-hidden
+            className="pointer-events-none absolute left-1/2 top-1 -bottom-2.5 -z-10 w-0.5 -translate-x-1/2 rounded"
+            style={{ background: accent, opacity: 0.45 }}
+          />
+          {children}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title={label}
+        aria-label={label}
+        aria-expanded={open}
+        className={`relative ${SLOT} ${active || open ? SLOT_ON : SLOT_OFF}`}
+      >
+        {icon}
+        {badge != null && badge > 0 && (
+          <span
+            className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-bold leading-none text-white"
+            style={{ background: accent }}
+          >
+            {badge}
+          </span>
+        )}
+      </button>
+    </div>
+  )
+}
 
 // Quick-launch "mini windows" floated on the map: shortcuts to the site's games
 // and stats. Titles/taglines reuse the existing nav + section-kicker i18n keys.
@@ -2742,6 +2811,47 @@ export function MapPage() {
     return n
   }, [houseStatus, housesData, houseKind])
 
+  // Per-status counts (kind-filtered) for the status-filter segmented control —
+  // lets each button show how many houses it would surface at a glance.
+  const statusCounts = useMemo(() => {
+    const live = houseStatus?.houses
+    const all = housesData?.houses
+    if (!live || !all) return { all: 0, available: 0, rented: 0 }
+    let total = 0
+    let available = 0
+    let rented = 0
+    for (const h of all) {
+      if (houseKind === 'guild' && !h.guild) continue
+      if (houseKind === 'house' && h.guild) continue
+      const s = live[h.id]?.status
+      if (!s) continue
+      total++
+      if (s === 'free' || s === 'auctioned') available++
+      else if (s === 'rented') rented++
+    }
+    return { all: total, available, rented }
+  }, [houseStatus, housesData, houseKind])
+
+  // Total monthly rent (gold) paid across every currently-rented house on this
+  // world — the "how much gold does this server pay for housing" figure. Only
+  // rented houses count (free/auctioned pay nothing); respects the kind filter.
+  const worldRentTotal = useMemo(() => {
+    const live = houseStatus?.houses
+    const all = housesData?.houses
+    if (!live || !all) return { gold: 0, count: 0 }
+    let gold = 0
+    let count = 0
+    for (const h of all) {
+      if (houseKind === 'guild' && !h.guild) continue
+      if (houseKind === 'house' && h.guild) continue
+      if (live[h.id]?.status === 'rented') {
+        gold += h.rent
+        count++
+      }
+    }
+    return { gold, count }
+  }, [houseStatus, housesData, houseKind])
+
   // Distinct towns that have houses, for the "watch a whole town" picker.
   const houseTowns = useMemo(() => {
     const s = new Set<string>()
@@ -3524,94 +3634,116 @@ export function MapPage() {
 
             <span className="mx-0.5 h-6 w-px bg-line/50" />
 
-            {/* Directions */}
-            <button
-              onClick={() => {
-                const next = !routeMode
-                setRouteMode(next)
-                resetRoute()
-                if (next) {
-                  setPlacing(false)
-                  setBuildMode(false)
-                  const cr = creaturesRef.current[0]
-                  const pt = cr && routeEndForCreature(cr)
-                  if (pt) applyRouteEnd(pt)
-                }
-              }}
-              title={routeMode ? t('map.routeActive') : t('map.route')}
-              aria-label={t('map.route')}
-              aria-pressed={routeMode}
-              className={`${SLOT} ${routeMode ? SLOT_ON : SLOT_OFF}`}
+            {/* Routes — directions, community gallery and the route builder all
+                sprout from one slot (same family as the Houses layer's tree). */}
+            <HotbarGroup
+              label={t('map.routesGroup')}
+              active={routeMode || buildMode || routesOpen}
+              icon={
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="3 11 22 2 13 21 11 13 3 11" />
+                </svg>
+              }
             >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="3 11 22 2 13 21 11 13 3 11" />
-              </svg>
-            </button>
-
-            {/* Community routes gallery */}
-            <button
-              onClick={() => setRoutesOpen((v) => !v)}
-              title={t('map.routesGallery')}
-              aria-label={t('map.routesGallery')}
-              aria-pressed={routesOpen}
-              className={`${SLOT} ${routesOpen ? SLOT_ON : SLOT_OFF}`}
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
-              </svg>
-            </button>
-
-            {/* Build a route */}
-            <button
-              onClick={toggleBuildMode}
-              title={t('map.buildRoute')}
-              aria-label={t('map.buildRoute')}
-              aria-pressed={buildMode}
-              className={`${SLOT} ${buildMode ? SLOT_ON : SLOT_OFF}`}
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="6" cy="19" r="2" />
-                <circle cx="18" cy="5" r="2" />
-                <path d="M8 17.5 16 6.5" strokeDasharray="2 3" />
-              </svg>
-            </button>
-
-            <span className="mx-0.5 h-6 w-px bg-line/50" />
-
-            {/* Add a marker */}
-            <button
-              onClick={() => {
-                setPlacing((p) => !p)
-                setRouteMode(false)
-                setBuildMode(false)
-              }}
-              title={t('map.addMarker')}
-              aria-label={t('map.addMarker')}
-              aria-pressed={placing}
-              className={`${SLOT} ${placing ? SLOT_ON : SLOT_OFF}`}
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
-                <path d="M12 8v4M10 10h4" />
-              </svg>
-            </button>
-
-            {/* Clear markers (with count) */}
-            {markers.length > 0 && (
+              {/* Directions (nearest the primary — the most-used) */}
               <button
-                onClick={() => setMarkers([])}
-                title={`${t('map.clear')} (${markers.length})`}
-                aria-label={`${t('map.clear')} (${markers.length})`}
-                className={`relative ${SLOT} ${SLOT_OFF}`}
+                onClick={() => {
+                  const next = !routeMode
+                  setRouteMode(next)
+                  resetRoute()
+                  if (next) {
+                    setPlacing(false)
+                    setBuildMode(false)
+                    const cr = creaturesRef.current[0]
+                    const pt = cr && routeEndForCreature(cr)
+                    if (pt) applyRouteEnd(pt)
+                  }
+                }}
+                title={routeMode ? t('map.routeActive') : t('map.route')}
+                aria-label={t('map.route')}
+                aria-pressed={routeMode}
+                className={`${SLOT} ${routeMode ? SLOT_ON : SLOT_OFF}`}
               >
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                  <polygon points="3 11 22 2 13 21 11 13 3 11" />
                 </svg>
-                <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold text-white">
-                  {markers.length}
-                </span>
               </button>
-            )}
+
+              {/* Community routes gallery */}
+              <button
+                onClick={() => setRoutesOpen((v) => !v)}
+                title={t('map.routesGallery')}
+                aria-label={t('map.routesGallery')}
+                aria-pressed={routesOpen}
+                className={`${SLOT} ${routesOpen ? SLOT_ON : SLOT_OFF}`}
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+                </svg>
+              </button>
+
+              {/* Build a route */}
+              <button
+                onClick={toggleBuildMode}
+                title={t('map.buildRoute')}
+                aria-label={t('map.buildRoute')}
+                aria-pressed={buildMode}
+                className={`${SLOT} ${buildMode ? SLOT_ON : SLOT_OFF}`}
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="6" cy="19" r="2" />
+                  <circle cx="18" cy="5" r="2" />
+                  <path d="M8 17.5 16 6.5" strokeDasharray="2 3" />
+                </svg>
+              </button>
+            </HotbarGroup>
+
+            {/* Markers — add + clear (with a live count badge) under one slot. */}
+            <HotbarGroup
+              label={t('map.markersGroup')}
+              active={placing}
+              badge={markers.length}
+              icon={
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
+                  <path d="M12 8v4M10 10h4" />
+                </svg>
+              }
+            >
+              {/* Add a marker (nearest the primary) */}
+              <button
+                onClick={() => {
+                  setPlacing((p) => !p)
+                  setRouteMode(false)
+                  setBuildMode(false)
+                }}
+                title={t('map.addMarker')}
+                aria-label={t('map.addMarker')}
+                aria-pressed={placing}
+                className={`${SLOT} ${placing ? SLOT_ON : SLOT_OFF}`}
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
+                  <path d="M12 8v4M10 10h4" />
+                </svg>
+              </button>
+
+              {/* Clear markers (only when there are any) */}
+              {markers.length > 0 && (
+                <button
+                  onClick={() => setMarkers([])}
+                  title={`${t('map.clear')} (${markers.length})`}
+                  aria-label={`${t('map.clear')} (${markers.length})`}
+                  className={`${SLOT} ${SLOT_OFF}`}
+                >
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                  </svg>
+                </button>
+              )}
+            </HotbarGroup>
+
+            <span className="mx-0.5 h-6 w-px bg-line/50" />
 
             {/* Share this view */}
             <button
@@ -4052,41 +4184,51 @@ export function MapPage() {
 
           {/* Filters — type (house/guildhall) + rent status. Both drive this list
               AND the map pins. */}
-          <div className="flex flex-col gap-1 border-b border-line/70 px-3 py-2">
-            <div className="flex gap-1">
-              {(['all', 'house', 'guild'] as const).map((k) => (
-                <button
-                  key={k}
-                  onClick={() => setHouseKind(k)}
-                  aria-pressed={houseKind === k}
-                  className={`flex-1 rounded-md border px-1 py-1 text-[11px] font-semibold transition ${
-                    houseKind === k
-                      ? 'border-[#b3873f] bg-[#b3873f]/15 text-[#b3873f]'
-                      : 'border-line-2 text-fg-dim hover:border-line hover:text-fg'
-                  }`}
-                >
-                  {k === 'all' ? t('map.houseKindAll') : k === 'house' ? t('map.houseKindHouse') : t('map.houseKindGuild')}
-                </button>
-              ))}
+          <div className="flex flex-col gap-1.5 border-b border-line/70 px-3 py-2.5">
+            {/* Kind — segmented control (house / guildhall) */}
+            <div className="flex gap-0.5 rounded-lg border border-line-2/60 bg-bg/40 p-0.5">
+              {(['all', 'house', 'guild'] as const).map((k) => {
+                const on = houseKind === k
+                return (
+                  <button
+                    key={k}
+                    onClick={() => setHouseKind(k)}
+                    aria-pressed={on}
+                    className={`flex-1 rounded-md px-1 py-1 text-[11px] font-semibold transition ${
+                      on
+                        ? 'bg-[#b3873f]/20 text-[#b3873f] shadow-[inset_0_0_0_1px_#b3873f66]'
+                        : 'text-fg-dim hover:text-fg'
+                    }`}
+                  >
+                    {k === 'all' ? t('map.houseKindAll') : k === 'house' ? t('map.houseKindHouse') : t('map.houseKindGuild')}
+                  </button>
+                )
+              })}
             </div>
-            <div className="flex gap-1">
+            {/* Rent status — segmented control with colour dot + live count */}
+            <div className="flex gap-0.5 rounded-lg border border-line-2/60 bg-bg/40 p-0.5">
               {(['all', 'available', 'rented'] as const).map((s) => {
                 const on = houseStatusFilter === s
                 const col = s === 'available' ? '#2f9e5a' : s === 'rented' ? '#a13d3d' : '#b3873f'
+                const n = statusCounts[s]
                 return (
                   <button
                     key={s}
                     onClick={() => setHouseStatusFilter(s)}
                     aria-pressed={on}
-                    className="flex-1 rounded-md border px-1 py-1 text-[11px] font-semibold transition"
-                    style={
-                      on
-                        ? { borderColor: col, background: `${col}26`, color: col }
-                        : undefined
-                    }
+                    className={`flex-1 rounded-md px-1 py-1 text-[11px] font-semibold transition ${
+                      on ? '' : 'text-fg-dim hover:text-fg'
+                    }`}
+                    style={on ? { background: `${col}22`, color: col, boxShadow: `inset 0 0 0 1px ${col}66` } : undefined}
                   >
-                    <span className={on ? '' : 'text-fg-dim'}>
-                      {s === 'all' ? t('map.houseStatusAll') : s === 'available' ? t('map.houseFree') : t('map.houseRented')}
+                    <span className="flex items-center justify-center gap-1">
+                      {s !== 'all' && (
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: col }} />
+                      )}
+                      <span className="truncate">
+                        {s === 'all' ? t('map.houseStatusAll') : s === 'available' ? t('map.houseFree') : t('map.houseRented')}
+                      </span>
+                      <span className={`shrink-0 tabular-nums ${on ? 'opacity-80' : 'text-fg-mute'}`}>{n}</span>
                     </span>
                   </button>
                 )
@@ -4117,6 +4259,19 @@ export function MapPage() {
                 </button>
               )}
             </div>
+          </div>
+
+          {/* Server housing spend — total monthly rent paid across all rented
+              houses on this world (respects the type filter). */}
+          <div className="flex items-center justify-between gap-2 border-b border-line/70 bg-bg/40 px-3 py-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-mute">
+              {t('map.houseWorldRent')}
+            </span>
+            <span className="flex items-center gap-1 text-[12px] font-bold text-[#e0b64d]" title={`${worldRentTotal.gold.toLocaleString()} gp · ${worldRentTotal.count}`}>
+              <img src="/sprites/crystal-coin.webp" alt="" className="h-3.5 w-3.5" style={{ imageRendering: 'pixelated' }} />
+              {fmtGold(worldRentTotal.gold)}
+              <span className="text-[10px] font-medium text-fg-mute">{t('map.houseGoldMonth')}</span>
+            </span>
           </div>
 
           <div className="flex-1 overflow-y-auto px-3 py-2.5">

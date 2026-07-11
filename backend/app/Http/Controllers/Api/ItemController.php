@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\EntryListResource;
 use App\Models\Entry;
 use App\Support\ContentCache;
+use App\Support\GearRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -21,9 +22,6 @@ use Illuminate\Support\Facades\Cache;
  */
 class ItemController extends Controller
 {
-    /** Canonical equipment slots, in head-to-toe display order. */
-    private const SLOTS = ['head', 'neck', 'body', 'weapon', 'offhand', 'legs', 'finger', 'feet', 'ammo'];
-
     /**
      * The weapon cards each vocation gets. A single "weapon" card always
      * crowned whichever type happened to carry the biggest number (axes for
@@ -61,70 +59,6 @@ class ItemController extends Controller
         'sorcerer' => ['spellbook'],
         'druid' => ['spellbook'],
     ];
-
-    /**
-     * Slots only some vocations equip at all; everyone else gets no suggestion
-     * for them.
-     *  - ammo: arrows/bolts/quivers are paladin-only gear.
-     *  - offhand: modern paladins fight at range (bow/crossbow or thrown) and no
-     *    longer tank behind a shield, and monks wield two-handed fist weapons, so
-     *    neither gets an offhand suggestion. Knights (shield) and mages
-     *    (spellbook) keep theirs.
-     */
-    private const SLOT_VOCATIONS = [
-        'ammo' => ['paladin'],
-        'offhand' => ['knight', 'sorcerer', 'druid'],
-    ];
-
-    /**
-     * What one point of each wiki skill bonus is worth to each vocation, in
-     * "armor points" — the common currency of score(). This is what lets a
-     * Yalahari Mask (armor 5, magic level +2) beat a Demon Helmet (armor 10,
-     * nothing else) for a mage, instead of ranking gear by raw armor alone.
-     * A skill absent from a vocation's map is worth 0 to it (a knight gains
-     * nothing from distance fighting).
-     */
-    private const SKILL_WEIGHTS = [
-        'knight' => ['sword fighting' => 5, 'axe fighting' => 5, 'club fighting' => 5, 'shielding' => 3, 'magic level' => 2],
-        'paladin' => ['distance fighting' => 6, 'shielding' => 2, 'magic level' => 4],
-        'sorcerer' => ['magic level' => 8, 'shielding' => 2],
-        'druid' => ['magic level' => 8, 'shielding' => 2],
-        'monk' => ['fist fighting' => 6, 'shielding' => 3, 'magic level' => 3],
-    ];
-
-    /**
-     * What counts as gear you can realistically go and buy. Two conditions:
-     *
-     * 1. Purchasable — tradeable on the in-game Market (`marketable`) or sold
-     *    by an NPC. This drops the charged event variants ("bow of mayhem
-     *    (heavily charged)"), test-server copies and quest-bound untradeables.
-     * 2. Actually circulating — a steady market supply exists. Three ways in:
-     *    some creature drops it, an NPC sells it, or the wiki records a
-     *    CONCRETE price range for it (players tracking real trades — the mark
-     *    of a liquid market) AND it is real requirement-bearing equipment.
-     *    That clause is what admits the marketable quest rewards everyone
-     *    farms (Yalahari Mask: "60,000 - 150,000", level 80, mages) while still
-     *    excluding both the "Negotiable"-priced ghosts nobody ever lists
-     *    (Magic Longsword, Warlord Sword, Slayer of Mayhem) and the priced
-     *    collector relics with no requirements at all (Golden/Winged/Horned
-     *    Helmet, Golden Boots, Ring of the Sky). Finally, marketable gear with
-     *    a level 250+ requirement is trusted outright: the modern boss-token
-     *    sets (Sanguine/Grand Sanguine lvl 500-600, the Soul set lvl 400,
-     *    Moonsilver lvl 800+) list as "Negotiable" with no drop yet ARE the
-     *    liquid end-game market — while every discontinued relic predates such
-     *    requirements (lvl 100-140).
-     *
-     * `?obtainable=0` lifts the filter.
-     */
-    private const OBTAINABLE_SQL =
-        "(((meta->>'marketable')::boolean is true".
-        " or jsonb_array_length(coalesce(meta->'npc_buy', '[]'::jsonb)) > 0)".
-        " and (jsonb_array_length(coalesce(meta->'dropped_by', '[]'::jsonb)) > 0".
-        " or jsonb_array_length(coalesce(meta->'npc_buy', '[]'::jsonb)) > 0".
-        " or coalesce((meta->>'level')::int, 0) >= 250".
-        " or ((meta->>'value') ~ '^[0-9]'".
-        " and (coalesce((meta->>'level')::int, 0) > 0".
-        " or coalesce(meta->'vocations', '[]'::jsonb) <> '[]'::jsonb))))";
 
     /**
      * Paginated item list for the album, filterable by category / equip slot /
@@ -316,7 +250,7 @@ class ItemController extends Controller
             // Level requirement satisfied (0/absent = none).
             ->whereRaw("coalesce((meta->>'level')::int, 0) <= ?", [$level])
             // Drop the un-farmable collector relics unless explicitly asked for.
-            ->when($obtainableOnly, fn ($q) => $q->whereRaw(self::OBTAINABLE_SQL));
+            ->when($obtainableOnly, fn ($q) => $q->whereRaw(GearRules::OBTAINABLE_SQL));
 
         // Vocation: usable by everyone (empty list) or by the chosen vocation.
         if ($vocation !== '') {
@@ -338,7 +272,7 @@ class ItemController extends Controller
         }
 
         $bySlot = [];
-        foreach (self::SLOTS as $slot) {
+        foreach (GearRules::SLOTS as $slot) {
             $bySlot[$slot] = [];
         }
         foreach ($items as $item) {
@@ -364,9 +298,9 @@ class ItemController extends Controller
         unset($list);
 
         $result = [];
-        foreach (self::SLOTS as $slot) {
+        foreach (GearRules::SLOTS as $slot) {
             // Skip slots this vocation doesn't use at all (e.g. ammo for non-paladins).
-            $only = self::SLOT_VOCATIONS[$slot] ?? null;
+            $only = GearRules::SLOT_VOCATIONS[$slot] ?? null;
             if ($only !== null && $vocation !== '' && ! in_array($vocation, $only, true)) {
                 continue;
             }
@@ -404,78 +338,13 @@ class ItemController extends Controller
     }
 
     /**
-     * Rank an item for a vocation, in "armor points". Unlike the baked-in
-     * `power` stat (raw armor/attack only — which crowned a Magic Plate Armor
-     * over every modern set piece), this folds in everything the wiki knows:
-     *
-     *  - core numbers: armor; weapons add attack (+ the modern atk/hit mods),
-     *    a bit of defense, and the wand/rod damage tables;
-     *  - skill bonuses, weighted per vocation (SKILL_WEIGHTS) — magic level for
-     *    mages, distance fighting for paladins, melee skills for knights;
-     *  - elemental resistances (physical protection counts extra — everything
-     *    hits physically);
-     *  - imbuement slots (each is a big damage/leech upgrade a player WILL use);
-     *  - speed, worth a nudge on anything.
+     * Rank an item for a vocation, in "armor points" — see GearRules::score()
+     * for the heuristic. Kept as a thin wrapper so the Hunt Finder scores gear
+     * with the exact same rules (shared in App\Support\GearRules).
      */
     private function score(Entry $item, string $vocation): float
     {
-        $meta = $item->meta ?? [];
-        $slot = data_get($meta, 'equip_slot');
-        $isWeapon = $slot === 'weapon' || $slot === 'ammo';
-
-        $s = (float) data_get($meta, 'armor', 0);
-
-        if ($isWeapon) {
-            $s += (float) data_get($meta, 'attack', 0);
-            // Elemental damage (Sanguine Blade: attack 8 + fire 46) counts as
-            // attack — it's the bulk of a modern weapon's hit.
-            $s += (float) data_get($meta, 'element_attack', 0);
-            $s += (float) data_get($meta, 'atk_mod', 0);
-            $s += 0.8 * (float) data_get($meta, 'hit_mod', 0);
-            $s += 0.3 * (float) data_get($meta, 'defense', 0);
-            $s += 0.6 * (float) data_get($meta, 'damage_max', 0);
-        } elseif ($slot === 'offhand') {
-            // Shields block with defense; spellbooks are stat-sticks whose
-            // value lives in their bonuses, so defense barely counts there.
-            $isSpellbook = str_contains(strtolower((string) data_get($meta, 'item_category', '')), 'spellbook');
-            $s += ($isSpellbook ? 0.3 : 1.0) * (float) data_get($meta, 'defense', 0);
-        }
-
-        // On armor, +1 of your main skill is a rare prize worth several armor
-        // points. On a weapon it competes against raw attack, where +1 skill
-        // ≈ +1 attack — so weapon skill bonuses are scaled way down.
-        $weights = self::SKILL_WEIGHTS[$vocation] ?? [];
-        $skillScale = $isWeapon ? 0.3 : 1.0;
-        // Knight gear boosts all three melee skills at once ("axe/club/sword
-        // fighting +4"), but a knight fights with ONE of them — count the best
-        // once instead of summing the trio.
-        $meleeBest = 0;
-        foreach ((array) data_get($meta, 'bonuses', []) as $skill => $points) {
-            if (in_array($skill, ['sword fighting', 'axe fighting', 'club fighting'], true)) {
-                $meleeBest = max($meleeBest, $points);
-
-                continue;
-            }
-            $s += ($weights[$skill] ?? 0) * $skillScale * $points;
-            if ($skill === 'speed') {
-                $s += 0.15 * $points;
-            }
-        }
-        $s += ($weights['sword fighting'] ?? 0) * $skillScale * $meleeBest;
-
-        // Physical protection counts extra (everything hits physically);
-        // drowning counts nothing (underwater breathing, not combat).
-        foreach ((array) data_get($meta, 'resists', []) as $element => $pct) {
-            $s += match ($element) {
-                'physical' => 0.8,
-                'drowning' => 0.0,
-                default => 0.5,
-            } * $pct;
-        }
-
-        $s += 2.5 * (int) data_get($meta, 'imbue_slots', 0);
-
-        return $s;
+        return GearRules::score($item->meta ?? [], $vocation);
     }
 
     /**
