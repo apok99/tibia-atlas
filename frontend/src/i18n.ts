@@ -783,6 +783,15 @@ const resources = {
         immuneHint: 'No effect — useless against it',
         neutralHint: 'Normal damage (100%)',
       },
+      combat: {
+        title: 'Combat',
+        howToBeat: 'How to defeat it',
+        itsAttacks: 'Its attacks',
+        attacksHint: 'What it can deal to you',
+        bestWith: 'Best attacked with',
+        noEffect: 'Useless against it',
+        noWeakness: 'No elemental weaknesses.',
+      },
       abilities: {
         title: 'Attacks & abilities',
         kind: {
@@ -1597,6 +1606,15 @@ const resources = {
         resistHint: 'Recibe daño reducido',
         immuneHint: 'Sin efecto — inútil contra él',
         neutralHint: 'Daño normal (100%)',
+      },
+      combat: {
+        title: 'Combate',
+        howToBeat: 'Cómo derrotarle',
+        itsAttacks: 'Sus ataques',
+        attacksHint: 'Lo que puede infligirte',
+        bestWith: 'Atácale con',
+        noEffect: 'Inútil contra él',
+        noWeakness: 'Sin debilidades elementales.',
       },
       abilities: {
         title: 'Ataques y habilidades',

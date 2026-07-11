@@ -136,16 +136,17 @@ type WorldEvent = {
   occurred_at: string
 }
 
-// Icon + accent colour per event type, so the ticker reads at a glance.
+// Line-icon (name in ICON_INNER) + accent colour per event type, so the ticker
+// reads at a glance and stays on the atlas theme (no emoji).
 const EVENT_STYLE: Record<string, { icon: string; color: string }> = {
   // Houses: red = taken (new tenant), green = freed up, gold = auction.
-  house_rented: { icon: '🏠', color: 'var(--color-accent)' },
-  house_freed: { icon: '🔑', color: '#2f9e5a' },
-  house_auctioned: { icon: '🔨', color: '#e0a531' },
+  house_rented: { icon: 'home', color: 'var(--color-accent)' },
+  house_freed: { icon: 'key', color: '#2f9e5a' },
+  house_auctioned: { icon: 'gavel', color: '#e0a531' },
   // Daily digest: sword = total slain, paw = most-hunted creature, skull = boss.
-  digest_total: { icon: '⚔️', color: 'var(--color-accent-2)' },
-  digest_top_creature: { icon: '🐾', color: '#6cc551' },
-  digest_boss: { icon: '☠', color: 'var(--color-accent)' },
+  digest_total: { icon: 'sword', color: 'var(--color-accent-2)' },
+  digest_top_creature: { icon: 'paw', color: '#6cc551' },
+  digest_boss: { icon: 'skull', color: 'var(--color-accent)' },
 }
 
 // Whether an event is a daily-digest headline (vs a real-time house change).
@@ -206,7 +207,7 @@ function NewsRail({
       <div className={`flex items-center gap-1.5 ${open ? 'px-0.5 pb-1' : 'justify-center'}`}>
         {open && (
           <span className="flex min-w-0 flex-1 items-center gap-1.5 text-accent">
-            <span className="text-[13px] leading-none">📰</span>
+            <Icon name="newspaper" size={14} className="shrink-0" />
             <span className="truncate text-[10px] font-bold uppercase tracking-widest">{t('map.newsTitle')}</span>
             <span className="ks-ticker-tag shrink-0" style={{ padding: '2px 6px', fontSize: 9, borderRadius: 9999 }}>
               {t('map.eventsLive')}
@@ -227,7 +228,7 @@ function NewsRail({
             </svg>
           ) : (
             <>
-              <span className="text-[15px] leading-none">📰</span>
+              <Icon name="newspaper" size={17} className="text-accent" />
               <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none text-white">
                 {events.length}
               </span>
@@ -253,8 +254,8 @@ function NewsRail({
                 {digest && ev.meta?.image ? (
                   <img src={ev.meta.image} alt="" loading="lazy" className="h-6 w-6 shrink-0 object-contain [image-rendering:pixelated]" />
                 ) : (
-                  <span className="grid h-6 w-6 shrink-0 place-items-center text-[15px] leading-none" style={{ color: st.color }}>
-                    {st.icon}
+                  <span className="grid h-6 w-6 shrink-0 place-items-center" style={{ color: st.color }}>
+                    <Icon name={st.icon} size={17} />
                   </span>
                 )}
                 <span className="flex min-w-0 flex-1 flex-col leading-tight">
@@ -4234,7 +4235,7 @@ export function MapPage() {
                   className="flex items-center gap-1 rounded-lg bg-accent/15 px-2 py-1.5 text-xs font-bold text-accent transition hover:bg-accent/25"
                   title={t('map.bestSpawn')}
                 >
-                  <span aria-hidden>⭐</span>
+                  <Icon name="star" size={14} />
                   <span className="tabular-nums">{cr.clusters[0].count}×</span>
                   <span className="text-accent/70">z{cr.clusters[0].z}</span>
                 </button>
@@ -4287,7 +4288,7 @@ export function MapPage() {
                   title={t('map.routeToSpawn')}
                   aria-label={t('map.routeToSpawn')}
                 >
-                  🧭
+                  <Icon name="compass" size={16} />
                 </button>
               )}
               <button
