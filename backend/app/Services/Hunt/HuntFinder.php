@@ -120,6 +120,13 @@ class HuntFinder
             if ($charges > 0 && $charges < 100) {
                 continue;
             }
+            // A vocation fights with its own weapon class: don't hand a knight a
+            // wand or a mage an axe. This also keeps the set's damage element
+            // honest (a sorcerer's wand element, not a stray melee's physical).
+            if ($slot === 'weapon' && isset(GearRules::WEAPON_CATEGORIES[$vocation])
+                && ! in_array($meta['item_category'] ?? '', GearRules::WEAPON_CATEGORIES[$vocation], true)) {
+                continue;
+            }
             $s = GearRules::score($meta, $vocation);
             if (! isset($bestScore[$slot]) || $s > $bestScore[$slot]) {
                 $bestScore[$slot] = $s;

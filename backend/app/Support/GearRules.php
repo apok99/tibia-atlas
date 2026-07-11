@@ -39,6 +39,19 @@ final class GearRules
     ];
 
     /**
+     * The weapon `item_category` each vocation actually fights with — so a knight
+     * is never handed a wand or a throwing star (which would also mislabel the
+     * set's damage element). Absent vocation → any weapon.
+     */
+    public const WEAPON_CATEGORIES = [
+        'knight' => ['Sword Weapons', 'Club Weapons', 'Axe Weapons'],
+        'paladin' => ['Distance Weapons'],
+        'sorcerer' => ['Wands'],
+        'druid' => ['Rods'],
+        'monk' => ['Fist Fighting Weapons'],
+    ];
+
+    /**
      * What counts as gear you can realistically go and buy. Two conditions:
      *  1. Purchasable — tradeable on the Market (`marketable`) or NPC-sold; this
      *     drops charged event variants, test-server copies and quest-bound
