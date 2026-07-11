@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AltarController;
 use App\Http\Controllers\Api\BookController;
+use App\Http\Controllers\Api\CharacterController;
 use App\Http\Controllers\Api\EntryController;
 use App\Http\Controllers\Api\EventController;
 use App\Http\Controllers\Api\HouseController;
@@ -114,6 +115,17 @@ Route::prefix('houses')->middleware(['throttle:public', 'cache.headers:public;ma
 */
 Route::get('/events', [EventController::class, 'index'])
     ->middleware(['throttle:public', 'cache.headers:public;max_age=60;s_maxage=180']);
+
+/*
+|--------------------------------------------------------------------------
+| Character lookup (TibiaData proxy) — feeds the map's "your character"
+| overlay. Cached briefly; the upstream is the slow part. `{name}` allows
+| spaces/apostrophes, so it is a catch-all bound param.
+|--------------------------------------------------------------------------
+*/
+Route::get('/character/{name}', [CharacterController::class, 'show'])
+    ->where('name', '.*')
+    ->middleware(['throttle:public', 'cache.headers:public;max_age=120;s_maxage=300']);
 
 /*
 |--------------------------------------------------------------------------

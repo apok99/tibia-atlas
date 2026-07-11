@@ -28,6 +28,13 @@ import {
   requestNotifyPermission,
   osNotify,
 } from '../lib/houseWatch'
+import {
+  type CharProfile,
+  type Character,
+  fetchCharacter,
+  loadCharProfile,
+  saveCharProfile,
+} from '../lib/charProfile'
 import { useGlossary } from '../hooks/useGlossary'
 import { useBosses, useKillWorlds, type BossRow } from '../hooks/useKillStats'
 import { TypeIcon } from '../components/TypeIcon'
@@ -1379,6 +1386,32 @@ export function MapPage() {
       /* private mode / storage disabled — non-fatal */
     }
   }, [world])
+  // "Your character" overlay: the saved profile (localStorage), the settings
+  // panel open state, and the name being typed. The live character data is
+  // fetched by react-query below, keyed on the saved name.
+  const [charProfile, setCharProfile] = useState<CharProfile | null>(() => loadCharProfile())
+  const [charOpen, setCharOpen] = useState(false)
+  const [charDraft, setCharDraft] = useState(() => loadCharProfile()?.name ?? '')
+  const charQuery = useQuery({
+    queryKey: ['character', charProfile?.name ?? ''],
+    queryFn: () => fetchCharacter(charProfile!.name),
+    enabled: !!charProfile?.name,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  })
+  const character: Character | null = charQuery.data ?? null
+  const saveChar = () => {
+    const name = charDraft.trim()
+    if (!name) return
+    const p = { name }
+    saveCharProfile(p)
+    setCharProfile(p)
+  }
+  const clearChar = () => {
+    saveCharProfile(null)
+    setCharProfile(null)
+    setCharDraft('')
+  }
   const [showFilters, setShowFilters] = useState(false) // collapsible refine panel
   const [showTour, setShowTour] = useState(false) // guided how-to overlay
   const [bossRailOpen, setBossRailOpen] = useState(false) // world-boss watch sidebar (starts minimized so it doesn't cover the map)
@@ -3616,6 +3649,26 @@ export function MapPage() {
                 <path d="M12 17h.01" />
               </svg>
             </button>
+
+            {/* Your character — settings gear. Lit when a profile is saved; the
+                badge shows the character's level once looked up. */}
+            <button
+              onClick={() => setCharOpen((v) => !v)}
+              title={t('map.charTitle')}
+              aria-label={t('map.charTitle')}
+              aria-pressed={charOpen}
+              className={`relative ${SLOT} ${charOpen || charProfile ? SLOT_ON : SLOT_OFF}`}
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="8" r="4" />
+                <path d="M4 21a8 8 0 0 1 16 0" />
+              </svg>
+              {character?.level != null && (
+                <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none text-white">
+                  {character.level}
+                </span>
+              )}
+            </button>
           </div>
 
           {/* Layers — what's drawn on the atlas */}
@@ -3780,6 +3833,131 @@ export function MapPage() {
           </div>
         </div>
       </div>
+
+      {/* "Your character" settings — a floating card above the hotbar. Type a
+          name to save it (localStorage); once saved it's looked up via the
+          /api/character proxy and summarised here. This is the wiring the map's
+          personal overlay (house pin, deaths) will read from. */}
+      {charOpen && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
+          <div className="scroll-atlas pointer-events-auto max-h-[60vh] w-[22rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-3 shadow-2xl backdrop-blur-md">
+            <div className="mb-2 flex items-center gap-1.5 text-accent">
+              <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="8" r="4" />
+                <path d="M4 21a8 8 0 0 1 16 0" />
+              </svg>
+              <span className="text-[10px] font-bold uppercase tracking-widest">{t('map.charTitle')}</span>
+            </div>
+            <p className="mb-2 text-xs text-fg-mute">{t('map.charHint')}</p>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                saveChar()
+              }}
+              className="flex items-center gap-1.5"
+            >
+              <input
+                type="text"
+                value={charDraft}
+                onChange={(e) => setCharDraft(e.target.value)}
+                placeholder={t('map.charPlaceholder')}
+                spellCheck={false}
+                autoComplete="off"
+                className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-bg-2 px-2.5 text-sm font-semibold outline-none transition placeholder:font-normal placeholder:text-fg-mute focus:border-accent"
+              />
+              <button
+                type="submit"
+                disabled={!charDraft.trim() || charDraft.trim() === charProfile?.name}
+                className="h-9 shrink-0 rounded-lg border border-accent bg-accent px-3 text-sm font-bold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {t('map.charSave')}
+              </button>
+              {charProfile && (
+                <button
+                  type="button"
+                  onClick={clearChar}
+                  title={t('map.charClear')}
+                  aria-label={t('map.charClear')}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-line-2 bg-bg-2 text-fg-mute transition hover:border-accent hover:text-accent"
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                  </svg>
+                </button>
+              )}
+            </form>
+
+            {charProfile && (
+              <div className="mt-3">
+                {charQuery.isLoading ? (
+                  <p className="py-2 text-sm text-fg-mute">{t('map.charLoading')}</p>
+                ) : charQuery.isError ? (
+                  <p className="py-2 text-sm text-accent">{t('map.charError')}</p>
+                ) : !character ? (
+                  <p className="py-2 text-sm text-fg-mute">{t('map.charNotFound')}</p>
+                ) : (
+                  <div className="rounded-xl border border-line bg-bg-2 p-2.5">
+                    <div className="text-sm font-bold text-fg">{character.name}</div>
+                    {character.level != null && (
+                      <div className="text-xs text-fg-dim">
+                        {t('map.charLevel', { level: character.level, vocation: character.vocation ?? '' })}
+                      </div>
+                    )}
+                    <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs">
+                      {character.world && (
+                        <>
+                          <dt className="font-bold uppercase tracking-wide text-fg-mute">{t('map.charWorld')}</dt>
+                          <dd className="text-fg-dim">{character.world}</dd>
+                        </>
+                      )}
+                      {character.guild && (
+                        <>
+                          <dt className="font-bold uppercase tracking-wide text-fg-mute">{t('map.charGuild')}</dt>
+                          <dd className="truncate text-fg-dim">
+                            {character.guild.name}
+                            {character.guild.rank ? ` · ${character.guild.rank}` : ''}
+                          </dd>
+                        </>
+                      )}
+                      {character.houses[0] && (
+                        <>
+                          <dt className="font-bold uppercase tracking-wide text-fg-mute">{t('map.charHouse')}</dt>
+                          <dd className="truncate text-fg-dim">
+                            {character.houses[0].name}
+                            {character.houses[0].town ? ` · ${character.houses[0].town}` : ''}
+                          </dd>
+                        </>
+                      )}
+                    </dl>
+                    <div className="mt-2.5 border-t border-line pt-2">
+                      <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-fg-mute">
+                        {t('map.charDeaths')}
+                      </div>
+                      {character.deaths.length === 0 ? (
+                        <p className="text-xs text-fg-mute">{t('map.charNoDeaths')}</p>
+                      ) : (
+                        <ul className="flex flex-col gap-1">
+                          {character.deaths.slice(0, 5).map((d, i) => (
+                            <li key={i} className="flex items-baseline gap-1.5 text-xs">
+                              <svg viewBox="0 0 24 24" className="h-3 w-3 shrink-0 translate-y-0.5 text-accent" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M9 12h.01M15 12h.01M8 20v2h8v-2M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20" />
+                              </svg>
+                              <span className="min-w-0 flex-1 text-fg-dim">
+                                {d.level != null ? `Lvl ${d.level} · ` : ''}
+                                {d.killers.map((k) => k.name).filter(Boolean).join(', ') || d.reason}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Community routes gallery — published routes others submitted, most
           popular (most-loaded) first; clicking one loads it onto the map. */}
