@@ -711,7 +711,7 @@ const PILL =
   'pointer-events-auto inline-flex flex-wrap items-center gap-1 rounded-2xl border border-line-2 bg-bg/85 p-1.5 shadow-lg backdrop-blur-md'
 const SLOT = 'grid h-11 w-11 place-items-center rounded-lg border transition'
 const SLOT_OFF =
-  'border-line/40 bg-bg-2/40 text-fg-dim hover:border-line-2 hover:bg-surface hover:text-fg'
+  'border-line-2/60 bg-surface/70 text-fg hover:border-accent hover:bg-surface hover:text-accent'
 const SLOT_ON = 'border-accent bg-accent text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]'
 
 // Quick-launch "mini windows" floated on the map: shortcuts to the site's games
