@@ -336,7 +336,9 @@ const FERRY_LINES: FerryLineDef[] = [
   },
   { name: 'Barca', icon: 'sailboat', stops: [{ name: 'Yalahar', x: 32837, y: 31365 }, { name: 'Vengoth', x: 32857, y: 31549 }] },
   { name: 'Barca', icon: 'sailboat', stops: [{ name: 'Edron', x: 33304, y: 31720 }, { name: 'Grimvale', x: 33333, y: 31690 }] },
-  { name: 'Barca', icon: 'sailboat', stops: [{ name: 'Zao', x: 33345, y: 31349 }, { name: 'Isla norte', x: 33373, y: 31309 }] },
+  // (removed) Zao ↔ north island raft: both docks sit inside the sealed
+  // Great-Gate compound (an 821-tile pocket unreachable from the mainland),
+  // so the line could never be boarded — dead weight in the search.
   { name: 'Barca', icon: 'sailboat', stops: [{ name: 'Liberty Bay', x: 32347, y: 32858 }, { name: 'Meriana', x: 32132, y: 32912 }] },
   // Marapur (Moonfall): its "To Port Hope" dock marker pairs with Port Hope's harbour.
   { name: 'Barca', icon: 'sailboat', stops: [{ name: 'Port Hope', x: 32629, y: 32769 }, { name: 'Marapur', x: 33842, y: 32852 }] },

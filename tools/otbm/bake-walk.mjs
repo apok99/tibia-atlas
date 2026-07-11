@@ -174,7 +174,11 @@ function loadItems() {
 
 // --- 3. parse the OTBM → per-floor walkability + raw floor-change records --------
 const NODE_START = 0xFE, NODE_END = 0xFF, ESCAPE = 0xFD
-const T_TILE_AREA = 4, T_TILE = 5, T_ITEM = 6, T_HOUSETILE = 12
+// Node ids per the server's own enum (ot/src/io/io_definitions.hpp):
+// TOWNS=12, TOWN=13, HOUSETILE=14. HOUSETILE was mistakenly 12 before, which
+// dropped real house tiles AND leaked their item children onto the previous
+// tile's still-uncommitted state (phantom blocks / floor-changes).
+const T_TILE_AREA = 4, T_TILE = 5, T_ITEM = 6, T_HOUSETILE = 14
 const A_TELE_DEST = 8, A_ITEM = 9, A_TILE_FLAGS = 3
 // attribute byte → payload size, for scanning past item attributes we don't need.
 const ATTR_1B = new Set([15, 22, 14]) // count / rune charges / house-door id
@@ -198,7 +202,7 @@ function parseOtbm({ unpass, doors, ladders, fchange, gates, useDown, ropeUp, sh
   // hole is standable although its GROUND is unpass mountain (you step onto the
   // hole), but a floor-change tile carrying an unpass ITEM (wall, statue) is NOT
   // — treating those as portals let routes walk through wall columns.
-  let tile = null, blkGround = false, blkItem = false, inb = false, fcDir = null, tele = null, hasGround = false, portal = false, hasGate = false, hasDoor = false
+  let tile = null, blkGround = false, blkItem = false, inb = false, fcDir = null, tele = null, hasGround = false, portal = false, hasGate = false, hasDoor = false, isHouse = false
 
   const readProps = () => {
     const out = []
@@ -213,6 +217,9 @@ function parseOtbm({ unpass, doors, ladders, fchange, gates, useDown, ropeUp, sh
 
   const commit = () => {
     if (!inb || !tile) return
+    // House tiles stay off the grid: auto-walk cannot path through locked
+    // house doors, so houses are hard holes (matches the client's behaviour).
+    if (isHouse) return
     const i = (tile.y - Y0) * W + (tile.x - X0)
     const { x, y, z } = tile
     // Floor-change/teleport records are only emitted for tiles you could actually
@@ -264,7 +271,7 @@ function parseOtbm({ unpass, doors, ladders, fchange, gates, useDown, ropeUp, sh
       const x = area.x + pr[0], y = area.y + pr[1], z = area.z
       tile = { x, y, z }
       inb = z >= 0 && z < 16 && x >= X0 && x < X1 && y >= Y0 && y < Y1
-      blkGround = false; blkItem = false; fcDir = null; tele = null; hasGround = false; portal = false; hasGate = false; hasDoor = false
+      blkGround = false; blkItem = false; fcDir = null; tele = null; hasGround = false; portal = false; hasGate = false; hasDoor = false; isHouse = type === T_HOUSETILE
       // Tile attributes: a ground item (A_ITEM) and/or tile flags precede children.
       let q = type === T_HOUSETILE ? 6 : 2 // HOUSETILE prefixes a u32 house id
       while (q < pr.length) {

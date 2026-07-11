@@ -42,6 +42,15 @@ class HuntFinder
         'knight' => 15, 'paladin' => 12, 'monk' => 13, 'sorcerer' => 6, 'druid' => 6, '' => 10,
     ];
 
+    /**
+     * Sustained single-target DPS per level, per vocation — the kill-time
+     * model's numerator. Calibrated to real hunts (an EK 500 sustains ~3k
+     * DPS, a same-level sorcerer ~4k), NOT to burst spells.
+     */
+    private const DPS_PER_LEVEL = [
+        'knight' => 6.0, 'paladin' => 7.0, 'monk' => 6.5, 'sorcerer' => 8.0, 'druid' => 7.5, '' => 7.0,
+    ];
+
     /** Combined elemental resistance a full set can realistically reach (game-ish cap). */
     private const RESIST_CAP = 60;
 
@@ -53,6 +62,12 @@ class HuntFinder
 
     /** Team hunts share tanking/healing: effective incoming damage is divided by this. */
     private const TEAM_DANGER_RELIEF = 2.4;
+
+    /** Fraction of a creature's full attack table that lands in a bad turn. */
+    private const BAD_TURN = 0.65;
+
+    /** Seconds of per-kill overhead (targeting, walking, looting) besides the fight. */
+    private const KILL_OVERHEAD = 3.0;
 
     public function find(int $level, string $vocation, string $mode, string $locale): array
     {
@@ -215,23 +230,36 @@ class HuntFinder
             }
 
             // Reward-per-hour = reward-per-kill ÷ kill-time. Kill-time is HP over
-            // the HP you can burst down each cycle, which scales with your level
-            // (and affinity). The crux of level-awareness: a low-level player is
-            // throttled by a creature's HP (fast trash wins), but a high-level
-            // one chews through anything so exp-PER-KILL dominates — that's why a
-            // lvl 480 should rank the 13k-exp endgame spot over a 4k-exp trash one.
-            $effBurst = max(200.0, $level * 20 * $off);
-            $killTime = max(1.0, $hp / $effBurst);
-            $expEff = $exp / $killTime;
-            $profitEff = $gold / $killTime;
+            // a realistic sustained player DPS (per-vocation, scaled by level and
+            // element affinity), cut down by the creature's real armor and
+            // mitigation from the OT server data. The crux of level-awareness: a
+            // low-level player is throttled by a creature's HP (fast trash wins),
+            // but a high-level one chews through anything so exp-PER-KILL
+            // dominates — without pretending a solo EK melts a 28k-HP endgame
+            // creature in four seconds (the bug that crowned Rotten Blood).
+            $ot = (array) ($meta['ot'] ?? []);
+            $dps = $level * (self::DPS_PER_LEVEL[$vocation] ?? self::DPS_PER_LEVEL['']) * $off;
+            $dps *= 1 - min(0.5, ((float) ($ot['mitigation'] ?? 0)) / 100);
+            $cArmor = (int) ($ot['armor'] ?? 0);
+            $dps *= 1 - min(0.4, $cArmor / max(1, $cArmor + 12 * $level));
+            $killTime = max(1.5, $hp / max(30.0, $dps));
+            // Reward divides by the kill CYCLE — fight plus the fixed per-kill
+            // overhead (targeting, walking, looting). Without it, low-HP trash
+            // reads as good as the meaty high-exp creature a high level should
+            // be farming: 40 one-second kills of 5k exp are NOT 4× better than
+            // 10 four-second kills of 13k, because you don't chain-kill at 1/s.
+            $cycle = $killTime + self::KILL_OVERHEAD;
+            $expEff = $exp / $cycle;
+            $profitEff = $gold / $cycle;
 
-            // Danger = a big hit as a fraction of your HP, SCALED BY FIGHT LENGTH:
-            // a high-HP spawn for your level takes forever to drop and pounds you
-            // the whole time, so it's far deadlier than the same hit on something
-            // you one-shot. Healing/shielding relieve it, but only modestly — a
-            // mid-level char can't solo an endgame spawn, it just dies slower.
+            // Danger = a bad TURN as a fraction of your HP, scaled up (gently,
+            // log) by fight length: a high-HP spawn for your level takes forever
+            // to drop and pounds you the whole time. The bad turn comes from the
+            // creature's real per-attack damage table (meta.ot) against the
+            // element your set resists worst; the old HP-based estimate remains
+            // only as fallback for the few creatures without server data.
             $hitFrac = $this->danger($meta, $set, $ehp, $team);
-            $danger = $hitFrac * $killTime / (1 + $level / 500.0);
+            $danger = $hitFrac * (1 + log(1 + $killTime / 6));
 
             $expEffVals[] = $expEff;
             $profitVals[] = $profitEff;
@@ -241,6 +269,9 @@ class HuntFinder
                 'image' => $c->primary_image,
                 'boss' => ($meta['rank'] ?? null) === 'Boss',
                 'spawns' => (array) ($meta['spawns'] ?? []),
+                'quest_area' => $ot['quest_area'] ?? null,
+                'place' => $ot['place'] ?? null,
+                'stars' => $ot['stars'] ?? null,
             ];
         }
 
@@ -267,11 +298,12 @@ class HuntFinder
 
             $reward = $wExp * $expPct + $wProfit * $profitPct + $wOff * $offNorm;
 
-            // Danger is a fraction of your effective HP a single big hit removes.
-            // Solo it bites hard and a lethal creature is dropped from advice;
-            // team hunts already divided it and tolerate more.
+            // Danger tolerance is NOT linear: routine damage (a bad turn eating
+            // a quarter of your HP) barely matters — every real hunt does that —
+            // but past ~0.65 the curve dives, and a lethal creature is dropped
+            // from solo advice outright. Team hunts tolerate more.
             $tooDangerous = $s['danger'] >= ($team ? 1.1 : 0.85);
-            $dangerMult = $tooDangerous ? 0.12 : max(0.15, 1 - 0.9 * $s['danger']);
+            $dangerMult = $tooDangerous ? 0.12 : max(0.12, 1 / (1 + ($s['danger'] / 0.65) ** 3));
 
             $score = round(100 * $reward * $dangerMult, 1);
 
@@ -291,6 +323,9 @@ class HuntFinder
                 'danger' => round($s['danger'], 2),
                 'too_dangerous' => $tooDangerous,
                 'spawns' => $s['spawns'],
+                'quest_area' => $s['quest_area'],
+                'place' => $s['place'],
+                'stars' => $s['stars'],
             ];
         }
 
@@ -324,48 +359,64 @@ class HuntFinder
     }
 
     /**
-     * How dangerous the creature is to this set: its biggest hit, scaled by how
-     * poorly the set resists the element it can best exploit, as a fraction of
-     * the player's effective HP. Team hunts divide the incoming damage (shared
+     * How dangerous a bad turn from this creature is to this set, as a fraction
+     * of the player's effective HP. Preferred source: the real per-attack damage
+     * table from the OT server data (meta.ot.burst_by_element) — each element's
+     * potential damage reduced by the set's resist for it (physical also by
+     * armor; elements the set can't resist, like 'special' spells or life
+     * drain, land in full). Not every attack procs the same turn, so the sum is
+     * scaled by BAD_TURN. Team hunts divide the incoming damage (shared
      * tanking + healing).
+     *
+     * Fallback without server data: estimate one big hit from HP
+     * (~3.1·hp^0.71, fit to real creatures) or the wiki's max_damage — needed
+     * for ~20 harmless critters only.
      *
      * @param  array{resists: array<string,int>, armor: int}  $set
      */
     private function danger(array $meta, array $set, float $ehp, bool $team): float
     {
-        // Biggest hit. `max_damage` is missing for ~25% of creatures and a bogus
-        // "1" for some endgame ones, so we never trust it alone: estimate a hit
-        // from HP (fit to real creatures: ~3.1·hp^0.71 — a dragon's 430 at 1k HP,
-        // a rotten golem's 4600 at 28k) and take the larger. Real spellcasters
-        // that punch above their HP keep their higher recorded figure.
-        $hp = (int) ($meta['hitpoints'] ?? 0);
-        $estHit = 3.1 * ($hp > 0 ? $hp ** 0.71 : 0);
-        $maxDamage = max((float) ($meta['max_damage'] ?? 0), 0.7 * $estHit);
-
-        // Which elements can it hurt you with? Its attack abilities' elements,
-        // plus physical (nearly everything melees).
-        $elements = ['physical'];
-        foreach ((array) ($meta['abilities'] ?? []) as $ab) {
-            $el = strtolower((string) ($ab['element'] ?? ''));
-            if ($el !== '' && in_array($el, self::ELEMENTS, true)) {
-                $elements[] = $el;
-            }
-        }
-        $elements = array_unique($elements);
-
-        // Worst case: the element your set stops the least.
         $armorRelief = min(0.45, $set['armor'] / 400);
-        $worst = 0.0;
-        foreach ($elements as $el) {
-            $resist = (int) ($set['resists'][$el] ?? 0);
-            $incoming = max(0.0, 1 - $resist / 100);
-            if ($el === 'physical') {
-                $incoming *= (1 - $armorRelief);
+        $burstByEl = (array) (($meta['ot'] ?? [])['burst_by_element'] ?? []);
+
+        if ($burstByEl !== []) {
+            $incoming = 0.0;
+            foreach ($burstByEl as $el => $dmg) {
+                $resist = (int) ($set['resists'][$el] ?? 0);
+                $frac = in_array($el, self::ELEMENTS, true) ? max(0.0, 1 - $resist / 100) : 1.0;
+                if ($el === 'physical') {
+                    $frac *= (1 - $armorRelief);
+                }
+                $incoming += (float) $dmg * $frac;
             }
-            $worst = max($worst, $incoming);
+        } else {
+            $hp = (int) ($meta['hitpoints'] ?? 0);
+            $estHit = 3.1 * ($hp > 0 ? $hp ** 0.71 : 0);
+            $maxDamage = max((float) ($meta['max_damage'] ?? 0), 0.7 * $estHit);
+
+            // Which elements can it hurt you with? Its attack abilities'
+            // elements, plus physical (nearly everything melees). Worst case:
+            // the element your set stops the least.
+            $elements = ['physical'];
+            foreach ((array) ($meta['abilities'] ?? []) as $ab) {
+                $el = strtolower((string) ($ab['element'] ?? ''));
+                if ($el !== '' && in_array($el, self::ELEMENTS, true)) {
+                    $elements[] = $el;
+                }
+            }
+            $worst = 0.0;
+            foreach (array_unique($elements) as $el) {
+                $resist = (int) ($set['resists'][$el] ?? 0);
+                $frac = max(0.0, 1 - $resist / 100);
+                if ($el === 'physical') {
+                    $frac *= (1 - $armorRelief);
+                }
+                $worst = max($worst, $frac);
+            }
+            $incoming = $maxDamage * $worst;
         }
 
-        $effective = $maxDamage * $worst;
+        $effective = self::BAD_TURN * $incoming;
         if ($team) {
             $effective /= self::TEAM_DANGER_RELIEF;
         }
@@ -464,6 +515,16 @@ class HuntFinder
 
         usort($zones, fn ($a, $b) => $b['score'] <=> $a['score']);
 
+        // A multi-floor dungeon clusters once per floor and would flood the
+        // list with five "Iksupan" rows — keep the two best per name so the
+        // advice stays varied.
+        $perName = [];
+        $zones = array_values(array_filter($zones, function ($z) use (&$perName) {
+            $perName[$z['name']] = ($perName[$z['name']] ?? 0) + 1;
+
+            return $perName[$z['name']] <= 2;
+        }));
+
         // Cap the list and give each a stable id + a 0-100 "match" relative to
         // the best zone for this profile (the raw score is unbounded once the
         // density multiplier applies, so it's not display-friendly on its own).
@@ -546,10 +607,18 @@ class HuntFinder
         $bestScore = 0.0;
         $zoneDanger = 0.0;
 
+        $areaWeight = [];
+        $placeWeight = [];
         foreach ($cluster['members'] as $id => $count) {
             $c = $creatures[$id] ?? null;
             if ($c === null) {
                 continue;
+            }
+            if (! empty($c['quest_area'])) {
+                $areaWeight[$c['quest_area']] = ($areaWeight[$c['quest_area']] ?? 0) + $count;
+            }
+            if (! empty($c['place'])) {
+                $placeWeight[$c['place']] = ($placeWeight[$c['place']] ?? 0) + $count;
             }
             $totalCount += $count;
             $weightedScore += $c['score'] * $count;
@@ -593,8 +662,18 @@ class HuntFinder
             return $m;
         }, $members);
 
+        // Naming: a cluster dominated by creatures that share a home place (the
+        // bestiary Locations field) or a quest area IS that dungeon — its own
+        // name beats the nearest overland landmark, which is plain wrong for
+        // deep-floor dungeons (the Secret Library labelled "Port Hope"). The
+        // wide-radius nearest() is the last resort so no zone goes nameless.
+        $name = $this->dominant($placeWeight, $totalCount)
+            ?? $this->questAreaName($this->dominant($areaWeight, $totalCount))
+            ?? HuntZones::nearest($cluster['x'], $cluster['y'])
+            ?? HuntZones::nearest($cluster['x'], $cluster['y'], 2000);
+
         return [
-            'name' => HuntZones::nearest($cluster['x'], $cluster['y']),
+            'name' => $name,
             'x' => $cluster['x'],
             'y' => $cluster['y'],
             'z' => $z,
@@ -605,6 +684,21 @@ class HuntFinder
             'spawn_count' => $cluster['count'],
             'creatures' => $members,
         ];
+    }
+
+    /** The key holding ≥60% of the cluster's weight, or null if none dominates. */
+    private function dominant(array $weights, int $total): ?string
+    {
+        arsort($weights);
+        $key = array_key_first($weights);
+
+        return ($key !== null && $weights[$key] >= 0.6 * $total) ? (string) $key : null;
+    }
+
+    /** "rotten_blood" → "Rotten Blood", "primal_ordeal_quest" → "Primal Ordeal". */
+    private function questAreaName(?string $area): ?string
+    {
+        return $area === null ? null : ucwords(str_replace('_', ' ', (string) preg_replace('/_quest$/', '', $area)));
     }
 
     // --- helpers -------------------------------------------------------------
