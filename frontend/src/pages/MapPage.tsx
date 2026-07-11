@@ -2813,36 +2813,43 @@ export function MapPage() {
         <WorldPicker worlds={worldNames} value={world} label={t('map.world')} onSelect={setWorld} />
       </div>
 
-      {/* Floor selector — pinned to the right edge and vertically centred, sized
-          to its content so the panel never balloons past the floor buttons. A
-          max-height keeps it clear of the search bar / quick-links and lets it
-          scroll only if the floors ever outgrow the viewport. On narrow screens
-          the search bar spans the full width, so the cap is a touch tighter. */}
-      <div className="absolute right-2 top-1/2 z-[1000] flex max-h-[calc(100dvh-11rem)] -translate-y-1/2 flex-col gap-1 overflow-y-auto rounded-md border border-line bg-bg/90 p-2 backdrop-blur-md sm:max-h-[calc(100dvh-4rem)]">
-        <span className="mb-1 text-center text-[10px] font-bold uppercase tracking-widest text-fg-mute">
-          {t('map.floor')}
-        </span>
-        {FLOORS.map((f) => {
-          const rel = SURFACE - f // +N above surface, -N below
-          const label = rel === 0 ? '0' : rel > 0 ? `+${rel}` : `${rel}`
-          const active = f === floor
-          return (
-            <button
-              key={f}
-              onClick={() => setFloor(f)}
-              title={`${t('map.floor')} ${f}`}
-              className={`h-6 w-9 rounded text-[11px] font-bold tabular-nums transition ${
-                active
-                  ? 'bg-accent text-white'
-                  : f === SURFACE
-                    ? 'bg-line/40 text-fg hover:bg-line'
-                    : 'text-fg-mute hover:bg-line/40 hover:text-fg'
-              }`}
-            >
-              {label}
-            </button>
-          )
-        })}
+      {/* Floor selector — pinned to the right edge and vertically centred within
+          the space ABOVE the bottom-right quick-links (the band reserves ~15rem
+          at the bottom so the panel can never overlap them). Laid out as two
+          compact columns — surface-and-above on the left, underground on the
+          right — so the 16 floors stack half as tall. Scrolls only on very short
+          viewports. The band is inset top (clears the full-width search bar on
+          narrow screens) and bottom (clears the quick-links), so the panel is
+          centred in the free space between them and can't overlap either. */}
+      <div className="pointer-events-none absolute right-2 top-[96px] bottom-[244px] z-[1000] flex items-center">
+        <div className="pointer-events-auto flex max-h-full flex-col gap-1 overflow-y-auto rounded-md border border-line bg-bg/90 p-2 backdrop-blur-md">
+          <span className="text-center text-[10px] font-bold uppercase tracking-widest text-fg-mute">
+            {t('map.floor')}
+          </span>
+          <div className="grid grid-flow-col grid-rows-[repeat(8,minmax(0,1fr))] gap-1">
+            {FLOORS.map((f) => {
+              const rel = SURFACE - f // +N above surface, -N below
+              const label = rel === 0 ? '0' : rel > 0 ? `+${rel}` : `${rel}`
+              const active = f === floor
+              return (
+                <button
+                  key={f}
+                  onClick={() => setFloor(f)}
+                  title={`${t('map.floor')} ${f}`}
+                  className={`h-6 w-9 rounded text-[11px] font-bold tabular-nums transition ${
+                    active
+                      ? 'bg-accent text-white'
+                      : f === SURFACE
+                        ? 'bg-line/40 text-fg hover:bg-line'
+                        : 'text-fg-mute hover:bg-line/40 hover:text-fg'
+                  }`}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
       </div>
 
       {/* World-boss watch — a vertical list down the left edge (the normal-mob
