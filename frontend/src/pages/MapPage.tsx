@@ -1530,8 +1530,14 @@ export function MapPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [character?.name, character?.level, character?.vocation])
 
-  const huntLevelNum = huntLevel.trim() === '' ? null : Math.max(1, parseInt(huntLevel, 10) || 0)
-  const huntQuery = useHunts(huntLevelNum, huntVoc, huntMode, huntOpen)
+  // Effective inputs: what you typed overrides, otherwise fall back to your saved
+  // character — so with a character set the planner just works without re-asking
+  // for level/vocation (you already told us who you are via the character gear).
+  const charVoc = character?.vocation ? baseVocation(character.vocation) : ''
+  const huntLevelNum =
+    huntLevel.trim() !== '' ? Math.max(1, parseInt(huntLevel, 10) || 0) : (character?.level ?? null)
+  const effVoc = huntVoc.trim() !== '' ? huntVoc : charVoc
+  const huntQuery = useHunts(huntLevelNum, effVoc, huntMode, huntOpen)
   const hunt = huntQuery.data ?? null
   // Localised element label, falling back to the prettified key (drown, life drain).
   const elLabel = (el: string) => t(`elements.${el}`, { defaultValue: el.replace(/_/g, ' ') })
