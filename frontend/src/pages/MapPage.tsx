@@ -37,6 +37,7 @@ import {
 } from '../lib/charProfile'
 import { useGlossary } from '../hooks/useGlossary'
 import { useBosses, useKillWorlds, type BossRow } from '../hooks/useKillStats'
+import { useHunts, type HuntZone } from '../hooks/useHunts'
 import { TypeIcon } from '../components/TypeIcon'
 import { Skeleton } from '../components/Skeleton'
 import { MapTutorial, mapTourSeen } from '../components/MapTutorial'
@@ -341,6 +342,28 @@ function poiStyle(desc: string): { color: string; icon: string } {
 
 // Official Tibia Bestiary difficulty levels, easiest → hardest.
 const DIFFICULTIES = ['Harmless', 'Trivial', 'Easy', 'Medium', 'Hard', 'Challenging']
+
+// Core element accent colours (mirrors CreatureCombat's palette) for the Hunt
+// Finder's "hit with" / "resists" chips, so the two panels read as one system.
+const HUNT_ELEMENT_COLOR: Record<string, string> = {
+  physical: '#8a8578', fire: '#c0592f', energy: '#7d5aa8', ice: '#4f8fb0',
+  earth: '#5f8a3e', holy: '#c69a3a', death: '#6d5a86',
+}
+
+// Normalise a TibiaData vocation label ("Elite Knight", "Royal Paladin") to a
+// base vocation slug the Hunt Finder API expects, or '' if unrecognised.
+function baseVocation(v: string): string {
+  const s = v.toLowerCase()
+  return (['knight', 'paladin', 'sorcerer', 'druid', 'monk'] as const).find((b) => s.includes(b)) ?? ''
+}
+
+// A zone/creature danger number (fraction of your effective HP a big hit takes)
+// bucketed into a safe/risky/deadly label + colour for the panel.
+function dangerBand(d: number): { key: 'huntDangerLow' | 'huntDangerMed' | 'huntDangerHigh'; color: string } {
+  if (d < 0.35) return { key: 'huntDangerLow', color: '#2f9e5a' }
+  if (d < 0.7) return { key: 'huntDangerMed', color: '#d08a1e' }
+  return { key: 'huntDangerHigh', color: '#c0392b' }
+}
 
 // Half-size (game tiles) of the square kept around a landmark for the "zone"
 // filter — roughly a city plus its immediate hunting outskirts.
@@ -1365,6 +1388,11 @@ export function MapPage() {
   const allSpriteGroupRef = useRef<L.LayerGroup | null>(null)
   const poiGroupRef = useRef<L.LayerGroup | null>(null)
   const houseGroupRef = useRef<L.LayerGroup | null>(null)
+  // Highlight ring drawn over the hunting zone the user picked in the Hunt Finder.
+  const huntHiRef = useRef<L.LayerGroup | null>(null)
+  // A dedicated SVG renderer for that ring, so it draws crisply above the canvas
+  // spawn-dot layer (the map's default renderer is canvas).
+  const huntSvgRef = useRef<L.SVG | null>(null)
   // Current-floor "all creatures" data kept for click-to-identify and the
   // viewport sprite renderer.
   const allPointsRef = useRef<{
@@ -1481,6 +1509,35 @@ export function MapPage() {
     setCharProfile(null)
     setCharDraft('')
   }
+
+  // --- Hunt Finder -----------------------------------------------------------
+  // Panel ranking the best hunting zones for a level + vocation + solo/team.
+  // Level/vocation auto-fill from the saved character (below) but stay editable.
+  const [huntOpen, setHuntOpen] = useState(false)
+  const [huntMode, setHuntMode] = useState<'solo' | 'team'>('solo')
+  const [huntLevel, setHuntLevel] = useState('')
+  const [huntVoc, setHuntVoc] = useState('')
+  const [huntZoneId, setHuntZoneId] = useState<number | null>(null)
+  const [huntAuto, setHuntAuto] = useState(false)
+  // Seed level + vocation from the looked-up character the first time it lands,
+  // without clobbering anything the user has typed themselves.
+  useEffect(() => {
+    if (!character) return
+    const base = character.vocation ? baseVocation(character.vocation) : ''
+    setHuntLevel((prev) => (prev === '' && character.level != null ? String(character.level) : prev))
+    setHuntVoc((prev) => (prev === '' && base ? base : prev))
+    if (base && character.level != null) setHuntAuto(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [character?.name, character?.level, character?.vocation])
+
+  const huntLevelNum = huntLevel.trim() === '' ? null : Math.max(1, parseInt(huntLevel, 10) || 0)
+  const huntQuery = useHunts(huntLevelNum, huntVoc, huntMode, huntOpen)
+  const hunt = huntQuery.data ?? null
+  // Localised element label, falling back to the prettified key (drown, life drain).
+  const elLabel = (el: string) => t(`elements.${el}`, { defaultValue: el.replace(/_/g, ' ') })
+  // Picking a different vocation/level/mode invalidates the selected zone.
+  const resetHuntSel = () => setHuntZoneId(null)
+
   const [showFilters, setShowFilters] = useState(false) // collapsible refine panel
   const [showTour, setShowTour] = useState(false) // guided how-to overlay
   const [bossRailOpen, setBossRailOpen] = useState(false) // world-boss watch sidebar (starts minimized so it doesn't cover the map)
@@ -1669,6 +1726,18 @@ export function MapPage() {
     const live = houseLiveRef.current?.[h.id] ?? null
     const hl: House = live ? { ...h, live } : h
     L.popup({ offset: [0, -8] }).setLatLng(ll).setContent(buildHousePopupEl(hl)).openOn(map)
+  }
+
+  // Centre the map on a hunting zone (switching floor if needed) and mark it as
+  // the selected zone, so the highlight ring effect draws over it.
+  function flyToZone(zone: HuntZone) {
+    // Select first so the card expands + the highlight arms even if the map
+    // isn't ready yet; then fly to it when the map is available.
+    setHuntZoneId(zone.id)
+    const map = mapRef.current
+    if (!map) return
+    if (zone.z !== floorRef.current) setFloor(zone.z)
+    map.flyTo(toLatLng(zone.x, zone.y), Math.max(map.getZoom(), 4), { duration: 0.6 })
   }
 
   // Clicking a news-ticker item: a daily-digest creature/boss plots its spawns
@@ -2470,6 +2539,35 @@ export function MapPage() {
     writeHash()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [creatures, floor, mapReady])
+
+  // Highlight ring over the hunting zone picked in the Hunt Finder — shown only
+  // while its floor is selected (the ring is lazily created on first use).
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    let grp = huntHiRef.current
+    if (!grp) {
+      grp = L.layerGroup().addTo(map)
+      huntHiRef.current = grp
+    }
+    grp.clearLayers()
+    const zone = hunt?.zones.find((z) => z.id === huntZoneId)
+    if (zone && zone.z === floor) {
+      if (!huntSvgRef.current) huntSvgRef.current = L.svg().addTo(map)
+      grp.addLayer(
+        L.circleMarker(toLatLng(zone.x, zone.y), {
+          radius: 28,
+          color: '#f4e7c6',
+          weight: 3,
+          opacity: 0.95,
+          fillColor: '#d23d2f',
+          fillOpacity: 0.14,
+          renderer: huntSvgRef.current,
+        }),
+      )
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [huntZoneId, hunt, floor, mapReady])
 
   // Draw the computed route + start/destination pins. The route belongs to the
   // start point's floor, so it only shows while that floor is selected.
@@ -3801,6 +3899,22 @@ export function MapPage() {
                 </span>
               )}
             </button>
+
+            {/* Hunt Finder — ranks the best hunting zones for your level/vocation/set. */}
+            <button
+              onClick={() => setHuntOpen((v) => !v)}
+              title={t('map.huntTitle')}
+              aria-label={t('map.huntTitle')}
+              aria-pressed={huntOpen}
+              className={`${SLOT} ${huntOpen ? SLOT_ON : SLOT_OFF}`}
+            >
+              {/* crosshair / target — "find a hunt" */}
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <circle cx="12" cy="12" r="3.5" />
+                <path d="M12 1v4M12 19v4M1 12h4M19 12h4" />
+              </svg>
+            </button>
           </div>
 
           {/* Layers — what's drawn on the atlas */}
@@ -4085,6 +4199,216 @@ export function MapPage() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Hunt Finder — a floating card above the hotbar. Filters (vocation +
+          level + solo/team) drive the /api/hunts ranking; each result is a
+          hunting zone you can click to fly to, expanding into its per-creature
+          breakdown (what to hit it with, reward, danger). */}
+      {huntOpen && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
+          <div className="scroll-atlas pointer-events-auto max-h-[70vh] w-[27rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-3 shadow-2xl backdrop-blur-md">
+            <div className="mb-2 flex items-center gap-1.5 text-accent">
+              <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <circle cx="12" cy="12" r="3.5" />
+                <path d="M12 1v4M12 19v4M1 12h4M19 12h4" />
+              </svg>
+              <span className="text-[10px] font-bold uppercase tracking-widest">{t('map.huntTitle')}</span>
+              <button
+                onClick={() => setHuntOpen(false)}
+                aria-label={t('map.huntTitle')}
+                className="ml-auto grid h-6 w-6 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:border-accent hover:text-accent"
+              >
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <p className="mb-2.5 text-xs text-fg-mute">{t('map.huntHint')}</p>
+
+            {/* Filters: vocation + level + solo/team. */}
+            <div className="mb-2 flex items-center gap-1.5">
+              <select
+                value={huntVoc}
+                onChange={(e) => {
+                  setHuntVoc(e.target.value)
+                  resetHuntSel()
+                }}
+                className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-bg-2 px-2 text-sm font-semibold outline-none transition focus:border-accent"
+              >
+                <option value="">{t('map.huntVocation')}…</option>
+                {(['knight', 'paladin', 'sorcerer', 'druid', 'monk'] as const).map((v) => (
+                  <option key={v} value={v}>
+                    {t(`items.voc.${v}`)}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                min={1}
+                inputMode="numeric"
+                value={huntLevel}
+                onChange={(e) => {
+                  setHuntLevel(e.target.value)
+                  setHuntAuto(false)
+                  resetHuntSel()
+                }}
+                placeholder={t('map.huntLevel')}
+                className="h-9 w-20 rounded-lg border border-line bg-bg-2 px-2.5 text-sm font-semibold outline-none transition placeholder:font-normal placeholder:text-fg-mute focus:border-accent"
+              />
+            </div>
+            <div className="mb-2.5 flex items-center gap-2">
+              <div className="inline-flex overflow-hidden rounded-lg border border-line">
+                {(['solo', 'team'] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => {
+                      setHuntMode(m)
+                      resetHuntSel()
+                    }}
+                    aria-pressed={huntMode === m}
+                    className={`px-3 py-1.5 text-xs font-bold transition ${huntMode === m ? 'bg-accent text-white' : 'bg-bg-2 text-fg-mute hover:text-accent'}`}
+                  >
+                    {t(`map.hunt${m === 'solo' ? 'Solo' : 'Team'}`)}
+                  </button>
+                ))}
+              </div>
+              {huntAuto && character && (
+                <span className="truncate text-[10px] text-fg-mute">
+                  {t('map.huntFromChar', { name: character.name })}
+                </span>
+              )}
+            </div>
+
+            {/* Derived-set summary: what you deal and resist. */}
+            {hunt && (
+              <div className="mb-2.5 rounded-xl border border-line bg-bg-2 p-2 text-xs">
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-fg-mute">{t('map.huntSetDeals')}:</span>
+                  {hunt.set.damage_elements.map((el) => (
+                    <span
+                      key={el}
+                      className="inline-flex items-center rounded px-1.5 py-px text-[10px] font-semibold"
+                      style={{ background: `${HUNT_ELEMENT_COLOR[el] ?? '#8a8578'}22`, color: HUNT_ELEMENT_COLOR[el] ?? '#8a8578' }}
+                    >
+                      {elLabel(el)}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-fg-mute">{t('map.huntSetResists')}:</span>
+                  {Object.entries(hunt.set.resists).filter(([, p]) => p > 0).length === 0 ? (
+                    <span className="text-[10px] text-fg-dim">{t('map.huntSetNoResists')}</span>
+                  ) : (
+                    Object.entries(hunt.set.resists)
+                      .filter(([, p]) => p > 0)
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([el, p]) => (
+                        <span
+                          key={el}
+                          className="inline-flex items-center gap-0.5 rounded px-1.5 py-px text-[10px] font-semibold"
+                          style={{ background: `${HUNT_ELEMENT_COLOR[el] ?? '#8a8578'}22`, color: HUNT_ELEMENT_COLOR[el] ?? '#8a8578' }}
+                        >
+                          {elLabel(el)} {p}%
+                        </span>
+                      ))
+                  )}
+                  {hunt.set.weapon && (
+                    <span className="ml-auto truncate text-[10px] text-fg-dim">{hunt.set.weapon}</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Results. */}
+            {!huntLevelNum || !huntVoc ? (
+              <p className="py-3 text-center text-sm text-fg-mute">{t('map.huntNeedInputs')}</p>
+            ) : huntQuery.isLoading ? (
+              <p className="py-3 text-center text-sm text-fg-mute">{t('map.huntLoading')}</p>
+            ) : !hunt || hunt.zones.length === 0 ? (
+              <p className="py-3 text-center text-sm text-fg-mute">{t('map.huntNoResults')}</p>
+            ) : (
+              <div className="space-y-1.5">
+                {hunt.zones.map((z) => {
+                  const band = dangerBand(z.danger)
+                  const sel = z.id === huntZoneId
+                  return (
+                    <div key={z.id} className={`overflow-hidden rounded-xl border ${sel ? 'border-accent' : 'border-line'} bg-bg-2`}>
+                      <button onClick={() => flyToZone(z)} className="w-full px-2.5 py-2 text-left transition hover:bg-accent/5">
+                        <div className="flex items-center gap-2">
+                          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-accent/10 text-sm font-black leading-none text-accent">
+                            {z.match}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-sm font-bold text-fg">
+                            {z.name ?? `${z.x}, ${z.y}`}
+                          </span>
+                          <span className="shrink-0 rounded-md border border-line-2 px-1.5 py-0.5 text-[10px] font-bold text-fg-mute">
+                            {t('map.floor')} {floorLabel(z.z)}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 pl-10 text-[11px] text-fg-dim">
+                          <span>{compact(z.exp_avg)} {t('map.huntExpKill')}</span>
+                          <span>{fmtGold(z.profit_avg)} {t('map.huntGpKill')}</span>
+                          <span className="font-semibold" style={{ color: band.color }}>
+                            {t(`map.${band.key}`)}
+                          </span>
+                          <span>{t('map.huntSpawns', { n: z.spawn_count })}</span>
+                        </div>
+                      </button>
+                      {sel && (
+                        <div className="space-y-1.5 border-t border-line px-2.5 py-2">
+                          <div className="text-[10px] font-bold uppercase tracking-widest text-fg-mute">
+                            {t('map.huntCreaturesHere')}
+                          </div>
+                          {z.creatures.map((c) => (
+                            <div key={c.slug} className="flex items-center gap-2">
+                              {c.image ? (
+                                <img src={c.image} alt="" className="h-7 w-7 shrink-0" style={{ imageRendering: 'pixelated' }} />
+                              ) : (
+                                <span className="h-7 w-7 shrink-0 rounded bg-line/40" />
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5">
+                                  <Link
+                                    to={`/entry/${c.slug}`}
+                                    className="truncate text-xs font-bold text-fg hover:text-accent"
+                                  >
+                                    {c.name}
+                                  </Link>
+                                  {c.too_dangerous && (
+                                    <span title={t('map.huntTooDangerous')} className="shrink-0 text-[10px] font-bold text-[#c0392b]">
+                                      ⚠
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                                  <span className="text-[10px] text-fg-mute">{t('map.huntHitWith')}:</span>
+                                  {c.hit_with.map((el) => (
+                                    <span
+                                      key={el}
+                                      className="inline-flex items-center rounded px-1 py-px text-[10px] font-semibold"
+                                      style={{ background: `${HUNT_ELEMENT_COLOR[el] ?? '#8a8578'}22`, color: HUNT_ELEMENT_COLOR[el] ?? '#8a8578' }}
+                                    >
+                                      {elLabel(el)}
+                                    </span>
+                                  ))}
+                                  <span className="text-[10px] text-fg-dim">
+                                    · {compact(c.experience)} exp · {fmtGold(c.gold)} gp
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>

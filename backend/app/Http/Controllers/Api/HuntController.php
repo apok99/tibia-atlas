@@ -20,7 +20,7 @@ class HuntController extends Controller
     {
         $level = max(1, min(2000, $request->integer('level', 1)));
         $vocation = strtolower((string) $request->string('vocation'));
-        $mode = $request->string('mode') === 'team' ? 'team' : 'solo';
+        $mode = (string) $request->string('mode') === 'team' ? 'team' : 'solo';
         $locale = app()->getLocale();
 
         // Deterministic in its inputs and moderately expensive (scores every
