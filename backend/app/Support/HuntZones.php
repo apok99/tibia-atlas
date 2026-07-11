@@ -45,6 +45,11 @@ final class HuntZones
         ['Gnomprona', 33600, 32880], ['Zao', 33350, 31370], ['Razachai', 33074, 31100],
         ['Zzaion', 33262, 31100], ['Issavi', 33946, 31516], ['Warzones 4-6', 33800, 32170],
         ['Roshamuul Prison', 33520, 32600], ['Guzzlemaw Valley', 33645, 32390], ['Feyrist', 33540, 32208],
+        // The Roshamuul demon grounds (Blightwalker, Vexclaw, Hellflayer, Undead
+        // Dragon…) sit between Feyrist/Candia to the north and the city/prison to
+        // the south — anchor them so those clusters read "Roshamuul", not a candy
+        // world 180 tiles away.
+        ['Roshamuul', 33500, 32360],
         ['Candia', 33370, 32155], ['Mountain Tomb (Dipthrah)', 33133, 32568], ['Oasis Tomb (Rahemos)', 33133, 32640],
         ['Ancient Ruins Tomb (Vashresamun)', 33208, 32591], ['Tarpit Tomb (Morguthis)', 33233, 32704],
         ['Stone Tomb (Thalas)', 33282, 32743], ['Shadow Tomb (Mahrdis)', 33255, 32833],
@@ -62,21 +67,27 @@ final class HuntZones
      * Returns null when nothing is close enough — the caller falls back to raw
      * coordinates.
      */
-    public static function nearest(int $x, int $y, int $radius = 260): ?string
+    public static function nearest(int $x, int $y, int $radius = 220): ?string
     {
         $best = null;
-        $bestD = $radius * $radius;
-        // Regions first (more specific); a city only wins if no region is closer.
-        foreach ([self::REGIONS, self::LANDMARKS] as $tier) {
+        $bestScore = INF;
+        $r2 = $radius * $radius;
+        // Pick the GENUINELY nearest place across both tiers — not the first region
+        // found. Regions get a mild distance edge (×0.8) so a region wins over the
+        // city it sits inside, but a clearly closer city still wins. Without this a
+        // region 200 tiles away (e.g. Candia) wrongly claimed a Roshamuul cluster
+        // just because regions were scanned first.
+        foreach ([[self::REGIONS, 0.8], [self::LANDMARKS, 1.0]] as [$tier, $mult]) {
             foreach ($tier as [$name, $px, $py]) {
-                $d = ($px - $x) ** 2 + ($py - $y) ** 2;
-                if ($d <= $bestD) {
-                    $bestD = $d;
+                $raw = ($px - $x) ** 2 + ($py - $y) ** 2;
+                if ($raw > $r2) {
+                    continue;
+                }
+                $d = $raw * $mult;
+                if ($d < $bestScore) {
+                    $bestScore = $d;
                     $best = $name;
                 }
-            }
-            if ($best !== null) {
-                return $best;
             }
         }
 
