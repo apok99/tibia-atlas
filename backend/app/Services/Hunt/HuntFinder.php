@@ -180,7 +180,12 @@ class HuntFinder
             ->get(['id', 'slug', 'meta', 'primary_image']);
 
         $hpPerLevel = self::HP_PER_LEVEL[$vocation] ?? self::HP_PER_LEVEL[''];
-        $ehp = $level * $hpPerLevel + 150;
+        // Survivability is more than the HP bar: healing throughput and shielding
+        // scale with level (mana pool, potion supply, block chance), so a hit is
+        // only scary if it bursts past what you out-heal. Folding that sustain in
+        // stops a high-level hunter getting mid-tier spots wrongly flagged risky.
+        $sustain = 1.4 + $level / 160.0;
+        $ehp = ($level * $hpPerLevel + 185) * $sustain;
 
         // First pass: raw offense, kill-speed-adjusted reward and danger.
         $stats = [];
@@ -207,11 +212,16 @@ class HuntFinder
                 continue;
             }
 
-            // Kill-speed proxy: you clear low-HP, high-affinity creatures faster,
-            // so reward-per-hour scales with off / sqrt(hp).
-            $ks = $off / sqrt($hp);
-            $expEff = $exp * $ks;
-            $profitEff = $gold * $ks;
+            // Reward-per-hour = reward-per-kill ÷ kill-time. Kill-time is HP over
+            // the HP you can burst down each cycle, which scales with your level
+            // (and affinity). The crux of level-awareness: a low-level player is
+            // throttled by a creature's HP (fast trash wins), but a high-level
+            // one chews through anything so exp-PER-KILL dominates — that's why a
+            // lvl 480 should rank the 13k-exp endgame spot over a 4k-exp trash one.
+            $effBurst = max(200.0, $level * 25 * $off);
+            $killTime = max(1.0, $hp / $effBurst);
+            $expEff = $exp / $killTime;
+            $profitEff = $gold / $killTime;
 
             $danger = $this->danger($meta, $set, $ehp, $team);
 
@@ -228,16 +238,23 @@ class HuntFinder
 
         sort($expEffVals);
         sort($profitVals);
+        // Reference = a HIGH benchmark (top-decile) of reward-per-hour for this
+        // player. Scoring each creature as a ratio to it (not a percentile) keeps
+        // the top end spread out — a 13k-exp/h spot must read far better than a
+        // 4k one, which a percentile flattens into "both top-15%". This is what
+        // makes the ranking level-aware: at high level the best exp/h zones win.
+        $refExp = $this->highRef($expEffVals);
+        $refProfit = $this->highRef($profitVals);
 
-        // Second pass: percentiles → composite score.
+        // Second pass: reward-ratio → composite score.
         $wExp = $team ? 0.46 : 0.50;
         $wProfit = $team ? 0.36 : 0.32;
         $wOff = 1 - $wExp - $wProfit;
 
         $out = [];
         foreach ($stats as $id => $s) {
-            $expPct = $this->percentile($expEffVals, $s['expEff']);
-            $profitPct = $this->percentile($profitVals, $s['profitEff']);
+            $expPct = min(1.25, $s['expEff'] / $refExp);
+            $profitPct = min(1.25, $s['profitEff'] / $refProfit);
             $offNorm = min(1, $s['off'] / 1.4);
 
             $reward = $wExp * $expPct + $wProfit * $profitPct + $wOff * $offNorm;
@@ -609,5 +626,23 @@ class HuntFinder
         }
 
         return $lo / $n;
+    }
+
+    /**
+     * A high benchmark — the top-decile value — of a sorted-ascending reward
+     * population, used to score creatures as a ratio to "a great hunt" rather
+     * than a flat percentile (which flattens the high end). Never returns 0.
+     *
+     * @param  list<float>  $sorted  ascending
+     */
+    private function highRef(array $sorted): float
+    {
+        $n = count($sorted);
+        if ($n === 0) {
+            return 1.0;
+        }
+        $v = $sorted[(int) floor(0.90 * ($n - 1))];
+
+        return $v > 0 ? $v : 1.0;
     }
 }
