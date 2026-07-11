@@ -26,7 +26,7 @@ use Illuminate\Support\Str;
 class BuildWorldNews extends Command
 {
     protected $signature = 'tibia:build-world-news
-        {--worlds=Antica : Comma-separated world names}
+        {--worlds= : Comma-separated world names (default: every world with kill data)}
         {--bosses=3 : How many top bosses to feature}';
 
     protected $description = 'Build the daily kill-stats digest (top creature, top bosses, total kills) into world_events for the map news ticker';
@@ -34,6 +34,12 @@ class BuildWorldNews extends Command
     public function handle(): int
     {
         $worlds = array_filter(array_map('trim', explode(',', (string) $this->option('worlds'))));
+        // No --worlds given → every world we actually have kill data for.
+        if (! $worlds) {
+            $worlds = DB::table('kill_daily as kd')
+                ->join('tibia_worlds as w', 'w.id', '=', 'kd.world_id')
+                ->distinct()->orderBy('w.name')->pluck('w.name')->all();
+        }
         $bossN = max(1, (int) $this->option('bosses'));
         $today = Carbon::today()->toDateString();
         $now = now();

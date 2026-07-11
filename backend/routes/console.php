@@ -47,9 +47,11 @@ Schedule::command('tibia:etl-loot-stats')
     ->withoutOverlapping();
 
 // Daily "yesterday on your world" digest for the map news ticker — top creature,
-// top bosses and total kills, derived from the kill-stats warehouse. Runs in the
-// morning, after the overnight creature sync, so the day's numbers are settled.
-Schedule::command('tibia:build-world-news --worlds=Antica')
+// top bosses and total kills, derived from the kill-stats warehouse, for EVERY
+// world we have kill data for (~90). Each run replaces the previous digest set
+// per world (no accumulation). Runs in the morning, after the overnight creature
+// sync, so the day's numbers are settled.
+Schedule::command('tibia:build-world-news')
     ->dailyAt('07:15')
     ->withoutOverlapping();
 
