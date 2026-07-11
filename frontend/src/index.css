@@ -1059,6 +1059,46 @@ html[data-theme='dark'] .ks-raid-badge {
 .ks-raid-box {
   position: relative;
 }
+/* Boss filter box */
+.ks-raid-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding: 0 0.6rem;
+  border: 1px solid var(--color-line);
+  border-radius: 0.5rem;
+  background: var(--color-bg-2);
+  transition: border-color 0.15s ease;
+}
+.ks-raid-search:focus-within {
+  border-color: var(--color-accent);
+}
+.ks-raid-search svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--color-fg-mute);
+}
+.ks-raid-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-fg);
+  font-size: 0.85rem;
+  outline: none;
+}
+.ks-raid-search input::placeholder {
+  color: var(--color-fg-mute);
+}
+.ks-raid-empty {
+  padding: 1.5rem 0.5rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--color-fg-mute);
+}
 .ks-raid-half {
   padding: 12px;
 }

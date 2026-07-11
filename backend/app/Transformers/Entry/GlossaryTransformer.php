@@ -24,6 +24,9 @@ class GlossaryTransformer
                 'type' => $e->type->value,
                 'name' => $e->translation($locale)?->name,
                 'image' => $e->primary_image,
+                // Only tag bosses (keeps the payload lean for the ~thousands of
+                // non-boss entries the auto-linker doesn't care about).
+                ...((int) $e->is_boss === 1 ? ['boss' => true] : []),
             ])
             ->filter(fn ($i) => filled($i['name']))
             ->sortByDesc(fn ($i) => mb_strlen($i['name']))

@@ -31,11 +31,52 @@ const MOTES = Array.from({ length: 16 }, () => ({
   peak: (0.5 + Math.random() * 0.45).toFixed(2),
 }))
 
-// Today's date in UTC as YYYY-MM-DD, so the daily zone flips at 00:00 UTC and is
-// the same for every player regardless of local timezone.
-function utcDateKey(d = new Date()): string {
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(
-    d.getUTCDate(),
+// Tibia's daily server save is 10:00 Europe/Berlin (CET/CEST). The daily zone flips
+// then — not at UTC midnight — so the puzzle changes with the game's own daily reset
+// and is the same for every player regardless of local timezone.
+const SERVER_SAVE_HOUR = 10
+const SERVER_TZ = 'Europe/Berlin'
+
+// Berlin wall-clock components for a given instant (handles DST via Intl).
+function berlinParts(d = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SERVER_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(d)
+  const get = (t: string) => Number(parts.find((p) => p.type === t)!.value)
+  return { y: get('year'), mo: get('month'), da: get('day'), h: get('hour'), mi: get('minute'), s: get('second') }
+}
+
+// Offset (ms) of Berlin from UTC at the given instant: +1h (CET) or +2h (CEST).
+function berlinOffsetMs(d: Date): number {
+  const b = berlinParts(d)
+  return Date.UTC(b.y, b.mo - 1, b.da, b.h, b.mi, b.s) - d.getTime()
+}
+
+// Real UTC instant for a Berlin wall-clock date at the server-save hour. Refines the
+// offset once so the result is correct even across a CET/CEST transition.
+function serverSaveInstant(y: number, mo: number, da: number): number {
+  const naive = Date.UTC(y, mo - 1, da, SERVER_SAVE_HOUR, 0, 0)
+  let inst = naive - berlinOffsetMs(new Date(naive))
+  inst = naive - berlinOffsetMs(new Date(inst))
+  return inst
+}
+
+// The puzzle's date key: the Berlin calendar date whose 10:00 server save opened the
+// currently-active puzzle. Before 10:00 Berlin we're still on the previous day's zone.
+function serverSaveDateKey(d = new Date()): string {
+  const b = berlinParts(d)
+  // Subtract the server-save hour from the wall clock, then read the date. This lands
+  // on the previous calendar day whenever it's before 10:00 Berlin.
+  const shifted = new Date(Date.UTC(b.y, b.mo - 1, b.da, b.h - SERVER_SAVE_HOUR, b.mi, b.s))
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}-${String(
+    shifted.getUTCDate(),
   ).padStart(2, '0')}`
 }
 
@@ -66,7 +107,7 @@ function pinIcon(label: string, kind: 'correct' | 'guess'): L.DivIcon {
 
 export function GeoPage() {
   const { t } = useTranslation()
-  const date = useMemo(() => utcDateKey(), [])
+  const date = useMemo(() => serverSaveDateKey(), [])
   const target = useMemo(() => zoneForDate(date), [date])
   const storageKey = `geo:v1:${date}`
 
@@ -446,7 +487,7 @@ function ResultPanel({
   )
 }
 
-/** HH:MM:SS until the next UTC midnight; reloads the page when it hits zero. */
+/** HH:MM:SS until the next server save (10:00 Berlin); reloads the page at zero. */
 function useCountdown(): string {
   const [, tick] = useState(0)
   useEffect(() => {
@@ -454,7 +495,12 @@ function useCountdown(): string {
     return () => window.clearInterval(id)
   }, [])
   const now = new Date()
-  const next = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0)
+  const b = berlinParts(now)
+  // Next server save: today's 10:00 Berlin if we haven't reached it yet, else tomorrow's.
+  const rollover = b.h >= SERVER_SAVE_HOUR ? new Date(Date.UTC(b.y, b.mo - 1, b.da + 1)) : null
+  const next = rollover
+    ? serverSaveInstant(rollover.getUTCFullYear(), rollover.getUTCMonth() + 1, rollover.getUTCDate())
+    : serverSaveInstant(b.y, b.mo, b.da)
   const ms = next - now.getTime()
   if (ms <= 0) {
     window.setTimeout(() => window.location.reload(), 500)

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AltarController;
 use App\Http\Controllers\Api\BookController;
 use App\Http\Controllers\Api\EntryController;
+use App\Http\Controllers\Api\EventController;
 use App\Http\Controllers\Api\HouseController;
 use App\Http\Controllers\Api\ItemController;
 use App\Http\Controllers\Api\KillStatsController;
@@ -104,6 +105,15 @@ Route::prefix('houses')->middleware(['throttle:public', 'cache.headers:public;ma
     Route::get('/', [HouseController::class, 'index']);
     Route::get('/worlds', [HouseController::class, 'worlds']);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Live world events (TibiaData house-status diff) — feeds the map news ticker.
+| Short TTL so a fresh ETL run surfaces quickly, but still CDN-cacheable.
+|--------------------------------------------------------------------------
+*/
+Route::get('/events', [EventController::class, 'index'])
+    ->middleware(['throttle:public', 'cache.headers:public;max_age=60;s_maxage=180']);
 
 /*
 |--------------------------------------------------------------------------

@@ -241,9 +241,9 @@ class EntryReadService
         $locale = app()->getLocale();
 
         return Cache::remember(
-            // v2: payload gained an `image` field — the suffix retires any
-            // cached imageless copies that would otherwise outlive a deploy.
-            ContentCache::key("glossary:v2:{$locale}"),
+            // v3: payload gained a `boss` flag (for the map's Boss Watch search).
+            // v2 added `image`. The suffix retires stale cached copies on deploy.
+            ContentCache::key("glossary:v3:{$locale}"),
             3600,
             fn () => $this->glossaryTransformer->items($this->glossary->publishedNames(), $locale),
         );

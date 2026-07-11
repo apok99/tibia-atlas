@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { Icon } from '../lib/icons'
@@ -61,6 +62,20 @@ function Squad({ label, color, hot, bosses }: { label: string; color: string; ho
  */
 export function BossWatch({ bosses }: { bosses: BossRow[] }) {
   const { t } = useTranslation()
+  const [q, setQ] = useState('')
+
+  const query = q.trim().toLowerCase()
+  // Match against the boss name and its world list so "antica" finds every
+  // boss currently tracked on that world too.
+  const matches = useMemo(() => {
+    if (!query) return null
+    return bosses.filter(
+      (b) =>
+        b.race.toLowerCase().includes(query) ||
+        b.worlds.some((w) => w.toLowerCase().includes(query)),
+    )
+  }, [bosses, query])
+
   if (!bosses.length) return <div className="ks-panel ks-skel h-full min-h-[280px]" />
 
   // Keep the backend order (iconic world bosses by fame, then by heat) so the
@@ -77,19 +92,45 @@ export function BossWatch({ bosses }: { bosses: BossRow[] }) {
 
   return (
     <section className="ks-panel">
-      <div className="mb-3 flex items-baseline justify-between">
+      <div className="mb-3 flex items-baseline justify-between gap-3">
         <h2 className="ks-panel-title">{t('ks.raidTitle')}</h2>
         <span className="text-xs text-fg-mute">{t('ks.raidSub')}</span>
       </div>
 
-      <div className="ks-raid-box">
-        <div className="ks-raid-half is-hot-half">
-          <Squad label={t('ks.raidSquadHot')} color="#d23d2f" hot bosses={hot} />
-        </div>
-        <div className="ks-raid-half is-cold-half">
-          <Squad label={t('ks.raidSquadCold')} color="#6fa8c4" hot={false} bosses={cold} />
-        </div>
+      <div className="ks-raid-search">
+        <Icon name="search" />
+        <input
+          type="search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={t('ks.raidSearch')}
+          aria-label={t('ks.raidSearch')}
+        />
       </div>
+
+      {matches ? (
+        matches.length ? (
+          <div className="ks-raid-box">
+            <Squad
+              label={t('ks.raidSearchResults')}
+              color="#c9a54a"
+              hot={false}
+              bosses={matches}
+            />
+          </div>
+        ) : (
+          <p className="ks-raid-empty">{t('ks.raidSearchEmpty', { q: q.trim() })}</p>
+        )
+      ) : (
+        <div className="ks-raid-box">
+          <div className="ks-raid-half is-hot-half">
+            <Squad label={t('ks.raidSquadHot')} color="#d23d2f" hot bosses={hot} />
+          </div>
+          <div className="ks-raid-half is-cold-half">
+            <Squad label={t('ks.raidSquadCold')} color="#6fa8c4" hot={false} bosses={cold} />
+          </div>
+        </div>
+      )}
     </section>
   )
 }

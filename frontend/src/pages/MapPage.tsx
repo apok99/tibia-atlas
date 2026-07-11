@@ -8,6 +8,25 @@ import { api } from '../lib/api'
 import { planRoute, type RoutePlan, type RouteLeg } from '../lib/routing'
 import { Seo } from '../lib/seo'
 import { Icon, iconMarkup } from '../lib/icons'
+import {
+  type Watch,
+  isAvailable,
+  isHouseWatched,
+  isTownWatched,
+  isWorldWatched,
+  loadWatches,
+  saveWatches,
+  toggleHouseWatch,
+  toggleTownWatch,
+  toggleWorldWatch,
+  loadSeen,
+  saveSeen,
+  toStatusMap,
+  diffFreed,
+  notifyPermission,
+  requestNotifyPermission,
+  osNotify,
+} from '../lib/houseWatch'
 import { useGlossary } from '../hooks/useGlossary'
 import { useBosses, useKillWorlds, type BossRow } from '../hooks/useKillStats'
 import { TypeIcon } from '../components/TypeIcon'
@@ -95,6 +114,102 @@ type House = {
   live?: { status: 'rented' | 'auctioned' | 'free'; owner?: string | null; bid?: number } | null
 }
 
+// A live "what's happening on your world" event from GET /api/events, produced
+// by the house-status ETL diff. Generic shape so more producers can feed the
+// ticker later; today `type` is always one of the house_* transitions.
+type WorldEvent = {
+  id: number
+  type: string
+  ref_id: number | null
+  title: string | null
+  town: string | null
+  meta: { from?: string; to?: string; bid?: number } | null
+  occurred_at: string
+}
+
+// Icon + accent colour per event type, so the ticker reads at a glance:
+// red = a house was taken (new tenant), green = one just freed up, gold = auction.
+const EVENT_STYLE: Record<string, { icon: string; color: string }> = {
+  house_rented: { icon: '🏠', color: 'var(--color-accent)' },
+  house_freed: { icon: '🔑', color: '#2f9e5a' },
+  house_auctioned: { icon: '🔨', color: '#e0a531' },
+}
+
+// "hace 3 h" / "3h ago" — coarse relative time; events land ~twice a day so
+// minute precision would be noise.
+function eventAgo(iso: string, t: (k: string, o?: Record<string, unknown>) => string): string {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
+  if (s < 3600) return t('map.evtAgoMin', { n: Math.max(1, Math.round(s / 60)) })
+  if (s < 86400) return t('map.evtAgoHour', { n: Math.round(s / 3600) })
+  return t('map.evtAgoDay', { n: Math.round(s / 86400) })
+}
+
+// Full-width "breaking news" marquee of live world events (houses changing
+// hands, etc.) pinned to the top of the map. The list is duplicated so the CSS
+// translate loop is seamless; hovering pauses it (.ks-ticker CSS) so an item
+// can be clicked to fly to that house.
+function EventsTicker({
+  events,
+  t,
+  onPick,
+  onClose,
+}: {
+  events: WorldEvent[]
+  t: (k: string, o?: Record<string, unknown>) => string
+  onPick: (ev: WorldEvent) => void
+  onClose: () => void
+}) {
+  if (!events.length) return null
+  // Duplicate a short list so the marquee still fills the width and loops.
+  const loop = events.length < 8 ? [...events, ...events] : [...events]
+  const label = (ev: WorldEvent) =>
+    ev.type === 'house_freed'
+      ? t('map.evtFreed')
+      : ev.type === 'house_auctioned'
+        ? t('map.evtAuction')
+        : t('map.evtNewOwner')
+  return (
+    <div className="ks-ticker w-full">
+      <span className="ks-ticker-tag">{t('map.eventsLive')}</span>
+      <div className="ks-ticker-mask">
+        <div className="ks-ticker-track">
+          {loop.map((ev, i) => {
+            const st = EVENT_STYLE[ev.type] ?? EVENT_STYLE.house_rented
+            return (
+              <button
+                type="button"
+                key={`${ev.id}-${i}`}
+                onClick={() => onPick(ev)}
+                className="ks-ticker-item"
+                style={{ background: 'none', border: 0, cursor: ev.ref_id ? 'pointer' : 'default' }}
+                title={ev.title ?? ''}
+              >
+                <span className="ks-ticker-skull" style={{ color: st.color }}>{st.icon}</span>
+                <span className="ks-ticker-count" style={{ color: st.color }}>{label(ev)}</span>
+                <span className="ks-ticker-name" style={{ textTransform: 'none' }}>
+                  {ev.title ?? '—'}
+                  {ev.town ? ` · ${ev.town}` : ''}
+                </span>
+                <span className="ks-ticker-name" style={{ opacity: 0.55, fontWeight: 600 }}>
+                  {eventAgo(ev.occurred_at, t)}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label={t('map.close')}
+        style={{ flexShrink: 0, padding: '0 0.75rem', color: 'var(--color-fg-mute)', background: 'none', border: 0, cursor: 'pointer', fontSize: 13, fontWeight: 700 }}
+      >
+        ✕
+      </button>
+    </div>
+  )
+}
+
 // A published community route from GET /api/routes (ranked by load count).
 type CommunityRoute = {
   id: number
@@ -149,6 +264,10 @@ const ZONE_RADIUS = 200
 // Safety ceiling on how many creature sprites to draw at once (the screen-grid
 // de-duplication normally keeps it far below this).
 const SPRITE_CAP = 1200
+
+// Max rows rendered in the houses panel list (the "rented" / "all" filters can
+// match ~1000 houses; cap keeps the DOM light, with a "+N more" note).
+const HOUSE_LIST_CAP = 150
 
 const inTileBounds = (x: number, y: number) =>
   x >= X_MIN && x < X_MAX && y >= Y_MIN && y < Y_MAX
@@ -210,9 +329,11 @@ function escapeHtml(s: string): string {
   )
 }
 
-// Leaflet popup HTML for a house marker: name, type + town, size/beds, rent and
-// (when the ETL has run for the chosen world) its live rent status.
-function housePopup(h: House, t: (k: string) => string): string {
+// Leaflet popup HTML for a house marker: name, type + town, size/beds, rent,
+// (when the ETL has run for the chosen world) its live rent status, and a bell
+// button to add/remove it from the client-side alert list. `watched` colours the
+// bell; the button carries data-house-watch so renderHouses can wire the click.
+function housePopup(h: House, t: (k: string) => string, watched: boolean): string {
   const kind = h.guild ? t('map.houseGuildhall') : t('map.houseHouse')
   const where = h.town ? `${kind} · ${escapeHtml(h.town)}` : kind
   const meta = [
@@ -232,13 +353,25 @@ function housePopup(h: House, t: (k: string) => string): string {
     const col = h.live.status === 'free' ? '#2f9e5a' : h.live.status === 'auctioned' ? '#d08a1e' : '#a13d3d'
     live = `<div style="margin-top:3px;font-size:11px;font-weight:600;color:${col}">${label}</div>`
   }
+  const bellLabel = watched ? t('map.houseUnwatch') : t('map.houseWatch')
+  const bellCol = watched ? '#b3873f' : 'currentColor'
+  const bell =
+    `<button type="button" data-house-watch="${h.id}" ` +
+    `style="margin-top:6px;display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:6px;` +
+    `border:1px solid ${watched ? '#b3873f' : 'rgba(140,140,140,.55)'};background:${watched ? 'rgba(179,135,63,.14)' : 'transparent'};` +
+    `color:${bellCol};font-size:11px;font-weight:600;cursor:pointer;line-height:1.2">` +
+    `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ` +
+    `stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>` +
+    `<path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span data-bell-label>${escapeHtml(bellLabel)}</span></button>`
   return (
     `<div style="min-width:150px"><div style="font-weight:700">${escapeHtml(h.name)}</div>` +
     `<div style="opacity:.6;font-size:11px;margin-top:1px">${where}</div>` +
     `<div style="opacity:.6;font-size:11px">${meta}</div>` +
     `<div style="font-size:11px;margin-top:2px">${t('map.houseRent')}: ${fmtGold(h.rent)} ${t('map.houseGoldMonth')}</div>` +
     live +
-    `<div style="opacity:.45;font-size:10px;margin-top:2px">${h.x}, ${h.y}, z${h.z}</div></div>`
+    `<div style="opacity:.45;font-size:10px;margin-top:2px">${h.x}, ${h.y}, z${h.z}</div>` +
+    bell +
+    `</div>`
   )
 }
 
@@ -304,16 +437,51 @@ function drawRouteLegs(
 
 // --- profit-heat ramp ---------------------------------------------------------
 // The "all creatures" dots are tinted by a per-spawn profit score (a creature's
-// loot gold + experience, amplified by local spawn density): cold blue = little
-// to gain, through teal/green/gold, to hot red = the richest hunting spots.
+// loot gold, averaged per spot with a light spawn-density nudge). The ramp follows
+// Tibia's coin value: the warm half (red → orange → gold) is the poor-to-mediocre
+// range, the cool half (teal → blue) the genuinely rich spots. Five stops, so a
+// bad earner (a dragon) reads as clearly warm, not lumped in with the mid greens.
 const HEAT_STOPS: [number, [number, number, number]][] = [
-  [0.0, [70, 120, 214]], // blue
-  [0.32, [63, 183, 167]], // teal
-  [0.56, [127, 201, 63]], // green
-  [0.78, [224, 165, 49]], // gold
-  [1.0, [210, 61, 47]], // red
+  [0.0, [200, 52, 44]], // red — poorest
+  [0.22, [226, 110, 42]], // orange — bad
+  [0.45, [222, 170, 55]], // gold/amber — mediocre
+  [0.72, [63, 183, 167]], // teal — good
+  [1.0, [70, 120, 214]], // blue — richest (crystal)
 ]
 const HEAT_STEPS = 16
+// Profit colour is a creature's RANK among all the regular creatures we have, not
+// a log of its raw gold — a log squashes a 188-gp dragon and a 1,131-gp medusa
+// almost together, so everything decent looked mid-green. These are the gold-per-
+// kill values (loot items + coins, drop-weighted; see tibia:etl-loot-stats) at
+// each 5th percentile of our 648 regular creatures, so the scale is derived from
+// the real population. A creature richer than the top regular (or a boss) clamps
+// to 1. Update if the loot dataset shifts a lot.
+const PROFIT_PCTS = [
+  1, 6, 15, 28, 42, 65, 116, 165, 211, 317, 419, 599, 750, 967, 1225, 1514, 1856,
+  2534, 3945, 5914, 54332,
+] // index i ⇒ the i·5th percentile gold-per-kill
+// Fraction (0..1) of regular creatures a given gold-per-kill outranks, by linear
+// interpolation between the baked percentile breakpoints.
+function profitPercentile(gpk: number): number {
+  const bp = PROFIT_PCTS
+  const last = bp.length - 1
+  if (gpk <= bp[0]) return 0
+  if (gpk >= bp[last]) return 1
+  for (let i = 0; i < last; i++) {
+    if (gpk < bp[i + 1]) {
+      const frac = (gpk - bp[i]) / (bp[i + 1] - bp[i] || 1)
+      return (i + frac) / last
+    }
+  }
+  return 1
+}
+// The colour score: percentile rank, then a smoothstep so the warm half stays
+// warm (poor earners → red/orange) but everything past mid-table climbs quickly
+// into teal/blue — decent hunts should read as decent, not lukewarm.
+function profitScore(gpk: number): number {
+  const p = profitPercentile(Math.max(0, gpk))
+  return p * p * (3 - 2 * p)
+}
 function heatRgb(t: number): [number, number, number] {
   const c = Math.max(0, Math.min(1, t))
   for (let i = 1; i < HEAT_STOPS.length; i++) {
@@ -352,38 +520,35 @@ function fmtGold(n: number): string {
   return String(Math.round(n))
 }
 
-// World-tile neighbourhood for the density term of the profit heat.
+// World-tile neighbourhood that a dot's colour is averaged over.
 const DENSITY_CELL = 32
-// Colour each spawn by a density-weighted profit heat: sum the profit scores of
-// every spawn sharing its ~32-tile cell (so a dense pack of decent earners
-// outshines one lone high-value spawn — the "cantidad de bichos" factor), then
-// map that against the floor's spread. Returns per-point palette indices aligned
-// to `points`, or null when there's no loot/exp signal at all.
+// Colour each spawn by how rich its spot is: the average loot score (an absolute
+// rank, see profitScore) of the spawns sharing its ~32-tile cell. Scores already
+// mean the same thing on every floor, so there's no per-floor renormalisation —
+// a poor corner stays warm and a rich one is blue wherever it is. Bosses average
+// in like anything else and, being top-rank, pull their own cell to blue.
+// Returns per-point palette indices aligned to `points`, or null when there's no
+// loot signal at all.
 function computeHeat(
   points: [number, number, number][],
   scores: number[],
 ): Uint8Array | null {
   if (!points.length || !scores.length) return null
   if (!scores.some((s) => s > 0)) return null
-  const cellHeat = new Map<string, number>()
+  const cellSum = new Map<string, number>()
+  const cellCount = new Map<string, number>()
   const keys: string[] = new Array(points.length)
   for (let i = 0; i < points.length; i++) {
     const p = points[i]
     const k = Math.floor(p[0] / DENSITY_CELL) + '_' + Math.floor(p[1] / DENSITY_CELL)
     keys[i] = k
-    cellHeat.set(k, (cellHeat.get(k) ?? 0) + (scores[p[2]] ?? 0))
+    cellSum.set(k, (cellSum.get(k) ?? 0) + (scores[p[2]] ?? 0))
+    cellCount.set(k, (cellCount.get(k) ?? 0) + 1)
   }
-  // Robust top-of-scale: the ~92nd percentile of populated cells, so one blazing
-  // hotspot can't wash the rest of the map down to cold blue.
-  const heats = [...cellHeat.values()].sort((a, b) => a - b)
-  const scaleMax = Math.max(
-    1e-6,
-    heats[Math.min(heats.length - 1, Math.floor(heats.length * 0.92))],
-  )
   const out = new Uint8Array(points.length)
   for (let i = 0; i < points.length; i++) {
-    const h = cellHeat.get(keys[i]) ?? 0
-    const t = Math.pow(Math.min(1, h / scaleMax), 0.85) // brighten the mid-range
+    const k = keys[i]
+    const t = Math.min(1, (cellSum.get(k) ?? 0) / (cellCount.get(k) ?? 1))
     out[i] = Math.round(t * (HEAT_STEPS - 1))
   }
   return out
@@ -639,10 +804,10 @@ function parseHash(): {
 // secondary action collapses into a tooltip-labelled icon. PILL is the slotted
 // bar that groups them; SLOT/SLOT_ON/SLOT_OFF style each slot.
 const PILL =
-  'pointer-events-auto inline-flex flex-wrap items-center gap-1 rounded-2xl border border-line-2 bg-bg/85 p-1.5 shadow-lg backdrop-blur-md'
+  'pointer-events-auto inline-flex flex-wrap items-center gap-1 rounded-2xl border border-line-2 bg-surface/95 p-1.5 shadow-lg backdrop-blur-md [&_svg]:[stroke-width:2.25]'
 const SLOT = 'grid h-11 w-11 place-items-center rounded-lg border transition'
 const SLOT_OFF =
-  'border-line/40 bg-bg-2/40 text-fg-dim hover:border-line-2 hover:bg-surface hover:text-fg'
+  'border-line-2 bg-bg-2 text-fg hover:border-accent hover:bg-surface hover:text-accent'
 const SLOT_ON = 'border-accent bg-accent text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]'
 
 // Quick-launch "mini windows" floated on the map: shortcuts to the site's games
@@ -906,6 +1071,129 @@ function WorldPicker({
   )
 }
 
+// Floor stepper — a compact "current floor + up/down arrows" control pinned to
+// the right edge. The arrows step one floor at a time (up = toward the sky, i.e.
+// a higher altitude / lower internal index); tapping the current-floor number
+// opens a scrollable list of every floor to jump directly. Replaces the tall
+// 16-button pad that crowded the right edge and overlapped the other controls.
+function FloorStepper({
+  floor,
+  surface,
+  floors,
+  floorWord,
+  onSelect,
+}: {
+  floor: number
+  surface: number
+  floors: number[]
+  floorWord: string
+  onSelect: (f: number) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLUListElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+  // Centre the current floor in the list each time it opens.
+  useEffect(() => {
+    if (!open) return
+    const active = listRef.current?.querySelector('[data-active="true"]') as HTMLElement | null
+    active?.scrollIntoView({ block: 'center' })
+  }, [open])
+  const relLabel = (f: number) => {
+    const rel = surface - f // +N above surface, -N below
+    return rel === 0 ? '0' : rel > 0 ? `+${rel}` : `${rel}`
+  }
+  const canUp = floor > 0 // a higher floor (toward +N)
+  const canDown = floor < floors.length - 1
+  return (
+    <div
+      ref={ref}
+      className="pointer-events-auto relative flex flex-col items-center gap-1 rounded-xl border border-line bg-bg/90 p-1.5 shadow-lg backdrop-blur-md"
+    >
+      <button
+        type="button"
+        onClick={() => onSelect(Math.max(0, floor - 1))}
+        disabled={!canUp}
+        title={`${floorWord} +`}
+        aria-label={`${floorWord} +`}
+        className="grid h-7 w-9 place-items-center rounded-lg text-fg-mute transition hover:bg-line/40 hover:text-fg disabled:pointer-events-none disabled:opacity-30"
+      >
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m6 15 6-6 6 6" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title={floorWord}
+        className={`grid h-9 w-9 place-items-center rounded-lg text-[13px] font-bold tabular-nums transition ${
+          open ? 'bg-accent text-white' : 'bg-line/40 text-fg hover:bg-line'
+        }`}
+      >
+        {relLabel(floor)}
+      </button>
+      <button
+        type="button"
+        onClick={() => onSelect(Math.min(floors.length - 1, floor + 1))}
+        disabled={!canDown}
+        title={`${floorWord} -`}
+        aria-label={`${floorWord} -`}
+        className="grid h-7 w-9 place-items-center rounded-lg text-fg-mute transition hover:bg-line/40 hover:text-fg disabled:pointer-events-none disabled:opacity-30"
+      >
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {/* Full floor list — opens to the LEFT of the stepper (it's pinned to the
+          right edge) so it never spills off-screen; scrolls if the floors
+          outgrow the viewport. */}
+      {open && (
+        <ul
+          ref={listRef}
+          role="listbox"
+          className="scroll-atlas absolute right-full top-1/2 z-[1100] mr-2 max-h-[85vh] -translate-y-1/2 space-y-0.5 overflow-y-auto rounded-xl border-2 border-line bg-bg-2 p-1.5 shadow-2xl"
+        >
+          {floors.map((f) => {
+            const active = f === floor
+            return (
+              <li key={f}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  data-active={active}
+                  onClick={() => {
+                    onSelect(f)
+                    setOpen(false)
+                  }}
+                  className={`flex w-12 items-center justify-center rounded px-2 py-1.5 text-sm font-bold tabular-nums transition ${
+                    active
+                      ? 'bg-accent text-white'
+                      : f === surface
+                        ? 'bg-line/40 text-fg hover:bg-line'
+                        : 'text-fg-mute hover:bg-surface-2 hover:text-fg'
+                  }`}
+                >
+                  {relLabel(f)}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export function MapPage() {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -933,8 +1221,8 @@ export function MapPage() {
     classifications: (string | null)[]
     difficulties: (string | null)[]
     bosses: boolean[]
-    // Per-creature profit score (0..1): loot gold + experience, log-normalised
-    // across the floor's creatures. Empty when no loot/exp data is present.
+    // Per-creature profit score (0..1): loot gold, log-normalised across the
+    // floor's creatures. Empty when no loot data is present.
     scores: number[]
     // Per-creature raw loot worth (gp), summed per spawn for the money badge.
     lootValues: number[]
@@ -984,6 +1272,17 @@ export function MapPage() {
   const [bossOnly, setBossOnly] = useState(false) // show only bosses
   const [showPoi, setShowPoi] = useState(false) // imported minimap markers layer
   const [showHouses, setShowHouses] = useState(false) // rentable houses layer
+  const [houseStatusFilter, setHouseStatusFilter] = useState<'all' | 'available' | 'rented'>('all') // rent-status filter
+  const [houseKind, setHouseKind] = useState<'all' | 'house' | 'guild'>('all') // guildhall filter
+  const [panelPos, setPanelPos] = useState<{ x: number; y: number } | null>(null) // draggable window position
+  const [houseSearch, setHouseSearch] = useState('') // house-list name filter
+  const [housePanelOpen, setHousePanelOpen] = useState(false) // "available houses" + alerts panel
+  const [watches, setWatches] = useState<Watch[]>(() => loadWatches()) // client-side alert list
+  const [notifPerm, setNotifPerm] = useState<NotificationPermission>(() => notifyPermission())
+  const [freedToast, setFreedToast] = useState<string | null>(null) // "a house opened up" banner
+  const [eventsDismissed, setEventsDismissed] = useState(false) // news-ticker dismissed this session
+  const [freedIds, setFreedIds] = useState<Set<number>>(() => new Set()) // ids just freed this session
+  const [townSel, setTownSel] = useState('') // town picked in the "watch a whole town" control
   // The selected Tibia world — a GLOBAL map concern: it drives the Boss Watch's
   // per-world heat AND the houses layer's live rent status. Persisted so the user
   // doesn't re-pick their world every visit; defaults to Antica (a classic world
@@ -1005,6 +1304,31 @@ export function MapPage() {
   const [showFilters, setShowFilters] = useState(false) // collapsible refine panel
   const [showTour, setShowTour] = useState(false) // guided how-to overlay
   const [bossRailOpen, setBossRailOpen] = useState(false) // world-boss watch sidebar (starts minimized so it doesn't cover the map)
+  const [bossQuery, setBossQuery] = useState('') // free-text filter for the boss watch rail
+  // Bosses the player has pinned to "follow" — kept at the top of the rail and
+  // never dropped by the hottest-16 cut. Persisted so a watch survives reloads.
+  const [pinnedBosses, setPinnedBosses] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('tibiaAtlas.pinnedBosses')
+      return new Set(raw ? (JSON.parse(raw) as string[]) : [])
+    } catch {
+      return new Set()
+    }
+  })
+  useEffect(() => {
+    try {
+      localStorage.setItem('tibiaAtlas.pinnedBosses', JSON.stringify([...pinnedBosses]))
+    } catch {
+      /* private mode / storage disabled — non-fatal */
+    }
+  }, [pinnedBosses])
+  const togglePin = (slug: string) =>
+    setPinnedBosses((prev) => {
+      const next = new Set(prev)
+      if (next.has(slug)) next.delete(slug)
+      else next.add(slug)
+      return next
+    })
   const [bossTop, setBossTop] = useState(112) // sidebar top = bottom of the control column
   const [markerDraft, setMarkerDraft] = useState<{ x: number; y: number; floor: number } | null>(null)
   const [draftLabel, setDraftLabel] = useState('')
@@ -1094,10 +1418,25 @@ export function MapPage() {
   const poiRef = useRef<Poi[]>([])
   const showHousesRef = useRef(showHouses)
   const housesRef = useRef<House[]>([])
+  // House lookup by real Tibia id, so the news ticker can fly to an event's house.
+  const houseByIdRef = useRef<Map<number, House>>(new Map())
   const houseLiveRef = useRef<Record<number, { status: 'rented' | 'auctioned' | 'free'; owner?: string | null; bid?: number }> | null>(null)
   // Bumped when live status is merged, so the marker diff's epoch changes and the
   // (otherwise key-cached) pins get rebuilt with their new rent-status colour.
   const houseLiveVerRef = useRef(0)
+  const houseStatusFilterRef = useRef(houseStatusFilter)
+  const houseKindRef = useRef(houseKind)
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  const watchesRef = useRef(watches)
+  // Bumped on every watch toggle so open/cached house pins rebuild and reflect
+  // the new bell state (the marker diff caches by key+epoch).
+  const houseWatchVerRef = useRef(0)
+  const worldRef = useRef(world)
+  // Toggle a single house on the alert list; updates the ref synchronously so a
+  // popup click handler can re-read the fresh state immediately after.
+  const toggleHouseWatchRef = useRef<(id: number, name: string, town: string | null) => void>(
+    () => {},
+  )
   const addMarkerRef = useRef<(m: Marker) => void>(() => {})
   const removeMarkerRef = useRef<(id: string) => void>(() => {})
   const openMarkerModalRef = useRef<(d: { x: number; y: number; floor: number }) => void>(() => {})
@@ -1106,6 +1445,88 @@ export function MapPage() {
   const renderHousesRef = useRef<() => void>(() => {})
   const renderCreaturesRef = useRef<() => void>(() => {})
   const rebuildOverlayRef = useRef<() => void>(() => {})
+  worldRef.current = world
+  // Commit a new watch list: sync the ref, persist, bump the pin-rebuild version,
+  // and update state — all callers go through here so nothing drifts.
+  const applyWatches = (next: Watch[]) => {
+    watchesRef.current = next
+    saveWatches(next)
+    houseWatchVerRef.current++
+    setWatches(next)
+  }
+  toggleHouseWatchRef.current = (id, name, town) =>
+    applyWatches(toggleHouseWatch(watchesRef.current, world, id, name, town))
+
+  // Build a house popup as a DOM element with a live-wired bell button. Shared by
+  // the map pins and the "fly to" action from the panel so both behave the same.
+  function buildHousePopupEl(hl: House): HTMLElement {
+    const watched = isHouseWatched(watchesRef.current, world, hl.id)
+    const el = document.createElement('div')
+    el.innerHTML = housePopup(hl, t, watched)
+    const btn = el.querySelector<HTMLButtonElement>('[data-house-watch]')
+    if (btn) {
+      btn.addEventListener('click', (ev) => {
+        ev.preventDefault()
+        toggleHouseWatchRef.current(hl.id, hl.name, hl.town)
+        const on = isHouseWatched(watchesRef.current, world, hl.id)
+        const lbl = btn.querySelector('[data-bell-label]')
+        if (lbl) lbl.textContent = on ? t('map.houseUnwatch') : t('map.houseWatch')
+        btn.style.borderColor = on ? '#b3873f' : 'rgba(140,140,140,.55)'
+        btn.style.background = on ? 'rgba(179,135,63,.14)' : 'transparent'
+        btn.style.color = on ? '#b3873f' : 'currentColor'
+      })
+    }
+    return el
+  }
+
+  // Centre the map on a house (switching floor if needed) and pop its details.
+  function flyToHouse(h: House) {
+    const map = mapRef.current
+    if (!map) return
+    if (h.z !== floorRef.current) setFloor(h.z)
+    const ll = toLatLng(h.x, h.y)
+    map.flyTo(ll, Math.max(map.getZoom(), 5), { duration: 0.6 })
+    const live = houseLiveRef.current?.[h.id] ?? null
+    const hl: House = live ? { ...h, live } : h
+    L.popup({ offset: [0, -8] }).setLatLng(ll).setContent(buildHousePopupEl(hl)).openOn(map)
+  }
+
+  // Clicking a house event in the news ticker flies to that house (turning the
+  // layer on so its pin is visible). Resolved by the real house id against the
+  // static houses.json; a house not in our baked set is simply a no-op.
+  function onPickEvent(ev: WorldEvent) {
+    if (!ev.ref_id) return
+    const h = houseByIdRef.current.get(ev.ref_id)
+    if (!h) return
+    if (!showHouses) setShowHouses(true)
+    flyToHouse(h)
+  }
+
+  // Drag the houses window by its header. Grabs the pointer offset once, then
+  // tracks moves on window (self-removing listeners), clamped to the viewport so
+  // it can't be lost behind the nav/hotbar. Ignores drags starting on a button.
+  function startPanelDrag(e: React.PointerEvent) {
+    if ((e.target as HTMLElement).closest('button')) return
+    const el = panelRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const dx = e.clientX - rect.left
+    const dy = e.clientY - rect.top
+    const move = (ev: PointerEvent) => {
+      const w = el.offsetWidth
+      const h = el.offsetHeight
+      const x = Math.max(4, Math.min(window.innerWidth - w - 4, ev.clientX - dx))
+      const y = Math.max(4, Math.min(window.innerHeight - h - 4, ev.clientY - dy))
+      setPanelPos({ x, y })
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
   addMarkerRef.current = (m) => setMarkers((prev) => [...prev, m])
   removeMarkerRef.current = (id) => setMarkers((prev) => prev.filter((m) => m.id !== id))
   openMarkerModalRef.current = (d) => {
@@ -1433,15 +1854,25 @@ export function MapPage() {
     const maxX = view.max!.x + cell
     const minY = view.min!.y - cell
     const maxY = view.max!.y + cell
+    const sf = houseStatusFilterRef.current
+    const kind = houseKindRef.current
     const wanted = new Map<string, () => L.Marker>()
     for (const h of housesRef.current) {
       if (h.z !== f) continue
+      // Guildhall filter: guild > 0 marks a guildhall.
+      if (kind === 'guild' && !h.guild) continue
+      if (kind === 'house' && h.guild) continue
+      const live = houseLiveRef.current?.[h.id] ?? null
+      // Rent-status filter, applied BEFORE the per-cell dedupe so a matching house
+      // isn't hidden behind a non-matching neighbour sharing its screen cell.
+      if (sf === 'available' && !(live && isAvailable(live.status))) continue
+      if (sf === 'rented' && live?.status !== 'rented') continue
       const pt = map.project(toLatLng(h.x, h.y), zoom)
       if (pt.x < minX || pt.x > maxX || pt.y < minY || pt.y > maxY) continue
       const key = Math.floor(pt.x / cell) + '_' + Math.floor(pt.y / cell)
       if (wanted.has(key)) continue
-      const live = houseLiveRef.current?.[h.id] ?? null
       const hl: House = live ? { ...h, live } : h
+      const watched = isHouseWatched(watchesRef.current, worldRef.current, hl.id)
       wanted.set(key, () => {
         const fill = hl.live
           ? hl.live.status === 'free'
@@ -1452,21 +1883,30 @@ export function MapPage() {
           : hl.guild
             ? '#7c6cf0'
             : '#b3873f'
+        // A gold ring flags houses on the alert list at a glance.
+        const ring = watched ? ';outline:2px solid #f0c674;outline-offset:1px' : ''
         const icon = L.divIcon({
           className: '',
           html:
             `<div style="display:grid;place-items:center;width:22px;height:22px;margin:-11px 0 0 -11px;` +
-            `border-radius:6px;background:${fill};box-shadow:0 1px 3px rgba(0,0,0,.55);border:1.5px solid rgba(255,255,255,.85)">` +
+            `border-radius:6px;background:${fill};box-shadow:0 1px 3px rgba(0,0,0,.55);border:1.5px solid rgba(255,255,255,.85)${ring}">` +
             `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" ` +
             `stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-7 9 7M5 9v11h14V9"/></svg></div>`,
           iconSize: [0, 0],
         })
+        // Popup as a DOM node so the bell button gets a live click handler
+        // (Leaflet accepts an element as popup content).
         return L.marker(toLatLng(hl.x, hl.y), { icon })
           .bindTooltip(escapeHtml(hl.name), { direction: 'top', offset: [0, -12] })
-          .bindPopup(housePopup(hl, t))
+          .bindPopup(buildHousePopupEl(hl))
       })
     }
-    syncMarkers(grp, houseCacheRef.current, `${f}|${zoom}|${houseLiveVerRef.current}`, wanted)
+    syncMarkers(
+      grp,
+      houseCacheRef.current,
+      `${f}|${zoom}|${houseLiveVerRef.current}|${sf}|${kind}|${houseWatchVerRef.current}`,
+      wanted,
+    )
   }
 
   function writeHash() {
@@ -2033,6 +2473,30 @@ export function MapPage() {
     },
   })
 
+  // Index houses by id once loaded, for the news ticker's fly-to.
+  useEffect(() => {
+    const m = new Map<number, House>()
+    for (const h of housesData?.houses ?? []) m.set(h.id, h)
+    houseByIdRef.current = m
+  }, [housesData])
+
+  // Live world-events feed (house status changes on the selected world) that
+  // powers the top news ticker. Short staleTime + a 5-min poll + refetch-on-focus
+  // so an open tab picks up the ETL's twice-daily refresh without a reload.
+  const { data: worldEventsData } = useQuery<{ world: string; events: WorldEvent[] }>({
+    queryKey: ['world-events', world],
+    queryFn: async () => {
+      const { data } = await api.get<{ world: string; events: WorldEvent[] }>('/events', {
+        params: { world },
+      })
+      return data
+    },
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+    refetchOnWindowFocus: true,
+  })
+  const worldEvents = worldEventsData?.events ?? []
+
   // Load the houses into the ref and (re)draw when toggled, floor changes, or the
   // map remounts.
   useEffect(() => {
@@ -2049,16 +2513,25 @@ export function MapPage() {
   const worldNames = useMemo(() => {
     const names = (killWorlds ?? []).map((w) => w.name)
     // Keep the current selection selectable even before the roster loads.
-    return names.includes(world) ? names : [world, ...names]
+    const all = names.includes(world) ? names : [world, ...names]
+    // Alphabetical so a world is easy to find in the list.
+    return all.sort((a, b) => a.localeCompare(b))
   }, [killWorlds, world])
 
-  // Live rent status for the chosen world — only fetched while the layer is on.
+  // Live rent status for the chosen world. Fetched while the layer is on OR the
+  // user has any alerts (so re-opening the site catches what freed up while
+  // away). Refetches on focus + every 10 min so an open tab picks up the ETL's
+  // twice-daily refresh.
   const { data: houseStatus } = useQuery<{
+    world: string
+    synced_at: string | null
     houses: Record<number, { status: 'rented' | 'auctioned' | 'free'; bid?: number }>
   }>({
     queryKey: ['house-status', world],
     staleTime: 300_000,
-    enabled: showHouses && !!world,
+    enabled: (showHouses || watches.length > 0) && !!world,
+    refetchOnWindowFocus: true,
+    refetchInterval: 600_000,
     queryFn: async () => {
       const res = await fetch(`/api/houses?world=${encodeURIComponent(world)}`)
       if (!res.ok) throw new Error('house status fetch failed')
@@ -2074,6 +2547,108 @@ export function MapPage() {
     renderHousesRef.current()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [houseStatus])
+
+  // Keep the availability- and guildhall-filter refs in sync and repaint.
+  useEffect(() => {
+    houseStatusFilterRef.current = houseStatusFilter
+    houseKindRef.current = houseKind
+    renderHousesRef.current()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [houseStatusFilter, houseKind])
+
+  // Keep the watches ref in sync and repaint so pin rings reflect the alert list.
+  useEffect(() => {
+    watchesRef.current = watches
+    renderHousesRef.current()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watches])
+
+  // "Just freed" detection — the only notification path, fully client-side. On
+  // each status snapshot, diff against the last one stored for this world; any
+  // watched house that went rented → available raises an in-app toast and (if the
+  // user granted permission) a browser notification. First snapshot per world is
+  // silent (no prior baseline to diff).
+  useEffect(() => {
+    if (!houseStatus?.houses) return
+    const curr = toStatusMap(houseStatus.houses)
+    const prev = loadSeen(world)
+    const townOf = (id: number) => housesRef.current.find((h) => h.id === id)?.town ?? null
+    const freed = diffFreed(prev, curr, watchesRef.current, world, townOf)
+    saveSeen(world, curr)
+    if (!freed.length) return
+    setFreedIds((s) => new Set([...s, ...freed]))
+    const firstName = housesRef.current.find((h) => h.id === freed[0])?.name ?? ''
+    const msg =
+      freed.length === 1
+        ? t('map.houseFreedOne', { name: firstName, world })
+        : t('map.houseFreedMany', { n: freed.length, world })
+    setFreedToast(msg)
+    osNotify(t('map.houseFreedTitle'), msg)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [houseStatus, world])
+
+  // Houses for the panel list — respecting BOTH the guildhall (kind) and
+  // rent-status filters — sorted by town then rent. Empty until the static pins
+  // and the live status have loaded.
+  const panelHouses = useMemo(() => {
+    const live = houseStatus?.houses
+    const all = housesData?.houses
+    type Row = { h: House; status: 'auctioned' | 'free' | 'rented'; bid?: number }
+    if (!live || !all) return [] as Row[]
+    const q = houseSearch.trim().toLowerCase()
+    const out: Row[] = []
+    for (const h of all) {
+      if (houseKind === 'guild' && !h.guild) continue
+      if (houseKind === 'house' && h.guild) continue
+      const s = live[h.id]?.status
+      if (!s) continue
+      if (houseStatusFilter === 'available' && !(s === 'free' || s === 'auctioned')) continue
+      if (houseStatusFilter === 'rented' && s !== 'rented') continue
+      if (q && !h.name.toLowerCase().includes(q) && !(h.town ?? '').toLowerCase().includes(q)) continue
+      out.push({ h, status: s, bid: live[h.id]?.bid })
+    }
+    out.sort((a, b) => (a.h.town ?? '').localeCompare(b.h.town ?? '') || a.h.rent - b.h.rent)
+    return out
+  }, [houseStatus, housesData, houseKind, houseStatusFilter, houseSearch])
+
+  // Count of currently-available houses (kind-filtered) — drives the green badge
+  // on the panel toggle, independent of the status filter.
+  const availableCount = useMemo(() => {
+    const live = houseStatus?.houses
+    const all = housesData?.houses
+    if (!live || !all) return 0
+    let n = 0
+    for (const h of all) {
+      if (houseKind === 'guild' && !h.guild) continue
+      if (houseKind === 'house' && h.guild) continue
+      const s = live[h.id]?.status
+      if (s === 'free' || s === 'auctioned') n++
+    }
+    return n
+  }, [houseStatus, housesData, houseKind])
+
+  // Distinct towns that have houses, for the "watch a whole town" picker.
+  const houseTowns = useMemo(() => {
+    const s = new Set<string>()
+    for (const h of housesData?.houses ?? []) if (h.town) s.add(h.town)
+    return [...s].sort((a, b) => a.localeCompare(b))
+  }, [housesData])
+
+  // The chosen world's watched-specific houses, for the "my alerts" list.
+  const watchedHouses = useMemo(
+    () =>
+      watches.filter(
+        (w): w is Extract<Watch, { kind: 'house' }> => w.kind === 'house' && w.world === world,
+      ),
+    [watches, world],
+  )
+
+  // Auto-dismiss the "a house opened up" toast after a while.
+  useEffect(() => {
+    if (!freedToast) return
+    const id = setTimeout(() => setFreedToast(null), 14_000)
+    return () => clearTimeout(id)
+  }, [freedToast])
 
   // Classifications present on the current floor, for the category filter.
   const categories = useMemo(() => {
@@ -2101,19 +2676,13 @@ export function MapPage() {
       // Only keep spawns within the available tile region; the rest (other
       // continents) would just litter the empty background.
       const pts = allSpawns.points.filter(([x, y]) => inTileBounds(x, y))
-      // Blend each creature's loot gold and experience into a 0..1 "profit"
-      // score. Both span several orders of magnitude, so log-compress before
-      // normalising — otherwise one Ferumbras-tier drop table would flatten
-      // everything else to zero. Loot leads the blend; experience nuances it.
+      // Score each creature by its loot gold — the wealth a hunt actually yields
+      // (loot items + coins per kill; experience is deliberately left out). The
+      // score is an absolute rank against every regular creature we have (see
+      // profitScore), so a dragon reads the same poor colour on every floor and a
+      // boss's million-gp table can't distort the scale — it just clamps to blue.
       const cs = allSpawns.creatures
-      const logNorm = (vals: number[]) => {
-        const logs = vals.map((v) => Math.log10(1 + Math.max(0, v)))
-        const max = Math.max(1e-6, ...logs)
-        return logs.map((v) => v / max)
-      }
-      const lootN = logNorm(cs.map((c) => c.loot_value ?? 0))
-      const expN = logNorm(cs.map((c) => c.experience ?? 0))
-      const scores = cs.map((_, i) => 0.62 * lootN[i] + 0.38 * expN[i])
+      const scores = cs.map((c) => profitScore(c.loot_value ?? 0))
       allPointsRef.current = {
         points: pts,
         names: cs.map((c) => c.name),
@@ -2386,6 +2955,50 @@ export function MapPage() {
         .sort((a, b) => b.heat - a.heat || b.due - a.due),
     [bossWatch],
   )
+  // Rail row shape — heat-tracked bosses carry a heat/worlds read; bosses pulled
+  // from the glossary (rare ones with no kill-stats) carry heat = null.
+  type RailBoss = { race: string; slug: string; image: string | null; heat: number | null; worlds: string[] }
+  // Free-text filter for the rail. When empty it keeps the default "hottest 16"
+  // cut (plus any pins). A query searches the whole boss roster — both the
+  // heat-tracked API list AND every published boss from the glossary, so rare
+  // bosses missing from kill-stats (e.g. Gaz'haragoth) are still findable and
+  // followable. Pinned ("followed") bosses always float to the top and skip the
+  // 16-cap, so a watch never scrolls out of view.
+  const shownBosses = useMemo<RailBoss[]>(() => {
+    const q = bossQuery.trim().toLowerCase()
+    const heatList: RailBoss[] = bosses.map((b) => ({
+      race: b.race,
+      slug: b.slug,
+      image: b.image,
+      heat: b.heat,
+      worlds: b.worlds,
+    }))
+    const heatSlugs = new Set(heatList.map((b) => b.slug))
+    // Published bosses the heat roster doesn't cover (floor-independent).
+    const glossaryBosses: RailBoss[] = (glossary ?? [])
+      .filter((g) => g.boss && g.type === 'creature' && !heatSlugs.has(g.slug))
+      .map((g) => ({ race: g.name, slug: g.slug, image: g.image, heat: null, worlds: [] }))
+    const resolve = (slug: string): RailBoss | undefined =>
+      heatList.find((b) => b.slug === slug) ?? glossaryBosses.find((b) => b.slug === slug)
+
+    if (q) {
+      const match = (b: RailBoss) =>
+        b.race.toLowerCase().includes(q) || b.worlds.some((w) => w.toLowerCase().includes(q))
+      const heatMatched = heatList.filter(match)
+      const glossMatched = glossaryBosses.filter(match).sort((a, b) => a.race.localeCompare(b.race))
+      const matched = [...heatMatched, ...glossMatched]
+      const pinned = matched.filter((b) => pinnedBosses.has(b.slug))
+      const rest = matched.filter((b) => !pinnedBosses.has(b.slug))
+      return [...pinned, ...rest]
+    }
+
+    // No query: pins first (resolved from either source so a followed rare boss
+    // stays visible), then the hottest 16 heat-tracked bosses.
+    const pinnedList = [...pinnedBosses].map(resolve).filter((b): b is RailBoss => !!b)
+    const pinnedSlugs = new Set(pinnedList.map((b) => b.slug))
+    const rest = heatList.filter((b) => !pinnedSlugs.has(b.slug)).slice(0, 16)
+    return [...pinnedList, ...rest]
+  }, [bosses, bossQuery, pinnedBosses, glossary])
 
   // Published community routes, most-loaded first. Only fetched once the gallery
   // is opened.
@@ -2457,37 +3070,18 @@ export function MapPage() {
         <WorldPicker worlds={worldNames} value={world} label={t('map.world')} onSelect={setWorld} />
       </div>
 
-      {/* Floor selector — pinned to the right edge, living in the safe band
-          between the search bar up top and the quick-links stack in the
-          bottom-right corner. Explicit top/bottom insets (not vertical
-          centring) keep it clear of both; it scrolls when the floors don't fit.
-          On narrow screens the search bar spans the full width, so we start
-          lower (top-24); from sm up it's centred/narrow and can't reach us. */}
-      <div className="absolute right-2 top-24 bottom-56 z-[1000] flex flex-col gap-1 overflow-y-auto rounded-md border border-line bg-bg/90 p-2 backdrop-blur-md sm:top-6">
-        <span className="mb-1 text-center text-[10px] font-bold uppercase tracking-widest text-fg-mute">
-          {t('map.floor')}
-        </span>
-        {FLOORS.map((f) => {
-          const rel = SURFACE - f // +N above surface, -N below
-          const label = rel === 0 ? '0' : rel > 0 ? `+${rel}` : `${rel}`
-          const active = f === floor
-          return (
-            <button
-              key={f}
-              onClick={() => setFloor(f)}
-              title={`${t('map.floor')} ${f}`}
-              className={`h-6 w-9 rounded text-[11px] font-bold tabular-nums transition ${
-                active
-                  ? 'bg-accent text-white'
-                  : f === SURFACE
-                    ? 'bg-line/40 text-fg hover:bg-line'
-                    : 'text-fg-mute hover:bg-line/40 hover:text-fg'
-              }`}
-            >
-              {label}
-            </button>
-          )
-        })}
+      {/* Floor selector — a compact stepper pinned to the right edge and
+          vertically centred: the current floor with up/down arrows, and a tap on
+          the number opens the full floor list to jump directly. Tiny footprint,
+          so it clears the search bar above and the quick-links below. */}
+      <div className="absolute right-2 top-1/2 z-[1100] -translate-y-1/2">
+        <FloorStepper
+          floor={floor}
+          surface={SURFACE}
+          floors={FLOORS}
+          floorWord={t('map.floor')}
+          onSelect={setFloor}
+        />
       </div>
 
       {/* World-boss watch — a vertical list down the left edge (the normal-mob
@@ -2530,72 +3124,155 @@ export function MapPage() {
               </svg>
             </button>
           </div>
+          {/* Boss filter — only when the rail is expanded (collapsed it's a 5rem strip) */}
+          {bossRailOpen && (
+            <div className="mb-1 flex items-center gap-1.5 rounded-lg border border-line bg-bg/50 px-2 focus-within:border-accent">
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 text-fg-mute" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <input
+                type="search"
+                value={bossQuery}
+                onChange={(e) => setBossQuery(e.target.value)}
+                placeholder={t('map.bossSearch')}
+                aria-label={t('map.bossSearch')}
+                className="min-w-0 flex-1 border-0 bg-transparent py-1.5 text-sm text-fg outline-none placeholder:text-fg-mute"
+              />
+            </div>
+          )}
           {bosses.length > 0
-            ? bosses.slice(0, 16).map((b) => {
-                const hs = HEAT_STYLE[heatBucket(b.heat)]
+            ? shownBosses.length > 0
+              ? shownBosses.map((b) => {
+                // Glossary-sourced bosses have no kill-stats heat (heat === null):
+                // render them as a plain "follow/plot" row without the heat read.
+                const hs = b.heat !== null ? HEAT_STYLE[heatBucket(b.heat)] : null
                 const on = activeSlugs.has(b.slug)
+                const pinned = pinnedBosses.has(b.slug)
                 const worlds = b.worlds.slice(0, 3).join(', ')
                 const moreWorlds = b.worlds.length > 3 ? ` +${b.worlds.length - 3}` : ''
                 return (
-                  <button
+                  <div
                     key={b.slug}
-                    onClick={() => (on ? removeCreature(b.slug) : addCreature(b.slug))}
-                    title={`${b.race} · ${t(hs.label)} ${b.heat}%${b.worlds.length ? ` · ${b.worlds.join(', ')}` : ''}`}
-                    className={`group flex w-full items-center gap-2 rounded-lg border px-1.5 py-1 text-left transition ${
-                      on ? 'border-accent bg-accent/10' : 'border-transparent hover:border-line-2 hover:bg-bg-2/60'
+                    className={`group flex w-full items-center gap-1 rounded-lg border px-1.5 py-1 transition ${
+                      on ? 'border-accent bg-accent/10' : pinned ? 'border-gold/40 bg-gold/5' : 'border-transparent hover:border-line-2 hover:bg-bg-2/60'
                     } ${bossRailOpen ? '' : 'justify-center'}`}
                   >
-                    <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded bg-line/15">
-                      <img
-                        src={b.image}
-                        alt=""
-                        loading="lazy"
-                        onError={(e) => {
-                          e.currentTarget.style.visibility = 'hidden'
-                        }}
-                        className="sprite h-9 w-9 object-contain transition group-hover:scale-110"
-                      />
-                      <span
-                        className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-bg ${
-                          b.heat >= 66 ? 'bg-accent' : b.heat >= 33 ? 'bg-gold' : 'bg-interp'
-                        }`}
-                      />
-                    </span>
-                    {bossRailOpen && (
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-bold text-fg">{b.race}</span>
-                        <span className={`flex items-center gap-1 text-[15px] font-bold ${hs.cls}`}>
-                          <span aria-hidden>{hs.glyph}</span>
-                          <span className="truncate">{t(hs.label)}</span>
-                          <span className="tabular-nums opacity-70">{b.heat}%</span>
-                        </span>
-                        {b.worlds.length > 0 && (
-                          <span className="flex items-center gap-1 text-xs text-fg-mute">
-                            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <circle cx="12" cy="12" r="9" />
-                              <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
-                            </svg>
-                            <span className="truncate">
-                              {worlds}
-                              {moreWorlds}
-                            </span>
-                          </span>
-                        )}
+                    <button
+                      onClick={() => (on ? removeCreature(b.slug) : addCreature(b.slug))}
+                      title={
+                        hs
+                          ? `${b.race} · ${t(hs.label)} ${b.heat}%${b.worlds.length ? ` · ${b.worlds.join(', ')}` : ''}`
+                          : `${b.race} · ${t('map.bossNoHeat')}`
+                      }
+                      className={`flex min-w-0 flex-1 items-center gap-2 text-left ${bossRailOpen ? '' : 'justify-center'}`}
+                    >
+                      <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded bg-line/15">
+                        <img
+                          src={b.image ?? ''}
+                          alt=""
+                          loading="lazy"
+                          onError={(e) => {
+                            e.currentTarget.style.visibility = 'hidden'
+                          }}
+                          className="sprite h-9 w-9 object-contain transition group-hover:scale-110"
+                        />
+                        <span
+                          className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-bg ${
+                            b.heat === null ? 'bg-line-2' : b.heat >= 66 ? 'bg-accent' : b.heat >= 33 ? 'bg-gold' : 'bg-interp'
+                          }`}
+                        />
                       </span>
+                      {bossRailOpen && (
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-bold text-fg">{b.race}</span>
+                          {hs ? (
+                            <span className={`flex items-center gap-1 text-[15px] font-bold ${hs.cls}`}>
+                              <span aria-hidden>{hs.glyph}</span>
+                              <span className="truncate">{t(hs.label)}</span>
+                              <span className="tabular-nums opacity-70">{b.heat}%</span>
+                            </span>
+                          ) : (
+                            <span className="block truncate text-xs italic text-fg-mute">{t('map.bossNoHeat')}</span>
+                          )}
+                          {b.worlds.length > 0 && (
+                            <span className="flex items-center gap-1 text-xs text-fg-mute">
+                              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="9" />
+                                <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
+                              </svg>
+                              <span className="truncate">
+                                {worlds}
+                                {moreWorlds}
+                              </span>
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </button>
+                    {bossRailOpen && (
+                      <button
+                        onClick={() => togglePin(b.slug)}
+                        title={pinned ? t('map.bossUnpin') : t('map.bossPin')}
+                        aria-label={pinned ? t('map.bossUnpin') : t('map.bossPin')}
+                        aria-pressed={pinned}
+                        className={`grid h-7 w-7 shrink-0 place-items-center rounded transition hover:bg-line/40 ${
+                          pinned ? 'text-gold' : 'text-fg-mute hover:text-fg'
+                        }`}
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill={pinned ? 'currentColor' : 'none'}
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M12 17v5" />
+                          <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
+                        </svg>
+                      </button>
                     )}
-                  </button>
+                  </div>
                 )
               })
+              : (
+                <p className="px-2 py-4 text-center text-xs text-fg-mute">
+                  {t('map.bossSearchEmpty', { q: bossQuery.trim() })}
+                </p>
+              )
             : Array.from({ length: 8 }).map((_, i) => (
                 <Skeleton key={i} className="h-12 w-full shrink-0 rounded-lg" />
               ))}
         </aside>
       )}
 
+      {/* Live news ticker — "what's happening on your world" (houses changing
+          hands, etc.), a full-width marquee pinned to the very top. Click an
+          item to fly to that house. */}
+      {!eventsDismissed && worldEvents.length > 0 && (
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-[1001] flex justify-center p-2 sm:p-3">
+          <div className="pointer-events-auto w-full max-w-3xl">
+            <EventsTicker
+              events={worldEvents}
+              t={t}
+              onPick={onPickEvent}
+              onClose={() => setEventsDismissed(true)}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Floating control layer — pinned to the top, translucent so the map reads
           through it. The outer wrapper ignores pointer events so the map stays
-          draggable in the side gutters; the inner column re-enables them. */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-[1000] flex flex-col p-2 pt-5 sm:p-3 sm:pt-7">
+          draggable in the side gutters; the inner column re-enables them. The top
+          padding grows to clear the news ticker when it's showing. */}
+      <div
+        className={`pointer-events-none absolute inset-x-0 top-0 z-[1000] flex flex-col p-2 sm:p-3 ${
+          !eventsDismissed && worldEvents.length > 0 ? 'pt-16 sm:pt-20' : 'pt-5 sm:pt-7'
+        }`}
+      >
         <div ref={topColRef} className="pointer-events-none flex w-full max-w-md flex-col gap-2">
 
       {/* Search — the hero, pinned top-left. The action/layer hotbar lives at the
@@ -2925,18 +3602,63 @@ export function MapPage() {
               </svg>
             </button>
 
-            {/* Rentable houses */}
-            <button
-              onClick={() => setShowHouses((v) => !v)}
-              title={t('map.housesLayer')}
-              aria-label={t('map.housesLayer')}
-              aria-pressed={showHouses}
-              className={`${SLOT} ${showHouses ? 'border-[#b3873f] bg-[#b3873f]/15 text-[#b3873f]' : SLOT_OFF}`}
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 10l9-7 9 7M5 9v11h14V9M9 21v-6h6v6" />
-              </svg>
-            </button>
+            {/* Rentable houses — the layer toggle. When the layer is on, its
+                sub-controls (available-only filter + availability/alerts panel)
+                sprout straight UP from it like a little tree, connected by a
+                trunk, so it reads clearly as "these belong to Houses". */}
+            <div className="relative flex items-center">
+              {showHouses && (
+                <div className="absolute bottom-full left-1/2 mb-2 flex -translate-x-1/2 flex-col-reverse items-center gap-1.5">
+                  {/* trunk connecting the branch down to the house icon */}
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute left-1/2 top-1 -bottom-2.5 -z-10 w-0.5 -translate-x-1/2 rounded bg-[#b3873f]/45"
+                  />
+                  <button
+                    onClick={() =>
+                      setHouseStatusFilter((v) => (v === 'available' ? 'all' : 'available'))
+                    }
+                    title={t('map.houseAvailOnly')}
+                    aria-label={t('map.houseAvailOnly')}
+                    aria-pressed={houseStatusFilter === 'available'}
+                    className={`${SLOT} ${houseStatusFilter === 'available' ? 'border-[#2f9e5a] bg-[#2f9e5a]/15 text-[#2f9e5a]' : SLOT_OFF}`}
+                  >
+                    {/* filter funnel */}
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 4h18l-7 8v6l-4 2v-8z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => setHousePanelOpen((v) => !v)}
+                    title={t('map.houseAvailPanel')}
+                    aria-label={t('map.houseAvailPanel')}
+                    aria-pressed={housePanelOpen}
+                    className={`relative ${SLOT} ${housePanelOpen ? SLOT_ON : SLOT_OFF}`}
+                  >
+                    {/* list */}
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+                    </svg>
+                    {availableCount > 0 && (
+                      <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[#2f9e5a] px-1 text-[10px] font-bold text-white">
+                        {availableCount}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              )}
+              <button
+                onClick={() => setShowHouses((v) => !v)}
+                title={t('map.housesLayer')}
+                aria-label={t('map.housesLayer')}
+                aria-pressed={showHouses}
+                className={`${SLOT} ${showHouses ? 'border-[#b3873f] bg-[#b3873f]/15 text-[#b3873f]' : SLOT_OFF}`}
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 10l9-7 9 7M5 9v11h14V9M9 21v-6h6v6" />
+                </svg>
+              </button>
+            </div>
 
             {/* Refine filters */}
             <button
@@ -3036,6 +3758,354 @@ export function MapPage() {
         </div>
       )}
 
+      {/* Houses panel — houses on the chosen world (filterable by type + rent
+          status) + the client-side alert list. A small, draggable window (grab
+          the header) so it never gets stuck behind the nav or hotbar. Starts
+          centred; `panelPos` overrides once dragged. */}
+      {showHouses && housePanelOpen && (
+        <div className="pointer-events-none fixed inset-0 z-[1002]">
+        <div
+          ref={panelRef}
+          className="pointer-events-auto absolute flex max-h-[min(70vh,440px)] w-[19rem] max-w-[92vw] flex-col overflow-hidden rounded-xl border border-line bg-bg-2/95 shadow-2xl backdrop-blur-md"
+          style={
+            panelPos
+              ? { left: panelPos.x, top: panelPos.y }
+              : { left: '50%', top: '50%', transform: 'translate(-50%,-50%)' }
+          }
+        >
+          <div
+            onPointerDown={startPanelDrag}
+            className="flex cursor-move touch-none select-none items-center justify-between gap-2 border-b border-line/70 px-3 py-2"
+          >
+            <div className="flex min-w-0 items-center gap-1.5">
+              {/* grip dots */}
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 text-fg-mute" fill="currentColor">
+                <circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" />
+                <circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" />
+                <circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" />
+              </svg>
+              <span className="truncate text-[10px] font-bold uppercase tracking-widest text-[#b3873f]">
+                {t('map.houseBrowseTitle')} · {world}
+              </span>
+            </div>
+            <button
+              onClick={() => setHousePanelOpen(false)}
+              className="shrink-0 text-fg-mute transition hover:text-fg"
+              aria-label={t('map.close')}
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Filters — type (house/guildhall) + rent status. Both drive this list
+              AND the map pins. */}
+          <div className="flex flex-col gap-1 border-b border-line/70 px-3 py-2">
+            <div className="flex gap-1">
+              {(['all', 'house', 'guild'] as const).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => setHouseKind(k)}
+                  aria-pressed={houseKind === k}
+                  className={`flex-1 rounded-md border px-1 py-1 text-[11px] font-semibold transition ${
+                    houseKind === k
+                      ? 'border-[#b3873f] bg-[#b3873f]/15 text-[#b3873f]'
+                      : 'border-line-2 text-fg-dim hover:border-line hover:text-fg'
+                  }`}
+                >
+                  {k === 'all' ? t('map.houseKindAll') : k === 'house' ? t('map.houseKindHouse') : t('map.houseKindGuild')}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-1">
+              {(['all', 'available', 'rented'] as const).map((s) => {
+                const on = houseStatusFilter === s
+                const col = s === 'available' ? '#2f9e5a' : s === 'rented' ? '#a13d3d' : '#b3873f'
+                return (
+                  <button
+                    key={s}
+                    onClick={() => setHouseStatusFilter(s)}
+                    aria-pressed={on}
+                    className="flex-1 rounded-md border px-1 py-1 text-[11px] font-semibold transition"
+                    style={
+                      on
+                        ? { borderColor: col, background: `${col}26`, color: col }
+                        : undefined
+                    }
+                  >
+                    <span className={on ? '' : 'text-fg-dim'}>
+                      {s === 'all' ? t('map.houseStatusAll') : s === 'available' ? t('map.houseFree') : t('map.houseRented')}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+            {/* Name search */}
+            <div className="relative">
+              <svg viewBox="0 0 24 24" className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-mute" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <input
+                value={houseSearch}
+                onChange={(e) => setHouseSearch(e.target.value)}
+                placeholder={t('map.houseSearchPlaceholder')}
+                aria-label={t('map.houseSearchPlaceholder')}
+                className="w-full rounded-md border border-line-2 bg-bg-2 py-1 pl-7 pr-6 text-[11px] text-fg placeholder:text-fg-mute focus:border-accent focus:outline-none"
+              />
+              {houseSearch && (
+                <button
+                  onClick={() => setHouseSearch('')}
+                  aria-label={t('map.close')}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-fg-mute transition hover:text-fg"
+                >
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-3 py-2.5">
+            {/* Alerts controls */}
+            <div className="mb-3 rounded-lg border border-line/70 bg-bg/40 p-2.5">
+              <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-fg-dim">
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+                </svg>
+                {t('map.houseWatchlist')}
+              </div>
+
+              {/* Browser-alert permission */}
+              {notifPerm === 'granted' ? (
+                <p className="mb-2 text-[11px] font-semibold text-[#2f9e5a]">{t('map.houseNotifOn')}</p>
+              ) : notifPerm === 'denied' ? (
+                <p className="mb-2 text-[11px] text-fg-mute">{t('map.houseNotifBlocked')}</p>
+              ) : (
+                <button
+                  onClick={async () => setNotifPerm(await requestNotifyPermission())}
+                  className="mb-2 rounded-md border border-accent/50 bg-accent/10 px-2 py-1 text-[11px] font-bold text-accent transition hover:bg-accent/20"
+                >
+                  {t('map.houseNotifEnable')}
+                </button>
+              )}
+
+              {/* Whole-world / whole-town watches */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  onClick={() => applyWatches(toggleWorldWatch(watches, world))}
+                  className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition ${
+                    isWorldWatched(watches, world)
+                      ? 'border-[#b3873f] bg-[#b3873f]/15 text-[#b3873f]'
+                      : 'border-line-2 text-fg-dim hover:border-line hover:text-fg'
+                  }`}
+                >
+                  {t('map.houseWatchWorld', { world })}
+                </button>
+                {houseTowns.length > 0 && (
+                  <span className="inline-flex items-center gap-1">
+                    <select
+                      value={townSel}
+                      onChange={(e) => setTownSel(e.target.value)}
+                      className="rounded-md border border-line-2 bg-bg-2 px-1.5 py-1 text-[11px] text-fg"
+                    >
+                      <option value="">{t('map.houseWatchTown', { town: '…' })}</option>
+                      {houseTowns.map((tn) => (
+                        <option key={tn} value={tn}>
+                          {tn}
+                        </option>
+                      ))}
+                    </select>
+                    {townSel && (
+                      <button
+                        onClick={() => applyWatches(toggleTownWatch(watches, world, townSel))}
+                        className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition ${
+                          isTownWatched(watches, world, townSel)
+                            ? 'border-[#b3873f] bg-[#b3873f]/15 text-[#b3873f]'
+                            : 'border-line-2 text-fg-dim hover:border-line hover:text-fg'
+                        }`}
+                      >
+                        {isTownWatched(watches, world, townSel) ? t('map.houseUnwatch') : t('map.houseWatch')}
+                      </button>
+                    )}
+                  </span>
+                )}
+              </div>
+
+              {/* Active town watches as removable chips */}
+              {watches.some((w) => w.kind === 'town' && w.world === world) && (
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {watches
+                    .filter((w): w is Extract<Watch, { kind: 'town' }> => w.kind === 'town' && w.world === world)
+                    .map((w) => (
+                      <button
+                        key={w.town}
+                        onClick={() => applyWatches(toggleTownWatch(watches, world, w.town))}
+                        className="inline-flex items-center gap-1 rounded-full border border-[#b3873f]/50 bg-[#b3873f]/10 px-2 py-0.5 text-[10px] font-semibold text-[#b3873f]"
+                        title={t('map.houseUnwatch')}
+                      >
+                        {w.town}
+                        <span className="text-[11px] leading-none">×</span>
+                      </button>
+                    ))}
+                </div>
+              )}
+
+              {/* Watched specific houses */}
+              {watchedHouses.length > 0 && (
+                <div className="mt-2 flex flex-col gap-1">
+                  {watchedHouses.map((w) => {
+                    const st = houseStatus?.houses[w.id]?.status
+                    const full = housesRef.current.find((h) => h.id === w.id)
+                    return (
+                      <div key={w.id} className="flex items-center gap-2 text-[11px]">
+                        <button
+                          onClick={() => full && flyToHouse(full)}
+                          className="min-w-0 flex-1 truncate text-left font-semibold text-fg transition hover:text-accent"
+                        >
+                          {w.name}
+                          {w.town ? <span className="font-normal text-fg-mute"> · {w.town}</span> : null}
+                        </button>
+                        {st && (
+                          <span
+                            className="shrink-0 font-bold"
+                            style={{ color: st === 'free' ? '#2f9e5a' : st === 'auctioned' ? '#d08a1e' : '#a13d3d' }}
+                          >
+                            {st === 'free' ? t('map.houseFree') : st === 'auctioned' ? t('map.houseAuctioned') : t('map.houseRented')}
+                          </span>
+                        )}
+                        <button
+                          onClick={() => applyWatches(toggleHouseWatch(watches, world, w.id, w.name, w.town))}
+                          className="shrink-0 text-fg-mute transition hover:text-[#a13d3d]"
+                          aria-label={t('map.houseUnwatch')}
+                        >
+                          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M18 6 6 18M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {watchedHouses.length === 0 &&
+                !watches.some((w) => (w.kind === 'town' || w.kind === 'world') && w.world === world) && (
+                  <p className="mt-1.5 text-[11px] leading-snug text-fg-mute">{t('map.houseWatchlistEmpty')}</p>
+                )}
+
+              <p className="mt-2 text-[10px] leading-snug text-fg-mute/80">{t('map.houseNotifNote')}</p>
+            </div>
+
+            {/* Houses list (filtered) */}
+            {!houseStatus ? (
+              <p className="py-2 text-sm text-fg-mute">{t('map.houseAvailLoading')}</p>
+            ) : panelHouses.length === 0 ? (
+              <p className="py-2 text-sm text-fg-mute">{t('map.houseListNone', { world })}</p>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {panelHouses.slice(0, HOUSE_LIST_CAP).map(({ h, status, bid }) => {
+                  const watched = isHouseWatched(watches, world, h.id)
+                  const stCol = status === 'free' ? '#2f9e5a' : status === 'auctioned' ? '#d08a1e' : '#a13d3d'
+                  const stLabel = status === 'free' ? t('map.houseFree') : status === 'auctioned' ? t('map.houseAuctioned') : t('map.houseRented')
+                  return (
+                    <div
+                      key={h.id}
+                      className="flex items-center gap-2 rounded-lg border border-line bg-bg px-2.5 py-1.5"
+                    >
+                      <button
+                        onClick={() => flyToHouse(h)}
+                        className="min-w-0 flex-1 text-left"
+                        title={t('map.houseFlyTo')}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <span className="truncate text-sm font-bold text-fg">{h.name}</span>
+                          {freedIds.has(h.id) && (
+                            <span className="shrink-0 rounded-full bg-[#2f9e5a]/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#2f9e5a]">
+                              {t('map.houseJustFreed')}
+                            </span>
+                          )}
+                        </span>
+                        <span className="block truncate text-[11px] text-fg-mute">
+                          {h.town ? `${h.town} · ` : ''}
+                          <span style={{ color: stCol }} className="font-semibold">
+                            {stLabel}
+                            {status === 'auctioned' && bid ? ` · ${fmtGold(bid)}` : ''}
+                          </span>
+                          {' · '}
+                          {fmtGold(h.rent)} {t('map.houseGoldMonth')}
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => applyWatches(toggleHouseWatch(watches, world, h.id, h.name, h.town))}
+                        title={watched ? t('map.houseUnwatch') : t('map.houseWatch')}
+                        aria-label={watched ? t('map.houseUnwatch') : t('map.houseWatch')}
+                        className={`shrink-0 rounded-md border p-1.5 transition ${
+                          watched
+                            ? 'border-[#b3873f] bg-[#b3873f]/15 text-[#b3873f]'
+                            : 'border-line-2 text-fg-mute hover:border-line hover:text-fg'
+                        }`}
+                      >
+                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+                        </svg>
+                      </button>
+                    </div>
+                  )
+                })}
+                {panelHouses.length > HOUSE_LIST_CAP && (
+                  <p className="pt-1 text-center text-[10px] text-fg-mute">
+                    {t('map.houseListCap', { shown: HOUSE_LIST_CAP, total: panelHouses.length })}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {houseStatus?.synced_at && (
+              <p className="mt-2 text-right text-[10px] text-fg-mute/70">
+                {t('map.houseSynced', { when: new Date(houseStatus.synced_at).toLocaleString() })}
+              </p>
+            )}
+          </div>
+        </div>
+        </div>
+      )}
+
+      {/* "A house opened up" toast — the client-side alert surface. */}
+      {freedToast && (
+        <div className="pointer-events-auto flex items-start gap-2.5 rounded-xl border border-[#2f9e5a]/50 bg-bg-2/95 px-3 py-2.5 shadow-lg backdrop-blur-md">
+          <svg viewBox="0 0 24 24" className="mt-0.5 h-5 w-5 shrink-0 text-[#2f9e5a]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+          </svg>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-fg">{t('map.houseFreedTitle')}</p>
+            <p className="text-xs text-fg-dim">{freedToast}</p>
+            <button
+              onClick={() => {
+                setFreedToast(null)
+                setShowHouses(true)
+                setHousePanelOpen(true)
+                setHouseStatusFilter('available')
+              }}
+              className="mt-1 text-[11px] font-bold uppercase tracking-wider text-accent transition hover:underline"
+            >
+              {t('map.houseAvailPanel')}
+            </button>
+          </div>
+          <button
+            onClick={() => setFreedToast(null)}
+            className="shrink-0 text-fg-mute transition hover:text-fg"
+            aria-label={t('map.close')}
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       {/* Item context banner — explains why a batch of creatures got plotted
           ("where does this item drop?") and clears them all in one click. */}
       {(activeItem || itemBusy) && (
@@ -3127,6 +4197,17 @@ export function MapPage() {
                   </button>
                 </div>
               )}
+              <Link
+                to={`/entry/${cr.slug}`}
+                className="grid h-8 w-8 place-items-center rounded-lg text-fg-mute transition hover:bg-accent/10 hover:text-accent"
+                title={t('map.viewEntry')}
+                aria-label={t('map.viewEntry')}
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              </Link>
               {cr.clusters.length > 0 && (
                 <button
                   onClick={() => routeToSpawn(cr.slug)}

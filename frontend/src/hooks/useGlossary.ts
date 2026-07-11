@@ -8,6 +8,8 @@ export interface GlossaryItem {
   type: EntryType
   name: string
   image: string | null
+  /** Present (true) only for boss creatures — powers the map's boss search. */
+  boss?: boolean
 }
 
 /** Index of all published entry names in the active locale, for auto-linking. */
