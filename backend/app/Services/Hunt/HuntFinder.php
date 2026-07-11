@@ -187,12 +187,7 @@ class HuntFinder
             ->get(['id', 'slug', 'meta', 'primary_image']);
 
         $hpPerLevel = self::HP_PER_LEVEL[$vocation] ?? self::HP_PER_LEVEL[''];
-        // Survivability is more than the HP bar: healing throughput and shielding
-        // scale with level (mana pool, potion supply, block chance), so a hit is
-        // only scary if it bursts past what you out-heal. Folding that sustain in
-        // stops a high-level hunter getting mid-tier spots wrongly flagged risky.
-        $sustain = 1.4 + $level / 160.0;
-        $ehp = ($level * $hpPerLevel + 185) * $sustain;
+        $ehp = $level * $hpPerLevel + 185;
 
         // First pass: raw offense, kill-speed-adjusted reward and danger.
         $stats = [];
@@ -225,12 +220,18 @@ class HuntFinder
             // throttled by a creature's HP (fast trash wins), but a high-level
             // one chews through anything so exp-PER-KILL dominates — that's why a
             // lvl 480 should rank the 13k-exp endgame spot over a 4k-exp trash one.
-            $effBurst = max(200.0, $level * 25 * $off);
+            $effBurst = max(200.0, $level * 20 * $off);
             $killTime = max(1.0, $hp / $effBurst);
             $expEff = $exp / $killTime;
             $profitEff = $gold / $killTime;
 
-            $danger = $this->danger($meta, $set, $ehp, $team);
+            // Danger = a big hit as a fraction of your HP, SCALED BY FIGHT LENGTH:
+            // a high-HP spawn for your level takes forever to drop and pounds you
+            // the whole time, so it's far deadlier than the same hit on something
+            // you one-shot. Healing/shielding relieve it, but only modestly — a
+            // mid-level char can't solo an endgame spawn, it just dies slower.
+            $hitFrac = $this->danger($meta, $set, $ehp, $team);
+            $danger = $hitFrac * $killTime / (1 + $level / 500.0);
 
             $expEffVals[] = $expEff;
             $profitVals[] = $profitEff;
