@@ -15,6 +15,7 @@ const STATUS_STYLE: Record<string, string> = {
   due: 'text-canon',
   recent: 'text-theory',
   cooldown: 'text-fg-mute',
+  unknown: 'text-fg-mute',
 }
 
 /**
@@ -51,6 +52,9 @@ export function BossRespawn({ slug, enabled = true }: { slug: string; enabled?: 
             <Chip n={summary.due} label={t('ks.bossDue')} cls="border-canon/40 text-canon" />
             <Chip n={summary.recent} label={t('ks.bossRecent')} cls="border-theory/40 text-theory" />
             <Chip n={summary.cooldown} label={t('ks.bossCooldown')} cls="border-line text-fg-mute" />
+            {summary.unknown > 0 && (
+              <Chip n={summary.unknown} label={t('ks.bossUnknown')} cls="border-line text-fg-mute" />
+            )}
           </div>
         )}
 
