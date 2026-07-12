@@ -3352,7 +3352,10 @@ export function MapPage() {
   // being up right now / about to spawn). Powers both the ☠-mode strip and the
   // always-on right-edge boss rail, so it's fetched on every map view.
   // Plottable bosses (slug + sprite) sorted hottest first.
-  const { data: bossWatch, isLoading: bossLoading } = useBosses('raid', 24, true, world)
+  // Full tracked roster (~164), not a top-N cut: a cut spilled tracked bosses
+  // into the "no recent data" glossary bucket (Gaz'haragoth had kills 2 days
+  // ago yet read "sin datos"). The rail still displays pins + hottest 16.
+  const { data: bossWatch, isLoading: bossLoading } = useBosses('raid', 200, true, world)
   const bosses = useMemo(
     () =>
       (bossWatch ?? [])
