@@ -35,6 +35,7 @@ export type HuntZone = {
   score: number
   match: number
   danger: number
+  access: 'quest' | null
   exp_avg: number
   profit_avg: number
   spawn_count: number

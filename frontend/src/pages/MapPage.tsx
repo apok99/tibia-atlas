@@ -4364,6 +4364,11 @@ export function MapPage() {
                             {t(`map.${band.key}`)}
                           </span>
                           <span>{t('map.huntSpawns', { n: z.spawn_count })}</span>
+                          {z.access === 'quest' && (
+                            <span className="rounded border border-theory/40 px-1 py-px text-[10px] font-semibold text-theory">
+                              {t('map.huntQuestAccess')}
+                            </span>
+                          )}
                         </div>
                       </button>
                       {sel && (

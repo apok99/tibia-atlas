@@ -69,6 +69,28 @@ class HuntFinder
     /** Seconds of per-kill overhead (targeting, walking, looting) besides the fight. */
     private const KILL_OVERHEAD = 3.0;
 
+    /**
+     * Hunting complexes gated behind a quest line, keyed by zone name (the
+     * creatures' shared bestiary place). The OT data can't express access
+     * requirements, so this is curated — same approach as the boss locations.
+     * 'quest_team' complexes are built for parties: solo advice drops them
+     * outright (the Secret Library reading "88% match" for a solo knight was
+     * nonsense), team advice keeps them with the access badge.
+     */
+    private const GATED_PLACES = [
+        'Secret Library' => 'quest_team',
+        'Zarganash' => 'quest_team',
+        'Jaded Roots' => 'quest_team',
+        'Putrefactory' => 'quest_team',
+        'Darklight Core' => 'quest_team',
+        'Falcon Bastion' => 'quest',
+        'Pits of Inferno' => 'quest',
+        'Court of Winter' => 'quest',
+        'Court of Summer' => 'quest',
+        'Dream Labyrinth' => 'quest',
+        'Buried Cathedral' => 'quest',
+    ];
+
     public function find(int $level, string $vocation, string $mode, string $locale): array
     {
         $level = max(1, $level);
@@ -606,6 +628,8 @@ class HuntFinder
         $weightedGold = 0.0;
         $bestScore = 0.0;
         $zoneDanger = 0.0;
+        $weightedDanger = 0.0;
+        $dangerCount = 0;
 
         $areaWeight = [];
         $placeWeight = [];
@@ -618,7 +642,8 @@ class HuntFinder
                 $areaWeight[$c['quest_area']] = ($areaWeight[$c['quest_area']] ?? 0) + $count;
             }
             if (! empty($c['place'])) {
-                $placeWeight[$c['place']] = ($placeWeight[$c['place']] ?? 0) + $count;
+                $place = $this->normalizePlace($c['place']);
+                $placeWeight[$place] = ($placeWeight[$place] ?? 0) + $count;
             }
             $totalCount += $count;
             $weightedScore += $c['score'] * $count;
@@ -627,6 +652,8 @@ class HuntFinder
             $bestScore = max($bestScore, $c['score']);
             if (! $c['too_dangerous']) {
                 $zoneDanger = max($zoneDanger, $c['danger']);
+                $weightedDanger += $c['danger'] * $count;
+                $dangerCount += $count;
             }
             $members[] = ['count' => $count] + $c;
         }
@@ -645,8 +672,21 @@ class HuntFinder
         $density = $cluster['count'] / (1 + $cluster['spread'] / self::CLUSTER_THRESHOLD);
         $densMult = 1 + ($team ? 0.6 : 0.3) * min(1, ($density - self::MIN_CLUSTER_POINTS) / 18);
 
-        // Solo: a spot whose common creatures are near-lethal is demoted.
-        $safeMult = (! $team && $zoneDanger > 0.6) ? max(0.5, 1 - ($zoneDanger - 0.6)) : 1.0;
+        // Pack pressure: you rarely fight one creature at a time — the denser
+        // the spawn, the more of its TYPICAL residents pound you at once. So a
+        // spot full of 0.35-danger casters (the Secret Library) is deadly solo
+        // even though each book alone reads survivable, while a palace of
+        // 0.15-danger asuras with one scary stray stays fine. Count-weighted
+        // danger × a simultaneous-pull estimate; overwhelming packs are dropped,
+        // borderline ones demoted.
+        $pull = min(3.0, 1 + max(0.0, $density - self::MIN_CLUSTER_POINTS) / 8);
+        $avgDanger = $dangerCount > 0 ? $weightedDanger / $dangerCount : 0.0;
+        $packDanger = $avgDanger * $pull;
+        if ($packDanger >= ($team ? 1.3 : 0.85)) {
+            return null;
+        }
+        $risk = max($zoneDanger, $packDanger);
+        $safeMult = (! $team && $risk > 0.6) ? max(0.5, 1 - ($risk - 0.6)) : 1.0;
 
         $score = round($base * $densMult * $safeMult, 1);
         if ($score <= 0) {
@@ -672,18 +712,44 @@ class HuntFinder
             ?? HuntZones::nearest($cluster['x'], $cluster['y'])
             ?? HuntZones::nearest($cluster['x'], $cluster['y'], 2000);
 
+        // Quest-gated complexes: team-oriented ones are no solo advice at all;
+        // the rest stay but carry the access badge.
+        $access = self::GATED_PLACES[$name] ?? null;
+        if ($access === 'quest_team' && ! $team) {
+            return null;
+        }
+
         return [
             'name' => $name,
             'x' => $cluster['x'],
             'y' => $cluster['y'],
             'z' => $z,
             'score' => $score,
-            'danger' => round($zoneDanger, 2),
+            'danger' => round($risk, 2),
+            'access' => $access !== null ? 'quest' : null,
             'exp_avg' => (int) round($weightedExp / $totalCount),
             'profit_avg' => (int) round($weightedGold / $totalCount),
             'spawn_count' => $cluster['count'],
             'creatures' => $members,
         ];
+    }
+
+    /**
+     * One dungeon, one vote key. The bestiary Locations strings are messy —
+     * "Secret Library (fire section)", "The Secret Library (energy section)",
+     * "Secret Library earth", even an unclosed "Secret Library (earth" — and
+     * the split vote left those clusters mislabelled with far-away landmarks
+     * (and dodging the gated-place rule). Strip the article, anything from an
+     * opening paren on, and trailing section qualifiers.
+     */
+    private function normalizePlace(string $place): string
+    {
+        $p = (string) preg_replace('/^The\s+/i', '', trim($place));
+        $p = (string) preg_replace('/\s*\(.*$/', '', $p);
+        $p = (string) preg_replace('/\s+\w+\s+section$/i', '', $p);
+        $p = (string) preg_replace('/\s+(fire|energy|ice|earth|holy|death)$/i', '', $p);
+
+        return trim($p);
     }
 
     /** The key holding ≥60% of the cluster's weight, or null if none dominates. */
