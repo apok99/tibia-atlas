@@ -251,7 +251,7 @@ class ImportMissingFromOt extends Command
             // Wrong case / plural / disambiguation: resolve via wiki search once.
             if ($run->status !== 'success') {
                 $resolved = $wiki->resolveTitle($name);
-                if ($resolved !== null && mb_strtolower($resolved) !== mb_strtolower($this->wikiTitle($name))) {
+                if ($resolved !== null && $resolved !== $this->wikiTitle($name)) {
                     // Only accept a search hit that IS this monster, not a lookalike.
                     if ($this->sameCreature($name, $resolved)) {
                         $run = $wiki->import($resolved, EntryType::Creature, strict: true);

@@ -57,7 +57,7 @@ class RouteReports extends Command
             $dist = $r->total_tiles !== null ? " · {$r->total_tiles} tiles" : '';
             $when = $r->created_at?->diffForHumans();
 
-            $this->line("<fg=green>#{$r->id}</> <fg=white>{$from}</> → <fg=white>{$to}</>{$flag}{$dist}");
+            $this->line("<fg=green>#{$r->id}</> <fg=white>{$from}</> -> <fg=white>{$to}</>{$flag}{$dist}");
             $this->line("     <fg=gray>{$when} · status={$r->status} · lang={$r->lang} · ip={$r->ip}</>");
 
             if ($r->note) {
@@ -107,14 +107,14 @@ class RouteReports extends Command
             } elseif ($kind === 'boat') {
                 $line = $leg['lineName'] ?? 'boat';
                 $to = $leg['toName'] ?? '?';
-                $out[] = "boat: {$line} → {$to} (z" . ($leg['fromFloor'] ?? '?') . '→z' . ($leg['toFloor'] ?? '?') . ')';
+                $out[] = "boat: {$line} -> {$to} (z" . ($leg['fromFloor'] ?? '?') . '->z' . ($leg['toFloor'] ?? '?') . ')';
             } elseif ($kind === 'stairs') {
                 $tool = $leg['tool'] ?? null;
                 $dir = $leg['dir'] ?? '?';
                 $verb = $tool ? "{$tool}" : $dir;
                 $from = $leg['from'] ?? null;
                 $at = is_array($from) ? " at {$from['x']},{$from['y']}" : '';
-                $out[] = "{$verb}: z" . ($leg['floor'] ?? '?') . '→z' . ($leg['toFloor'] ?? '?') . $at;
+                $out[] = "{$verb}: z" . ($leg['floor'] ?? '?') . '->z' . ($leg['toFloor'] ?? '?') . $at;
             }
         }
 
