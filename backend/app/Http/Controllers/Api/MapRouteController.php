@@ -17,17 +17,18 @@ use Illuminate\Http\Request;
 class MapRouteController extends Controller
 {
     /**
-     * Published community routes, most popular first (by load count, then
-     * newest), for the map's route gallery.
+     * Published community routes, most popular first (by likes, then load count,
+     * then newest), for the map's route gallery.
      */
     public function index(): JsonResponse
     {
         $routes = MapRoute::query()
             ->where('status', 'published')
+            ->orderByDesc('likes')
             ->orderByDesc('views')
             ->latest()
             ->limit(200)
-            ->get(['id', 'name', 'description', 'waypoints', 'connect', 'author', 'views', 'created_at']);
+            ->get(['id', 'name', 'description', 'waypoints', 'connect', 'author', 'views', 'likes', 'created_at']);
 
         return response()->json(['data' => $routes]);
     }
@@ -40,6 +41,30 @@ class MapRouteController extends Controller
         }
 
         return response()->json(['views' => $route->views]);
+    }
+
+    /**
+     * Like a published route. Anonymous — the frontend tracks which routes a
+     * visitor has liked (localStorage) so it won't double-count; this just bumps
+     * the counter, the primary popularity signal for the gallery.
+     */
+    public function like(MapRoute $route): JsonResponse
+    {
+        if ($route->status === 'published') {
+            $route->increment('likes');
+        }
+
+        return response()->json(['likes' => $route->likes]);
+    }
+
+    /** Undo a like (visitor un-hearted a route). Never drops below zero. */
+    public function unlike(MapRoute $route): JsonResponse
+    {
+        if ($route->status === 'published' && $route->likes > 0) {
+            $route->decrement('likes');
+        }
+
+        return response()->json(['likes' => $route->likes]);
     }
 
     /**

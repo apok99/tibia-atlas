@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { api } from '../lib/api'
@@ -296,7 +296,7 @@ function NewsRail({
   )
 }
 
-// A published community route from GET /api/routes (ranked by load count).
+// A published community route from GET /api/routes (ranked by likes, then loads).
 type CommunityRoute = {
   id: number
   name: string
@@ -305,6 +305,7 @@ type CommunityRoute = {
   connect: 'auto' | 'straight'
   author: string | null
   views: number
+  likes: number
   created_at: string
 }
 
@@ -1373,6 +1374,7 @@ function FloorStepper({
 
 export function MapPage() {
   const { t, i18n } = useTranslation()
+  const queryClient = useQueryClient()
   const containerRef = useRef<HTMLDivElement>(null)
   // The immersive canvas root + the top-left control column, so the boss-watch
   // sidebar can start right below the column (avoids overlapping the search /
@@ -1612,8 +1614,26 @@ export function MapPage() {
   const [buildPlan, setBuildPlan] = useState<RoutePlan | null>(null)
   const [buildBusy, setBuildBusy] = useState(false)
   const [publishState, setPublishState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle')
-  // Community route gallery: published routes others submitted, ranked by loads.
+  // Community route gallery: published routes others submitted, ranked by likes.
   const [routesOpen, setRoutesOpen] = useState(false)
+  // Routes this visitor has "liked". No accounts, so a like is client-side: we
+  // remember the ids here (persisted) to show the heart filled and to avoid
+  // double-counting; the server just holds the aggregate counter.
+  const [likedRoutes, setLikedRoutes] = useState<Set<number>>(() => {
+    try {
+      const raw = localStorage.getItem('tibiaAtlas.likedRoutes')
+      return new Set(raw ? (JSON.parse(raw) as number[]) : [])
+    } catch {
+      return new Set()
+    }
+  })
+  useEffect(() => {
+    try {
+      localStorage.setItem('tibiaAtlas.likedRoutes', JSON.stringify([...likedRoutes]))
+    } catch {
+      /* private mode / storage disabled — non-fatal */
+    }
+  }, [likedRoutes])
   const buildGroupRef = useRef<L.LayerGroup | null>(null)
   const buildModeRef = useRef(buildMode)
   const buildPointsRef = useRef(buildPoints)
@@ -3417,6 +3437,37 @@ export function MapPage() {
     api.post(`/routes/${r.id}/view`).catch(() => {})
   }
 
+  // Toggle a "like" on a community route. Optimistic: flip the local liked set and
+  // adjust the cached count immediately, then POST like/unlike. On failure, roll
+  // both back so the UI never drifts from the server.
+  function toggleLike(r: CommunityRoute) {
+    const liked = likedRoutes.has(r.id)
+    const delta = liked ? -1 : 1
+    // Optimistically update the liked set…
+    setLikedRoutes((prev) => {
+      const next = new Set(prev)
+      if (liked) next.delete(r.id)
+      else next.add(r.id)
+      return next
+    })
+    // …and the count in the query cache.
+    const bump = (d: number) =>
+      queryClient.setQueryData<CommunityRoute[]>(['community-routes'], (old) =>
+        old?.map((x) => (x.id === r.id ? { ...x, likes: Math.max(0, x.likes + d) } : x)),
+      )
+    bump(delta)
+    api.post(`/routes/${r.id}/${liked ? 'unlike' : 'like'}`).catch(() => {
+      // Roll back on error.
+      setLikedRoutes((prev) => {
+        const next = new Set(prev)
+        if (liked) next.add(r.id)
+        else next.delete(r.id)
+        return next
+      })
+      bump(-delta)
+    })
+  }
+
   return (
     <div ref={rootRef} className="fixed inset-x-0 bottom-0 top-[var(--header-h,57px)] z-20 overflow-hidden bg-[#336699]">
       <Seo title={t('map.title')} description={t('map.intro')} path="/map" />
@@ -4494,35 +4545,57 @@ export function MapPage() {
             <p className="py-2 text-sm text-fg-mute">{t('map.routesLoading')}</p>
           ) : communityRoutes && communityRoutes.length > 0 ? (
             <div className="flex max-h-64 flex-col gap-1.5 overflow-y-auto">
-              {communityRoutes.map((r) => (
-                <button
+              {communityRoutes.map((r) => {
+                const liked = likedRoutes.has(r.id)
+                return (
+                <div
                   key={r.id}
-                  onClick={() => loadCommunityRoute(r)}
-                  className="flex items-center gap-3 rounded-lg border border-line bg-bg-2 px-3 py-2 text-left transition hover:border-accent hover:bg-accent/5"
+                  className="flex items-center gap-2 rounded-lg border border-line bg-bg-2 pr-1.5 transition hover:border-accent hover:bg-accent/5"
                 >
-                  <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-accent" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="6" cy="19" r="2" />
-                    <circle cx="18" cy="5" r="2" />
-                    <path d="M8 17.5 16 6.5" strokeDasharray="2 3" />
-                  </svg>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-bold text-fg">{r.name}</span>
-                    <span className="block truncate text-xs text-fg-mute">
-                      {t('map.buildPoints', { count: r.waypoints.length })}
-                      {' · '}
-                      {r.connect === 'auto' ? t('map.buildAuto') : t('map.buildStraight')}
-                      {r.author ? ` · ${r.author}` : ''}
-                    </span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-1 text-xs font-bold tabular-nums text-fg-dim">
-                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
-                      <circle cx="12" cy="12" r="3" />
+                  <button
+                    onClick={() => loadCommunityRoute(r)}
+                    className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2 text-left"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-accent" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="6" cy="19" r="2" />
+                      <circle cx="18" cy="5" r="2" />
+                      <path d="M8 17.5 16 6.5" strokeDasharray="2 3" />
                     </svg>
-                    {r.views}
-                  </span>
-                </button>
-              ))}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-bold text-fg">{r.name}</span>
+                      <span className="block truncate text-xs text-fg-mute">
+                        {t('map.buildPoints', { count: r.waypoints.length })}
+                        {' · '}
+                        {r.connect === 'auto' ? t('map.buildAuto') : t('map.buildStraight')}
+                        {r.author ? ` · ${r.author}` : ''}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1 text-xs font-bold tabular-nums text-fg-dim">
+                      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                      {r.views}
+                    </span>
+                  </button>
+                  {/* Like: a heart that fills red when this visitor has liked it. */}
+                  <button
+                    onClick={() => toggleLike(r)}
+                    title={liked ? t('map.routeUnlike') : t('map.routeLike')}
+                    aria-label={liked ? t('map.routeUnlike') : t('map.routeLike')}
+                    aria-pressed={liked}
+                    className={`flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-xs font-bold tabular-nums transition ${
+                      liked ? 'text-accent' : 'text-fg-mute hover:text-accent'
+                    }`}
+                  >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill={liked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1L12 21l7.7-7.6 1.1-1a5.5 5.5 0 0 0 0-7.8z" />
+                    </svg>
+                    {r.likes}
+                  </button>
+                </div>
+                )
+              })}
             </div>
           ) : (
             <p className="py-2 text-sm text-fg-mute">{t('map.routesEmpty')}</p>

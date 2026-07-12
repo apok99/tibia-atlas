@@ -724,6 +724,7 @@ class HuntFinder
         // deep-floor dungeons (the Secret Library labelled "Port Hope"). The
         // wide-radius nearest() is the last resort so no zone goes nameless.
         $name = $this->dominant($placeWeight, $totalCount)
+            ?? $this->plurality($placeWeight, $totalCount)
             ?? $this->questAreaName($this->dominant($areaWeight, $totalCount))
             ?? HuntZones::nearest($cluster['x'], $cluster['y'])
             ?? HuntZones::nearest($cluster['x'], $cluster['y'], 2000);
@@ -775,6 +776,25 @@ class HuntFinder
         $key = array_key_first($weights);
 
         return ($key !== null && $weights[$key] >= 0.6 * $total) ? (string) $key : null;
+    }
+
+    /**
+     * Plurality vote: when named places cover most of the cluster but no single
+     * one dominates — a dungeon whose bestiary entries name its sub-areas
+     * ("Court of Summer" / "Buried Cathedral" / "Haunted Temple" are one Dream
+     * Courts cluster) — the most common place is still far more truthful than
+     * the nearest overland landmark, which for deep floors is plain wrong
+     * (that cluster was labelled "Targuna").
+     */
+    private function plurality(array $weights, int $total): ?string
+    {
+        if ($weights === [] || array_sum($weights) < 0.6 * $total) {
+            return null;
+        }
+        arsort($weights);
+        $key = array_key_first($weights);
+
+        return $weights[$key] >= $total / 3 ? (string) $key : null;
     }
 
     /** "rotten_blood" → "Rotten Blood", "primal_ordeal_quest" → "Primal Ordeal". */

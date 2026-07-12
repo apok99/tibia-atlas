@@ -64,6 +64,12 @@ Route::middleware([SetLocale::class, 'throttle:public'])->group(function () {
     // Bump a route's load counter (feeds the "popular" ranking).
     Route::post('/routes/{route}/view', [MapRouteController::class, 'view'])
         ->middleware('throttle:interact');
+    // Like / unlike a route (anonymous; the client tracks its own likes). Likes
+    // are the gallery's primary popularity signal.
+    Route::post('/routes/{route}/like', [MapRouteController::class, 'like'])
+        ->middleware('throttle:interact');
+    Route::post('/routes/{route}/unlike', [MapRouteController::class, 'unlike'])
+        ->middleware('throttle:interact');
 
     // Route-bug reports: a visitor flags a "Cómo llegar" route that looks wrong.
     // Write-only from the public (IP-throttled); read back via artisan to fix.
