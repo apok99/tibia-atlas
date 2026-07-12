@@ -4611,7 +4611,7 @@ export function MapPage() {
         <div className="pointer-events-none fixed inset-0 z-[1002]">
         <div
           ref={panelRef}
-          className="pointer-events-auto absolute flex max-h-[min(82vh,640px)] w-[24rem] max-w-[92vw] flex-col overflow-hidden rounded-xl border border-line bg-bg-2/95 shadow-2xl backdrop-blur-md"
+          className="pointer-events-auto absolute flex max-h-[min(82vh,640px)] w-[24rem] max-w-[92vw] flex-col overflow-hidden rounded-xl border border-line bg-[#0a0b0e]/96 shadow-2xl backdrop-blur-md"
           style={
             panelPos
               ? { left: panelPos.x, top: panelPos.y }
