@@ -401,41 +401,24 @@ class HuntFinder
         $armorRelief = min(0.45, $set['armor'] / 400);
         $burstByEl = (array) (($meta['ot'] ?? [])['burst_by_element'] ?? []);
 
-        if ($burstByEl !== []) {
-            $incoming = 0.0;
-            foreach ($burstByEl as $el => $dmg) {
-                $resist = (int) ($set['resists'][$el] ?? 0);
-                $frac = in_array($el, self::ELEMENTS, true) ? max(0.0, 1 - $resist / 100) : 1.0;
-                if ($el === 'physical') {
-                    $frac *= (1 - $armorRelief);
-                }
-                $incoming += (float) $dmg * $frac;
+        $incoming = 0.0;
+        foreach ($burstByEl as $el => $dmg) {
+            $resist = (int) ($set['resists'][$el] ?? 0);
+            $frac = in_array($el, self::ELEMENTS, true) ? max(0.0, 1 - $resist / 100) : 1.0;
+            if ($el === 'physical') {
+                $frac *= (1 - $armorRelief);
             }
-        } else {
-            $hp = (int) ($meta['hitpoints'] ?? 0);
-            $estHit = 3.1 * ($hp > 0 ? $hp ** 0.71 : 0);
-            $maxDamage = max((float) ($meta['max_damage'] ?? 0), 0.7 * $estHit);
+            $incoming += (float) $dmg * $frac;
+        }
 
-            // Which elements can it hurt you with? Its attack abilities'
-            // elements, plus physical (nearly everything melees). Worst case:
-            // the element your set stops the least.
-            $elements = ['physical'];
-            foreach ((array) ($meta['abilities'] ?? []) as $ab) {
-                $el = strtolower((string) ($ab['element'] ?? ''));
-                if ($el !== '' && in_array($el, self::ELEMENTS, true)) {
-                    $elements[] = $el;
-                }
-            }
-            $worst = 0.0;
-            foreach (array_unique($elements) as $el) {
-                $resist = (int) ($set['resists'][$el] ?? 0);
-                $frac = max(0.0, 1 - $resist / 100);
-                if ($el === 'physical') {
-                    $frac *= (1 - $armorRelief);
-                }
-                $worst = max($worst, $frac);
-            }
-            $incoming = $maxDamage * $worst;
+        // A table with nothing beyond melee declared usually means the
+        // monster's real spells live in server scripts the lua doesn't list —
+        // Brinebrute Inferniarch has 32k HP and a declared "burst" of 600,
+        // which read as a safe hunt for a level 150. Don't trust it: take the
+        // HP-based estimate when it's larger. (Genuine pure-melee creatures
+        // are mostly low-HP trash, where the overshoot is harmless.)
+        if (count($burstByEl) <= 1) {
+            $incoming = max($incoming, $this->estimatedIncoming($meta, $set, $armorRelief));
         }
 
         $effective = self::BAD_TURN * $incoming;
@@ -444,6 +427,39 @@ class HuntFinder
         }
 
         return $effective / max(1, $ehp);
+    }
+
+    /**
+     * The wiki-era danger estimate: one big hit inferred from HP (~3.1·hp^0.71,
+     * fit to real creatures) or the recorded max_damage, through the element
+     * the set stops the least (its attack abilities' elements plus physical).
+     *
+     * @param  array{resists: array<string,int>, armor: int}  $set
+     */
+    private function estimatedIncoming(array $meta, array $set, float $armorRelief): float
+    {
+        $hp = (int) ($meta['hitpoints'] ?? 0);
+        $estHit = 3.1 * ($hp > 0 ? $hp ** 0.71 : 0);
+        $maxDamage = max((float) ($meta['max_damage'] ?? 0), 0.7 * $estHit);
+
+        $elements = ['physical'];
+        foreach ((array) ($meta['abilities'] ?? []) as $ab) {
+            $el = strtolower((string) ($ab['element'] ?? ''));
+            if ($el !== '' && in_array($el, self::ELEMENTS, true)) {
+                $elements[] = $el;
+            }
+        }
+        $worst = 0.0;
+        foreach (array_unique($elements) as $el) {
+            $resist = (int) ($set['resists'][$el] ?? 0);
+            $frac = max(0.0, 1 - $resist / 100);
+            if ($el === 'physical') {
+                $frac *= (1 - $armorRelief);
+            }
+            $worst = max($worst, $frac);
+        }
+
+        return $maxDamage * $worst;
     }
 
     /**

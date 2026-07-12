@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\HuntController;
 use App\Http\Controllers\Api\ItemController;
 use App\Http\Controllers\Api\KillStatsController;
 use App\Http\Controllers\Api\MapRouteController;
+use App\Http\Controllers\Api\RouteReportController;
 use App\Http\Controllers\Api\WordleController;
 use App\Http\Middleware\SetLocale;
 use Illuminate\Support\Facades\Route;
@@ -62,6 +63,11 @@ Route::middleware([SetLocale::class, 'throttle:public'])->group(function () {
         ->middleware('throttle:interact');
     // Bump a route's load counter (feeds the "popular" ranking).
     Route::post('/routes/{route}/view', [MapRouteController::class, 'view'])
+        ->middleware('throttle:interact');
+
+    // Route-bug reports: a visitor flags a "Cómo llegar" route that looks wrong.
+    // Write-only from the public (IP-throttled); read back via artisan to fix.
+    Route::post('/route-reports', [RouteReportController::class, 'store'])
         ->middleware('throttle:interact');
 
     // Random/trending must stay fresh; show carries the view-count side effect.

@@ -38,6 +38,9 @@ export const ICON_INNER: Record<string, string> = {
   newspaper: '<path d="M4 4h13a1 1 0 0 1 1 1v13a2 2 0 0 0 2 2H5a2 2 0 0 1-2-2V4M18 8h2a1 1 0 0 1 1 1v9M7 8h7M7 12h7M7 16h4"/>',
   compass: '<circle cx="12" cy="12" r="9.5"/><path d="m15.8 8.2-2.2 5.6-5.6 2.2 2.2-5.6z"/>',
   star: '<path d="m12 3.2 2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>',
+  // Route-report control: flag it, confirm sent
+  flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V4s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
 }
 
 export type IconName = keyof typeof ICON_INNER

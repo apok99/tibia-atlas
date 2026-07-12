@@ -1372,7 +1372,7 @@ function FloorStepper({
 }
 
 export function MapPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
   // The immersive canvas root + the top-left control column, so the boss-watch
   // sidebar can start right below the column (avoids overlapping the search /
@@ -1455,7 +1455,7 @@ export function MapPage() {
   const [showPoi, setShowPoi] = useState(false) // imported minimap markers layer
   const [showHouses, setShowHouses] = useState(false) // rentable houses layer
   const [houseStatusFilter, setHouseStatusFilter] = useState<'all' | 'available' | 'rented'>('all') // rent-status filter
-  const [houseKind, setHouseKind] = useState<'all' | 'house' | 'guild'>('all') // guildhall filter
+  const [houseKind] = useState<'all' | 'house' | 'guild'>('all') // kind filter removed from UI — always show both
   const [panelPos, setPanelPos] = useState<{ x: number; y: number } | null>(null) // draggable window position
   const [houseSearch, setHouseSearch] = useState('') // house-list name filter
   const [housePanelOpen, setHousePanelOpen] = useState(false) // "available houses" + alerts panel
@@ -1587,6 +1587,11 @@ export function MapPage() {
   const [routePlan, setRoutePlan] = useState<RoutePlan | null>(null)
   const [routeBusy, setRouteBusy] = useState(false)
   const [routeMsg, setRouteMsg] = useState<string | null>(null)
+  // "Reportar" flow for a wrong route: idle → editing (note box open) → sending →
+  // done/error. The submitted report (endpoints + itinerary + note) lands in the
+  // DB for a later routing fix pass (read via `php artisan tibia:route-reports`).
+  const [reportState, setReportState] = useState<'idle' | 'editing' | 'sending' | 'done' | 'error'>('idle')
+  const [reportNote, setReportNote] = useState('')
   const routeGroupRef = useRef<L.LayerGroup | null>(null)
   const routeModeRef = useRef(routeMode)
   const routeStartRef = useRef(routeStart)
@@ -1855,6 +1860,55 @@ export function MapPage() {
     setRouteEnd(null)
     setRoutePlan(null)
     setRouteMsg(null)
+    setReportState('idle')
+    setReportNote('')
+  }
+
+  // Report the current route as wrong. Sends the two endpoints, an optional note
+  // ("what looks off"), a trimmed snapshot of the computed itinerary and the map
+  // URL hash (so the exact route replays) to the DB for a later routing fix.
+  async function submitRouteReport() {
+    const s = routeStartRef.current
+    const e = routeEndRef.current
+    if (!s || !e || reportState === 'sending') return
+    setReportState('sending')
+    try {
+      // Trim walk legs to their endpoints so the payload stays small; boat/stairs
+      // legs are already compact. Keeps the itinerary shape for triage.
+      const plan = routePlan
+        ? {
+            totalTiles: routePlan.totalTiles,
+            partial: routePlan.partial,
+            legs: routePlan.legs.map((leg) =>
+              leg.kind === 'walk'
+                ? {
+                    kind: 'walk',
+                    floor: leg.floor,
+                    tiles: leg.tiles,
+                    path: leg.path.length > 2 ? [leg.path[0], leg.path[leg.path.length - 1]] : leg.path,
+                  }
+                : leg,
+            ),
+          }
+        : null
+      await api.post('/route-reports', {
+        from: [Math.round(s.x), Math.round(s.y), s.floor],
+        to: [Math.round(e.x), Math.round(e.y), e.floor],
+        from_label: s.label ?? null,
+        to_label: e.label ?? null,
+        note: reportNote.trim() || null,
+        plan,
+        total_tiles: routePlan?.totalTiles ?? null,
+        partial: !!routePlan?.partial,
+        hash: window.location.hash.replace(/^#/, '') || null,
+        view_floor: floorRef.current,
+        lang: i18n.language?.slice(0, 2) ?? null,
+      })
+      setReportState('done')
+      setReportNote('')
+    } catch {
+      setReportState('error')
+    }
   }
 
   // --- manual route builder actions ---
@@ -4484,7 +4538,7 @@ export function MapPage() {
         <div className="pointer-events-none fixed inset-0 z-[1002]">
         <div
           ref={panelRef}
-          className="pointer-events-auto absolute flex max-h-[min(70vh,440px)] w-[19rem] max-w-[92vw] flex-col overflow-hidden rounded-xl border border-line bg-bg-2/95 shadow-2xl backdrop-blur-md"
+          className="pointer-events-auto absolute flex max-h-[min(82vh,640px)] w-[24rem] max-w-[92vw] flex-col overflow-hidden rounded-xl border border-line bg-bg-2/95 shadow-2xl backdrop-blur-md"
           style={
             panelPos
               ? { left: panelPos.x, top: panelPos.y }
@@ -4502,7 +4556,7 @@ export function MapPage() {
                 <circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" />
                 <circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" />
               </svg>
-              <span className="truncate text-[10px] font-bold uppercase tracking-widest text-[#b3873f]">
+              <span className="truncate text-xs font-bold uppercase tracking-widest text-[#b3873f]">
                 {t('map.houseBrowseTitle')} · {world}
               </span>
             </div>
@@ -4517,29 +4571,9 @@ export function MapPage() {
             </button>
           </div>
 
-          {/* Filters — type (house/guildhall) + rent status. Both drive this list
-              AND the map pins. */}
+          {/* Filters — rent status + name search. Both drive this list AND the
+              map pins. */}
           <div className="flex flex-col gap-1.5 border-b border-line/70 px-3 py-2.5">
-            {/* Kind — segmented control (house / guildhall) */}
-            <div className="flex gap-0.5 rounded-lg border border-line-2/60 bg-bg/40 p-0.5">
-              {(['all', 'house', 'guild'] as const).map((k) => {
-                const on = houseKind === k
-                return (
-                  <button
-                    key={k}
-                    onClick={() => setHouseKind(k)}
-                    aria-pressed={on}
-                    className={`flex-1 rounded-md px-1 py-1 text-[11px] font-semibold transition ${
-                      on
-                        ? 'bg-[#b3873f]/20 text-[#b3873f] shadow-[inset_0_0_0_1px_#b3873f66]'
-                        : 'text-fg-dim hover:text-fg'
-                    }`}
-                  >
-                    {k === 'all' ? t('map.houseKindAll') : k === 'house' ? t('map.houseKindHouse') : t('map.houseKindGuild')}
-                  </button>
-                )
-              })}
-            </div>
             {/* Rent status — segmented control with colour dot + live count */}
             <div className="flex gap-0.5 rounded-lg border border-line-2/60 bg-bg/40 p-0.5">
               {(['all', 'available', 'rented'] as const).map((s) => {
@@ -4551,7 +4585,7 @@ export function MapPage() {
                     key={s}
                     onClick={() => setHouseStatusFilter(s)}
                     aria-pressed={on}
-                    className={`flex-1 rounded-md px-1 py-1 text-[11px] font-semibold transition ${
+                    className={`flex-1 rounded-md px-1 py-1.5 text-xs font-semibold transition ${
                       on ? '' : 'text-fg-dim hover:text-fg'
                     }`}
                     style={on ? { background: `${col}22`, color: col, boxShadow: `inset 0 0 0 1px ${col}66` } : undefined}
@@ -4563,7 +4597,7 @@ export function MapPage() {
                       <span className="truncate">
                         {s === 'all' ? t('map.houseStatusAll') : s === 'available' ? t('map.houseFree') : t('map.houseRented')}
                       </span>
-                      <span className={`shrink-0 tabular-nums ${on ? 'opacity-80' : 'text-fg-mute'}`}>{n}</span>
+                      <span className={`shrink-0 tabular-nums ${on ? 'opacity-80' : 'text-fg-dim'}`}>{n}</span>
                     </span>
                   </button>
                 )
@@ -4580,7 +4614,7 @@ export function MapPage() {
                 onChange={(e) => setHouseSearch(e.target.value)}
                 placeholder={t('map.houseSearchPlaceholder')}
                 aria-label={t('map.houseSearchPlaceholder')}
-                className="w-full rounded-md border border-line-2 bg-bg-2 py-1 pl-7 pr-6 text-[11px] text-fg placeholder:text-fg-mute focus:border-accent focus:outline-none"
+                className="w-full rounded-md border border-line-2 bg-bg-2 py-1.5 pl-7 pr-6 text-xs text-fg placeholder:text-fg-dim focus:border-accent focus:outline-none"
               />
               {houseSearch && (
                 <button
@@ -4599,20 +4633,20 @@ export function MapPage() {
           {/* Server housing spend — total monthly rent paid across all rented
               houses on this world (respects the type filter). */}
           <div className="flex items-center justify-between gap-2 border-b border-line/70 bg-bg/40 px-3 py-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-mute">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-fg-dim">
               {t('map.houseWorldRent')}
             </span>
-            <span className="flex items-center gap-1 text-[12px] font-bold text-[#e0b64d]" title={`${worldRentTotal.gold.toLocaleString()} gp · ${worldRentTotal.count}`}>
+            <span className="flex items-center gap-1 text-[13px] font-bold text-[#e0b64d]" title={`${worldRentTotal.gold.toLocaleString()} gp · ${worldRentTotal.count}`}>
               <img src="/sprites/crystal-coin.webp" alt="" className="h-3.5 w-3.5" style={{ imageRendering: 'pixelated' }} />
               {fmtGold(worldRentTotal.gold)}
-              <span className="text-[10px] font-medium text-fg-mute">{t('map.houseGoldMonth')}</span>
+              <span className="text-[11px] font-medium text-fg-dim">{t('map.houseGoldMonth')}</span>
             </span>
           </div>
 
           <div className="flex-1 overflow-y-auto px-3 py-2.5">
             {/* Alerts controls */}
             <div className="mb-3 rounded-lg border border-line/70 bg-bg/40 p-2.5">
-              <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-fg-dim">
+              <div className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-fg">
                 <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" />
                 </svg>
@@ -4621,13 +4655,13 @@ export function MapPage() {
 
               {/* Browser-alert permission */}
               {notifPerm === 'granted' ? (
-                <p className="mb-2 text-[11px] font-semibold text-[#2f9e5a]">{t('map.houseNotifOn')}</p>
+                <p className="mb-2 text-xs font-semibold text-[#2f9e5a]">{t('map.houseNotifOn')}</p>
               ) : notifPerm === 'denied' ? (
-                <p className="mb-2 text-[11px] text-fg-mute">{t('map.houseNotifBlocked')}</p>
+                <p className="mb-2 text-xs text-fg-dim">{t('map.houseNotifBlocked')}</p>
               ) : (
                 <button
                   onClick={async () => setNotifPerm(await requestNotifyPermission())}
-                  className="mb-2 rounded-md border border-accent/50 bg-accent/10 px-2 py-1 text-[11px] font-bold text-accent transition hover:bg-accent/20"
+                  className="mb-2 rounded-md border border-accent/50 bg-accent/10 px-2 py-1 text-xs font-bold text-accent transition hover:bg-accent/20"
                 >
                   {t('map.houseNotifEnable')}
                 </button>
@@ -4637,7 +4671,7 @@ export function MapPage() {
               <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   onClick={() => applyWatches(toggleWorldWatch(watches, world))}
-                  className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition ${
+                  className={`rounded-md border px-2 py-1 text-xs font-semibold transition ${
                     isWorldWatched(watches, world)
                       ? 'border-[#b3873f] bg-[#b3873f]/15 text-[#b3873f]'
                       : 'border-line-2 text-fg-dim hover:border-line hover:text-fg'
@@ -4650,7 +4684,7 @@ export function MapPage() {
                     <select
                       value={townSel}
                       onChange={(e) => setTownSel(e.target.value)}
-                      className="rounded-md border border-line-2 bg-bg-2 px-1.5 py-1 text-[11px] text-fg"
+                      className="rounded-md border border-line-2 bg-bg-2 px-1.5 py-1 text-xs text-fg"
                     >
                       <option value="">{t('map.houseWatchTown', { town: '…' })}</option>
                       {houseTowns.map((tn) => (
@@ -4662,7 +4696,7 @@ export function MapPage() {
                     {townSel && (
                       <button
                         onClick={() => applyWatches(toggleTownWatch(watches, world, townSel))}
-                        className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition ${
+                        className={`rounded-md border px-2 py-1 text-xs font-semibold transition ${
                           isTownWatched(watches, world, townSel)
                             ? 'border-[#b3873f] bg-[#b3873f]/15 text-[#b3873f]'
                             : 'border-line-2 text-fg-dim hover:border-line hover:text-fg'
@@ -4684,7 +4718,7 @@ export function MapPage() {
                       <button
                         key={w.town}
                         onClick={() => applyWatches(toggleTownWatch(watches, world, w.town))}
-                        className="inline-flex items-center gap-1 rounded-full border border-[#b3873f]/50 bg-[#b3873f]/10 px-2 py-0.5 text-[10px] font-semibold text-[#b3873f]"
+                        className="inline-flex items-center gap-1 rounded-full border border-[#b3873f]/50 bg-[#b3873f]/10 px-2 py-0.5 text-[11px] font-semibold text-[#b3873f]"
                         title={t('map.houseUnwatch')}
                       >
                         {w.town}
@@ -4701,13 +4735,13 @@ export function MapPage() {
                     const st = houseStatus?.houses[w.id]?.status
                     const full = housesRef.current.find((h) => h.id === w.id)
                     return (
-                      <div key={w.id} className="flex items-center gap-2 text-[11px]">
+                      <div key={w.id} className="flex items-center gap-2 text-xs">
                         <button
                           onClick={() => full && flyToHouse(full)}
                           className="min-w-0 flex-1 truncate text-left font-semibold text-fg transition hover:text-accent"
                         >
                           {w.name}
-                          {w.town ? <span className="font-normal text-fg-mute"> · {w.town}</span> : null}
+                          {w.town ? <span className="font-normal text-fg-dim"> · {w.town}</span> : null}
                         </button>
                         {st && (
                           <span
@@ -4734,17 +4768,17 @@ export function MapPage() {
 
               {watchedHouses.length === 0 &&
                 !watches.some((w) => (w.kind === 'town' || w.kind === 'world') && w.world === world) && (
-                  <p className="mt-1.5 text-[11px] leading-snug text-fg-mute">{t('map.houseWatchlistEmpty')}</p>
+                  <p className="mt-1.5 text-xs leading-snug text-fg-dim">{t('map.houseWatchlistEmpty')}</p>
                 )}
 
-              <p className="mt-2 text-[10px] leading-snug text-fg-mute/80">{t('map.houseNotifNote')}</p>
+              <p className="mt-2 text-[11px] leading-snug text-fg-dim">{t('map.houseNotifNote')}</p>
             </div>
 
             {/* Houses list (filtered) */}
             {!houseStatus ? (
-              <p className="py-2 text-sm text-fg-mute">{t('map.houseAvailLoading')}</p>
+              <p className="py-2 text-sm text-fg-dim">{t('map.houseAvailLoading')}</p>
             ) : panelHouses.length === 0 ? (
-              <p className="py-2 text-sm text-fg-mute">{t('map.houseListNone', { world })}</p>
+              <p className="py-2 text-sm text-fg-dim">{t('map.houseListNone', { world })}</p>
             ) : (
               <div className="flex flex-col gap-1">
                 {panelHouses.slice(0, HOUSE_LIST_CAP).map(({ h, status, bid }) => {
@@ -4762,14 +4796,14 @@ export function MapPage() {
                         title={t('map.houseFlyTo')}
                       >
                         <span className="flex items-center gap-1.5">
-                          <span className="truncate text-sm font-bold text-fg">{h.name}</span>
+                          <span className="truncate text-[15px] font-bold text-fg">{h.name}</span>
                           {freedIds.has(h.id) && (
                             <span className="shrink-0 rounded-full bg-[#2f9e5a]/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#2f9e5a]">
                               {t('map.houseJustFreed')}
                             </span>
                           )}
                         </span>
-                        <span className="block truncate text-[11px] text-fg-mute">
+                        <span className="block truncate text-xs text-fg-dim">
                           {h.town ? `${h.town} · ` : ''}
                           <span style={{ color: stCol }} className="font-semibold">
                             {stLabel}
@@ -4797,7 +4831,7 @@ export function MapPage() {
                   )
                 })}
                 {panelHouses.length > HOUSE_LIST_CAP && (
-                  <p className="pt-1 text-center text-[10px] text-fg-mute">
+                  <p className="pt-1 text-center text-[11px] text-fg-dim">
                     {t('map.houseListCap', { shown: HOUSE_LIST_CAP, total: panelHouses.length })}
                   </p>
                 )}
@@ -4805,7 +4839,7 @@ export function MapPage() {
             )}
 
             {houseStatus?.synced_at && (
-              <p className="mt-2 text-right text-[10px] text-fg-mute/70">
+              <p className="mt-2 text-right text-[11px] text-fg-dim/80">
                 {t('map.houseSynced', { when: new Date(houseStatus.synced_at).toLocaleString() })}
               </p>
             )}
@@ -5078,14 +5112,66 @@ export function MapPage() {
           ) : null}
           {routeMsg && <span className="font-semibold text-accent">{routeMsg}</span>}
 
-          {(routeStart || routeEnd || routePlan) && (
-            <button
-              onClick={resetRoute}
-              className="ml-auto text-sm font-bold uppercase tracking-wider text-fg-mute transition hover:text-accent"
-            >
-              ✕ {t('map.routeClear')}
-            </button>
-          )}
+          <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-2">
+            {/* Report a wrong route: available once both endpoints are set (a bad
+                route, a partial trail or a "no route" are all worth flagging). The
+                submission lands in the DB for a routing fix pass. */}
+            {routeStart && routeEnd && (
+              reportState === 'done' ? (
+                <span className="flex items-center gap-1.5 text-sm font-semibold text-canon">
+                  <Icon name="check" size={15} />
+                  {t('map.routeReportThanks')}
+                </span>
+              ) : reportState === 'editing' || reportState === 'sending' ? (
+                <span className="flex items-center gap-1.5">
+                  <input
+                    value={reportNote}
+                    onChange={(ev) => setReportNote(ev.target.value)}
+                    onKeyDown={(ev) => {
+                      if (ev.key === 'Enter') submitRouteReport()
+                      else if (ev.key === 'Escape') setReportState('idle')
+                    }}
+                    autoFocus
+                    maxLength={2000}
+                    placeholder={t('map.routeReportPlaceholder')}
+                    className="h-8 w-52 rounded-lg border border-line bg-bg-2 px-2.5 text-sm text-fg outline-none transition placeholder:text-fg-mute hover:border-line-2 focus:border-accent"
+                  />
+                  <button
+                    onClick={submitRouteReport}
+                    disabled={reportState === 'sending'}
+                    className="rounded-lg border border-accent bg-accent px-2.5 py-1.5 text-sm font-bold text-white transition hover:brightness-110 disabled:opacity-60"
+                  >
+                    {reportState === 'sending' ? t('map.routeReportSending') : t('map.routeReportSend')}
+                  </button>
+                  <button
+                    onClick={() => setReportState('idle')}
+                    className="text-sm font-bold text-fg-mute transition hover:text-fg"
+                    aria-label={t('map.routeReportCancel')}
+                  >
+                    ✕
+                  </button>
+                </span>
+              ) : (
+                <button
+                  onClick={() => setReportState('editing')}
+                  title={t('map.routeReportHint')}
+                  className="flex items-center gap-1.5 text-sm font-semibold text-fg-mute transition hover:text-accent"
+                >
+                  <Icon name="flag" size={15} />
+                  {reportState === 'error' ? t('map.routeReportError') : t('map.routeReport')}
+                </button>
+              )
+            )}
+
+            {(routeStart || routeEnd || routePlan) && (
+              <button
+                onClick={resetRoute}
+                className="text-sm font-bold uppercase tracking-wider text-fg-mute transition hover:text-accent"
+              >
+                ✕ {t('map.routeClear')}
+              </button>
+            )}
+          </div>
         </div>
       )}
 
