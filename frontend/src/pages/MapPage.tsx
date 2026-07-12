@@ -4619,7 +4619,7 @@ export function MapPage() {
         <div className="pointer-events-none fixed inset-0 z-[1002]">
         <div
           ref={panelRef}
-          className="pointer-events-auto absolute flex max-h-[min(82vh,640px)] w-[24rem] max-w-[92vw] flex-col overflow-hidden rounded-xl border border-line bg-[#0a0b0e]/96 shadow-2xl backdrop-blur-md"
+          className="pointer-events-auto absolute flex max-h-[min(82vh,640px)] w-[24rem] max-w-[92vw] flex-col overflow-hidden rounded-xl border border-line bg-bg-2/95 shadow-2xl backdrop-blur-md"
           style={
             panelPos
               ? { left: panelPos.x, top: panelPos.y }
@@ -4733,7 +4733,7 @@ export function MapPage() {
             <span className="text-[11px] font-semibold uppercase tracking-wider text-fg-dim">
               {t('map.houseWorldRent')}
             </span>
-            <span className="flex items-center gap-1 text-[13px] font-bold text-[#e0b64d]" title={`${worldRentTotal.gold.toLocaleString()} gp · ${worldRentTotal.count}`}>
+            <span className="flex items-center gap-1 text-[13px] font-bold text-fg" title={`${worldRentTotal.gold.toLocaleString()} gp · ${worldRentTotal.count}`}>
               <img src="/sprites/crystal-coin.webp" alt="" className="h-3.5 w-3.5" style={{ imageRendering: 'pixelated' }} />
               {fmtGold(worldRentTotal.gold)}
               <span className="text-[11px] font-medium text-fg-dim">{t('map.houseGoldMonth')}</span>
