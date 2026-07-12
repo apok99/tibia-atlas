@@ -1460,6 +1460,8 @@ export function MapPage() {
   const [houseKind] = useState<'all' | 'house' | 'guild'>('all') // kind filter removed from UI — always show both
   const [panelPos, setPanelPos] = useState<{ x: number; y: number } | null>(null) // draggable window position
   const [houseSearch, setHouseSearch] = useState('') // house-list name filter
+  const [houseTownFilter, setHouseTownFilter] = useState('') // house-list city filter
+  const [alertsOpen, setAlertsOpen] = useState(false) // "my alerts" watchlist — collapsed submenu by default
   const [housePanelOpen, setHousePanelOpen] = useState(false) // "available houses" + alerts panel
   const [watches, setWatches] = useState<Watch[]>(() => loadWatches()) // client-side alert list
   const [notifPerm, setNotifPerm] = useState<NotificationPermission>(() => notifyPermission())
@@ -2966,12 +2968,13 @@ export function MapPage() {
       if (!s) continue
       if (houseStatusFilter === 'available' && !(s === 'free' || s === 'auctioned')) continue
       if (houseStatusFilter === 'rented' && s !== 'rented') continue
+      if (houseTownFilter && (h.town ?? '') !== houseTownFilter) continue
       if (q && !h.name.toLowerCase().includes(q) && !(h.town ?? '').toLowerCase().includes(q)) continue
       out.push({ h, status: s, bid: live[h.id]?.bid })
     }
     out.sort((a, b) => (a.h.town ?? '').localeCompare(b.h.town ?? '') || a.h.rent - b.h.rent)
     return out
-  }, [houseStatus, housesData, houseKind, houseStatusFilter, houseSearch])
+  }, [houseStatus, housesData, houseKind, houseStatusFilter, houseSearch, houseTownFilter])
 
   // Count of currently-available houses (kind-filtered) — drives the green badge
   // on the panel toggle, independent of the status filter.
@@ -3045,6 +3048,11 @@ export function MapPage() {
       ),
     [watches, world],
   )
+  // Active alerts for this world (watched houses + whole-town/world watches) —
+  // shown as a badge on the collapsed "my alerts" submenu.
+  const watchCount =
+    watchedHouses.length +
+    watches.filter((w) => (w.kind === 'town' || w.kind === 'world') && w.world === world).length
 
   // Auto-dismiss the "a house opened up" toast after a while.
   useEffect(() => {
@@ -4701,6 +4709,22 @@ export function MapPage() {
                 </button>
               )}
             </div>
+            {/* City filter */}
+            {houseTowns.length > 1 && (
+              <select
+                value={houseTownFilter}
+                onChange={(e) => setHouseTownFilter(e.target.value)}
+                aria-label={t('map.houseCityAll')}
+                className="w-full rounded-md border border-line-2 bg-bg-2 px-2 py-1.5 text-xs text-fg focus:border-accent focus:outline-none"
+              >
+                <option value="">{t('map.houseCityAll')}</option>
+                {houseTowns.map((tn) => (
+                  <option key={tn} value={tn}>
+                    {tn}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* Server housing spend — total monthly rent paid across all rented
@@ -4719,13 +4743,27 @@ export function MapPage() {
           <div className="flex-1 overflow-y-auto px-3 py-2.5">
             {/* Alerts controls */}
             <div className="mb-3 rounded-lg border border-line/70 bg-bg/40 p-2.5">
-              <div className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-fg">
-                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <button
+                onClick={() => setAlertsOpen((v) => !v)}
+                aria-expanded={alertsOpen}
+                className="flex w-full items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-fg"
+              >
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" />
                 </svg>
-                {t('map.houseWatchlist')}
-              </div>
+                <span className="truncate">{t('map.houseWatchlist')}</span>
+                {watchCount > 0 && (
+                  <span className="shrink-0 rounded-full bg-[#b3873f]/20 px-1.5 py-0.5 text-[10px] font-bold leading-none text-[#b3873f]">
+                    {watchCount}
+                  </span>
+                )}
+                <svg viewBox="0 0 24 24" className={`ml-auto h-4 w-4 shrink-0 text-fg-mute transition-transform ${alertsOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
 
+              {alertsOpen && (
+              <div className="mt-2">
               {/* Browser-alert permission */}
               {notifPerm === 'granted' ? (
                 <p className="mb-2 text-xs font-semibold text-[#2f9e5a]">{t('map.houseNotifOn')}</p>
@@ -4845,6 +4883,8 @@ export function MapPage() {
                 )}
 
               <p className="mt-2 text-[11px] leading-snug text-fg-dim">{t('map.houseNotifNote')}</p>
+              </div>
+              )}
             </div>
 
             {/* Houses list (filtered) */}
