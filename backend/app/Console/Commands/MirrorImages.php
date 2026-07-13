@@ -196,6 +196,12 @@ class MirrorImages extends Command
      */
     private function fetch(string $url): ?array
     {
+        // Fandom 403-blocks the Special:FilePath redirect endpoint for datacenter
+        // IPs, while api.php and the static.wikia.nocookie.net CDN stay open.
+        // Resolve FilePath links to their real CDN URL via the API first, so the
+        // actual download hits the reachable host.
+        $url = $this->resolveFandomUrl($url) ?? $url;
+
         $tmp = tempnam(sys_get_temp_dir(), 'sprite_');
         if ($tmp === false) {
             return null;
@@ -232,6 +238,43 @@ class MirrorImages extends Command
         } finally {
             @unlink($tmp);
         }
+    }
+
+    /**
+     * Resolve a fandom `Special:FilePath/<File>` link to its direct
+     * static.wikia.nocookie.net URL via the MediaWiki imageinfo API, or null
+     * when the URL isn't a FilePath link / the lookup fails (caller keeps the
+     * original). Uses the same system-curl transport as the downloads.
+     */
+    private function resolveFandomUrl(string $url): ?string
+    {
+        if (! preg_match('#^https?://tibia\.fandom\.com/wiki/Special:FilePath/(.+)$#i', $url, $m)) {
+            return null;
+        }
+        $file = rawurldecode($m[1]);
+
+        try {
+            $api = 'https://tibia.fandom.com/api.php?action=query&format=json&prop=imageinfo&iiprop=url&titles='
+                .rawurlencode('File:'.$file);
+            $res = Process::timeout(25)->run([
+                'curl', '-sS', '--fail', '--max-time', '20',
+                '-A', 'TibiaAtlas-ImageMirror', $api,
+            ]);
+            if (! $res->successful()) {
+                return null;
+            }
+            $pages = json_decode($res->output(), true)['query']['pages'] ?? [];
+            foreach ($pages as $page) {
+                $direct = $page['imageinfo'][0]['url'] ?? null;
+                if (is_string($direct) && $direct !== '') {
+                    return $direct;
+                }
+            }
+        } catch (\Throwable) {
+            // fall through — caller downloads the original URL
+        }
+
+        return null;
     }
 
     /** Record that this origin URL couldn't be fetched (skipped by default next run). */
