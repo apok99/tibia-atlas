@@ -2454,11 +2454,12 @@ export function MapPage() {
         img.src = `/minimap/Minimap_Color_${gx}_${gy}_${f.floor}.png`
         return img
       },
-      // Kill the hairline white seams Leaflet leaves between scaled tiles:
-      // at a fractional zoom, adjacent tile edges land on sub-pixel positions
-      // and the (white) page background peeks through the gap. Drawing each
-      // tile 1px larger makes neighbours overlap instead of leaving a gap.
-      // Must live in _initTile — Leaflet overrides any size set in createTile.
+      // Kill the tile-seam grid: the tile pane sits at a sub-pixel offset, so
+      // with image-rendering:pixelated a 1px gap opens at every tile boundary
+      // and the #336699 container background shows through as a blue grid.
+      // Drawing each tile 1px larger makes neighbours overlap instead of
+      // leaving a gap. Must live in _initTile — Leaflet overrides any size set
+      // in createTile.
       _initTile(tile: HTMLElement) {
         ;(L.GridLayer.prototype as unknown as { _initTile(t: HTMLElement): void })._initTile.call(this, tile)
         const size = (this as L.GridLayer).getTileSize()
