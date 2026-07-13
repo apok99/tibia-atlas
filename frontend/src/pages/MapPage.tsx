@@ -40,6 +40,7 @@ import {
   saveCharProfile,
 } from '../lib/charProfile'
 import { useItems, useSetStats } from '../hooks/useEntries'
+import { SKILL_LABELS, signed } from '../components/items/itemStats'
 import { useGlossary } from '../hooks/useGlossary'
 import { useBosses, useKillWorlds, type BossRow } from '../hooks/useKillStats'
 import { useHunts, type HuntZone } from '../hooks/useHunts'
@@ -383,6 +384,26 @@ function gearHint(it: EntryListItem): string {
   const res = Object.entries(s.resists ?? {}).filter(([, p]) => p !== 0)
   if (res.length) parts.push(res.map(([el, p]) => `${el} ${p > 0 ? '+' : ''}${p}%`).join(' '))
   return parts.slice(0, 3).join(' · ')
+}
+
+// One labelled horizontal bar of the set-stats readout (resists, skills).
+// `pct` is the fill 0-100 (pre-scaled by the caller); a minimum sliver keeps
+// tiny values visible. Negative stats arrive with a red `color`.
+function StatBar({ label, value, pct, color }: { label: string; value: string; pct: number; color: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-24 shrink-0 truncate text-xs font-semibold text-fg-dim">{label}</span>
+      <span className="relative h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-line/50">
+        <span
+          className="absolute inset-y-0 left-0 rounded-full"
+          style={{ width: `${Math.min(100, Math.max(5, pct))}%`, background: color }}
+        />
+      </span>
+      <span className="w-12 shrink-0 text-right text-xs font-bold" style={{ color }}>
+        {value}
+      </span>
+    </div>
+  )
 }
 
 // A zone/creature danger number (fraction of your effective HP a big hit takes)
@@ -1642,6 +1663,11 @@ export function MapPage() {
   // Derived stats of the worn set — same math the Hunt Finder scores with.
   const setStatsQuery = useSetStats(gearIdList, charVoc)
   const setStats = setStatsQuery.data ?? null
+  // Scale for the skill-bonus bars: relative to the biggest bonus worn, with a
+  // floor of 8 so a lone +2 doesn't paint a full bar.
+  const skillMax = setStats
+    ? Math.max(8, ...Object.values(setStats.bonuses).map((v) => Math.abs(v)))
+    : 8
   const huntLevelNum =
     huntLevel.trim() !== '' ? Math.max(1, parseInt(huntLevel, 10) || 0) : (character?.level ?? null)
   const effVoc = huntVoc.trim() !== '' ? huntVoc : charVoc
@@ -2427,6 +2453,17 @@ export function MapPage() {
         }
         img.src = `/minimap/Minimap_Color_${gx}_${gy}_${f.floor}.png`
         return img
+      },
+      // Kill the hairline white seams Leaflet leaves between scaled tiles:
+      // at a fractional zoom, adjacent tile edges land on sub-pixel positions
+      // and the (white) page background peeks through the gap. Drawing each
+      // tile 1px larger makes neighbours overlap instead of leaving a gap.
+      // Must live in _initTile — Leaflet overrides any size set in createTile.
+      _initTile(tile: HTMLElement) {
+        ;(L.GridLayer.prototype as unknown as { _initTile(t: HTMLElement): void })._initTile.call(this, tile)
+        const size = (this as L.GridLayer).getTileSize()
+        tile.style.width = `${size.x + 1}px`
+        tile.style.height = `${size.y + 1}px`
       },
     })
 
@@ -3586,11 +3623,13 @@ export function MapPage() {
       return [...pinnedList, ...rest]
     }
 
-    // A specific spawntype tab: the whole category (hottest first, then A–Z),
-    // pins on top and exempt from the cap.
+    // A specific spawntype tab: the WHOLE category (hottest first, then A–Z), so
+    // browsing the tab surfaces every boss in it — no cap, the rail scrolls. A cap
+    // here would hide alphabetically-late rare spawns like Midnight Panther, which
+    // carry no heat and sort below the heated bosses.
     const sorted = [...pool].sort(byHeatThenName)
     const pinned = sorted.filter((b) => pinnedBosses.has(b.slug))
-    const rest = sorted.filter((b) => !pinnedBosses.has(b.slug)).slice(0, 40)
+    const rest = sorted.filter((b) => !pinnedBosses.has(b.slug))
     return [...pinned, ...rest]
   }, [allRailBosses, bossQuery, bossType, pinnedBosses])
 
@@ -4665,55 +4704,78 @@ export function MapPage() {
                   <p className="mt-2 text-xs text-fg-dim">{t('map.charGearHint')}</p>
                 ) : setStats ? (
                   <div className="mt-2 border-t border-line pt-2">
-                    <div className="mb-1 text-xs font-bold uppercase tracking-widest text-fg-dim">
+                    <div className="mb-1.5 text-xs font-bold uppercase tracking-widest text-fg-dim">
                       {t('map.charSetStats')}
                     </div>
-                    <div className="flex flex-wrap items-center gap-1">
-                      <span className="inline-flex items-center rounded border border-line-2 px-1.5 py-0.5 text-xs font-semibold text-fg">
-                        {t('map.charArmor')} {setStats.armor}
-                      </span>
-                      <span className="inline-flex items-center rounded border border-line-2 px-1.5 py-0.5 text-xs font-semibold text-fg">
-                        {t('map.charPhysRed')} −{setStats.physical_reduction}%
-                      </span>
-                      {setStats.weapon && (
-                        <span className="inline-flex items-center rounded border border-line-2 px-1.5 py-0.5 text-xs font-semibold text-fg">
-                          {t('map.charWeapon')}: {setStats.weapon.type ?? setStats.weapon.category ?? setStats.weapon.name}
-                          {setStats.weapon.element ? ` · ${elLabel(setStats.weapon.element)}` : ''}
-                        </span>
-                      )}
+
+                    {/* Headline tiles: the three numbers you glance at. */}
+                    <div className="grid grid-cols-3 gap-1.5 text-center">
+                      <div className="rounded-lg border border-line-2 bg-bg-2 px-1 py-2">
+                        <div className="text-xl font-black leading-none text-fg">{setStats.armor}</div>
+                        <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-fg-dim">
+                          {t('map.charArmor')}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-line-2 bg-bg-2 px-1 py-2">
+                        <div className="text-xl font-black leading-none text-accent">
+                          −{setStats.physical_reduction}%
+                        </div>
+                        <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-fg-dim">
+                          {t('map.charPhysRed')}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-line-2 bg-bg-2 px-1 py-2">
+                        <div className="truncate text-sm font-black leading-none text-fg">
+                          {setStats.weapon
+                            ? (setStats.weapon.type ?? setStats.weapon.category ?? setStats.weapon.name)
+                            : '—'}
+                        </div>
+                        <div className="mt-1.5 truncate text-[10px] font-bold uppercase tracking-wide text-fg-dim">
+                          {setStats.weapon?.element
+                            ? `${t('map.charWeapon')} · ${elLabel(setStats.weapon.element)}`
+                            : t('map.charWeapon')}
+                        </div>
+                      </div>
                     </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-1">
-                      <span className="text-xs font-bold uppercase tracking-wide text-fg-dim">
-                        {t('map.huntSetResists')}:
-                      </span>
-                      {Object.entries(setStats.resists).filter(([, p]) => p !== 0).length === 0 ? (
-                        <span className="text-xs text-fg-dim">{t('map.huntSetNoResists')}</span>
-                      ) : (
-                        Object.entries(setStats.resists)
+
+                    {/* Resist bars, scaled to the 60% set cap; maluses paint red. */}
+                    {Object.entries(setStats.resists).filter(([, p]) => p !== 0).length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        <div className="text-[10px] font-bold uppercase tracking-wide text-fg-dim">
+                          {t('map.huntSetResists')}
+                        </div>
+                        {Object.entries(setStats.resists)
                           .filter(([, p]) => p !== 0)
                           .sort((a, b) => b[1] - a[1])
                           .map(([el, p]) => (
-                            <span
+                            <StatBar
                               key={el}
-                              className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs font-semibold"
-                              style={{ background: `${HUNT_ELEMENT_COLOR[el] ?? '#8a8578'}22`, color: HUNT_ELEMENT_COLOR[el] ?? '#8a8578' }}
-                            >
-                              {elLabel(el)} {p > 0 ? '+' : ''}
-                              {p}%
-                            </span>
-                          ))
-                      )}
-                    </div>
+                              label={elLabel(el)}
+                              value={`${signed(p)}%`}
+                              pct={(Math.abs(p) / 60) * 100}
+                              color={p < 0 ? '#c0392b' : (HUNT_ELEMENT_COLOR[el] ?? '#8a8578')}
+                            />
+                          ))}
+                      </div>
+                    )}
+
+                    {/* Skill-bonus bars, scaled to the biggest bonus worn. */}
                     {Object.keys(setStats.bonuses).length > 0 && (
-                      <div className="mt-1 flex flex-wrap items-center gap-1">
-                        {Object.entries(setStats.bonuses).map(([skill, pts]) => (
-                          <span
-                            key={skill}
-                            className="inline-flex items-center rounded border border-line-2 px-1.5 py-0.5 text-xs font-semibold text-fg"
-                          >
-                            {skill} +{pts}
-                          </span>
-                        ))}
+                      <div className="mt-2 space-y-1">
+                        <div className="text-[10px] font-bold uppercase tracking-wide text-fg-dim">
+                          {t('map.charSkills')}
+                        </div>
+                        {Object.entries(setStats.bonuses)
+                          .sort((a, b) => b[1] - a[1])
+                          .map(([skill, pts]) => (
+                            <StatBar
+                              key={skill}
+                              label={SKILL_LABELS[skill] ?? skill}
+                              value={signed(pts)}
+                              pct={(Math.abs(pts) / skillMax) * 100}
+                              color={pts < 0 ? '#c0392b' : 'var(--color-accent)'}
+                            />
+                          ))}
                       </div>
                     )}
                     <p className="mt-2 text-xs text-fg-dim">{t('map.charGearHunt')}</p>

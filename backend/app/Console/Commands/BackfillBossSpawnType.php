@@ -35,8 +35,12 @@ class BackfillBossSpawnType extends Command
         $sleep = (int) $this->option('sleep');
         $only = $this->option('only');
 
+        // Bosses (meta.rank='Boss') AND any creature that already carries a
+        // spawn_type — the latter catches rare-spawn creatures (Midnight Panther &
+        // co.) that aren't flagged `isboss` but belong in the Boss Watch, and
+        // converts legacy string values to the normalised list.
         $query = Entry::where('type', 'creature')
-            ->whereRaw("meta->>'rank' = 'Boss'")
+            ->whereRaw("(meta->>'rank' = 'Boss' OR meta ?? 'spawn_type')")
             ->with('translations');
         if ($only) {
             $query->where('slug', $only);

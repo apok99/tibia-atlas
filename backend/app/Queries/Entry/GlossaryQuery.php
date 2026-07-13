@@ -18,10 +18,15 @@ class GlossaryQuery
     {
         return Entry::published()
             ->select('id', 'slug', 'type', 'primary_image')
-            // Flag boss creatures (meta.rank = 'Boss') without hydrating the whole
-            // meta JSON — the map's Boss Watch uses it to let players search/follow
-            // any boss, even the ones with no recent kill-stat "heat".
-            ->selectRaw("CASE WHEN meta->>'rank' = 'Boss' THEN 1 ELSE 0 END as is_boss")
+            // Flag boss-watch entries without hydrating the whole meta JSON — the
+            // map's Boss Watch uses it to let players search/follow any of them.
+            // Two kinds qualify: proper bosses (meta.rank = 'Boss'), AND rare-spawn
+            // creatures that appear via a raid (spawntype contains 'Raid', e.g.
+            // Midnight Panther) — TibiaWiki lists these on its Bosses page and
+            // players hunt them like bosses, but they carry no `isboss` flag. The
+            // LIKE matches both the JSON array text (["Raid",…]) and the legacy
+            // comma-string ("Raid, Unique, …"); regular creatures are "Regular".
+            ->selectRaw("CASE WHEN meta->>'rank' = 'Boss' OR meta->>'spawn_type' LIKE '%Raid%' THEN 1 ELSE 0 END as is_boss")
             // How the boss enters the world (Raid/Unique/Unblockable/Triggered/…) —
             // a JSON list, since a boss can carry several at once. Powers the Boss
             // Watch's per-spawntype tabs. Null for non-bosses / not-yet-backfilled.

@@ -724,24 +724,30 @@ class TibiaWikiImporter
         if (! empty($p['bestiarylevel'])) {
             $meta['difficulty'] = $this->cleanWikitext($p['bestiarylevel']);
         }
-        if (($p['isboss'] ?? '') === 'yes') {
+        $isBoss = ($p['isboss'] ?? '') === 'yes';
+        if ($isBoss) {
             $meta['rank'] = 'Boss';
-            // How the boss enters the world (TibiaWiki `spawntype`). MULTI-VALUED —
-            // a boss can be "Raid, Unique, Unblockable" at once (comma- or
-            // slash-separated). Split, normalise casing, and keep only the known
-            // categories (drops "--" and markup noise). Stored as a list so the map
-            // Boss Watch's per-category tabs can match membership.
-            $spawn = trim($this->cleanWikitext($p['spawntype'] ?? ''));
-            $types = [];
-            foreach (preg_split('/[,\/]+/', $spawn) as $tok) {
-                $tok = ucfirst(strtolower(trim($tok)));
-                if (in_array($tok, ['Raid', 'Unique', 'Unblockable', 'Triggered', 'Regular', 'Event'], true)) {
-                    $types[] = $tok;
-                }
+        }
+        // How a creature enters the world (TibiaWiki `spawntype`). MULTI-VALUED — a
+        // boss can be "Raid, Unique, Unblockable" at once (comma-/slash-separated).
+        // Split, normalise casing, keep only known categories (drops "--"/markup).
+        // Persisted for bosses (any spawntype) AND rare-spawn creatures that appear
+        // via a raid (spawntype contains 'Raid', e.g. Midnight Panther) — the latter
+        // are boss-like and surface in the map Boss Watch even without an `isboss`
+        // flag. NOT stored for ordinary creatures: 'Unblockable'/'Triggered' are
+        // common combat/spawn properties on normal monsters (e.g. a squirrel is
+        // "Regular, Unblockable"), so only 'Raid' reliably marks a boss-tier spawn.
+        $spawn = trim($this->cleanWikitext($p['spawntype'] ?? ''));
+        $types = [];
+        foreach (preg_split('/[,\/]+/', $spawn) as $tok) {
+            $tok = ucfirst(strtolower(trim($tok)));
+            if (in_array($tok, ['Raid', 'Unique', 'Unblockable', 'Triggered', 'Regular', 'Event'], true)) {
+                $types[] = $tok;
             }
-            if ($types !== []) {
-                $meta['spawn_type'] = array_values(array_unique($types));
-            }
+        }
+        $types = array_values(array_unique($types));
+        if ($types !== [] && ($isBoss || in_array('Raid', $types, true))) {
+            $meta['spawn_type'] = $types;
         }
 
         // Numeric stats: strip thousands separators, then take the first number

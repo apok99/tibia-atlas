@@ -581,6 +581,31 @@ const FERRY_LINES: FerryLineDef[] = [
       { name: 'Deeper Banuta', x: 32754, y: 32506, floor: 11 },
     ],
   },
+  // The Spike (SW, under the Gnomegate tunnels). A pure teleporter-hub dungeon:
+  // eighteen scripted step-in teleporters (Canary aids 4226-4243, a lua MoveEvent —
+  // NO OTBM teleport item, so zero t2 rows and the bake sees every floor as a
+  // sealed cave). You enter at the lobby in the gnome tunnels (32624,31853,z11 →
+  // Spike z8), then descend z8→z15; each floor's hunting area is a separate
+  // teleport landing. Modelled as a curated line: lobby + one stop per floor at the
+  // level's real teleport-destination tile (from movements_spike_teleport.lua).
+  // Route report #2 (Liberty Bay→Mutated Rat, Middle Spike z12) dead-ended because
+  // the z12 cave had no modelled entrance. All stop tiles verified walkable; the z12
+  // stop sits inside the 18k-tile Mutated Rat cave component.
+  {
+    name: 'The Spike',
+    icon: 'sparkles',
+    stops: [
+      { name: 'Entrada del Spike', x: 32624, y: 31853, floor: 11 },
+      { name: 'Lower Spike', x: 32228, y: 32596, floor: 8 },
+      { name: 'Lower Spike (medio)', x: 32243, y: 32619, floor: 9 },
+      { name: 'Lower Spike (fondo)', x: 32240, y: 32620, floor: 10 },
+      { name: 'Middle Spike', x: 32227, y: 32598, floor: 11 },
+      { name: 'Middle Spike (medio)', x: 32238, y: 32622, floor: 12 },
+      { name: 'Middle Spike (fondo)', x: 32244, y: 32619, floor: 13 },
+      { name: 'Upper Spike', x: 32244, y: 32588, floor: 14 },
+      { name: 'Upper Spike (fondo)', x: 32224, y: 32606, floor: 15 },
+    ],
+  },
   // Ankrahmun's Ancient Tombs. Owner-verified in-game: each tomb is entered ON
   // FOOT through its own doorway in the desert — NOT by a portal from the city
   // (the old single city-anchored line prescribed "boat to Ankrahmun, teleport
