@@ -51,6 +51,10 @@ export type HuntResult = {
     resists: Record<string, number>
     armor: number
     weapon: string | null
+    weapon_type: string | null
+    // 'gear' = scored against the character's real equipment; 'derived' = the
+    // synthesized best-obtainable set for the level + vocation.
+    source: 'gear' | 'derived'
   }
   zones: HuntZone[]
   count: number
@@ -58,17 +62,20 @@ export type HuntResult = {
 
 // Fetch ranked hunting zones for a level + vocation + solo/team mode. Disabled
 // (no request) until a level and vocation are set, so the panel can mount empty.
+// `gear` (entry ids of the character's real equipment, pre-sorted) makes the
+// ranking run against that set instead of the derived one.
 export function useHunts(
   level: number | null,
   vocation: string,
   mode: 'solo' | 'team',
   enabled: boolean,
+  gear: number[] = [],
 ) {
   return useQuery({
-    queryKey: ['hunts', level, vocation, mode, i18n.language],
+    queryKey: ['hunts', level, vocation, mode, gear.join('-'), i18n.language],
     queryFn: async () => {
       const { data } = await api.get<HuntResult>('/hunts', {
-        params: { level, vocation, mode },
+        params: { level, vocation, mode, ...(gear.length ? { gear: gear.join(',') } : {}) },
       })
       return data
     },

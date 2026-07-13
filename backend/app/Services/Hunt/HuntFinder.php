@@ -5,6 +5,7 @@ namespace App\Services\Hunt;
 use App\Models\Entry;
 use App\Support\GearRules;
 use App\Support\HuntZones;
+use App\Support\SetStats;
 
 /**
  * The Hunt Finder engine. Given a player profile (level + vocation + solo/team),
@@ -21,22 +22,6 @@ use App\Support\HuntZones;
  */
 class HuntFinder
 {
-    /** The elements a player can realistically deal / take, for offense + danger. */
-    private const ELEMENTS = ['physical', 'fire', 'energy', 'ice', 'earth', 'death', 'holy'];
-
-    /**
-     * Spell schools each vocation can exploit regardless of weapon (runes/spells
-     * a real hunter carries). The weapon's own element is added on top. This is
-     * why a druid is credited for ice/earth even holding a plain rod.
-     */
-    private const VOCATION_ELEMENTS = [
-        'knight' => ['physical'],
-        'paladin' => ['physical', 'holy'],
-        'sorcerer' => ['energy', 'fire', 'death'],
-        'druid' => ['ice', 'earth', 'energy'],
-        'monk' => ['physical', 'holy'],
-    ];
-
     /** Rough HP gained per level, per vocation — the danger model's denominator. */
     private const HP_PER_LEVEL = [
         'knight' => 15, 'paladin' => 12, 'monk' => 13, 'sorcerer' => 6, 'druid' => 6, '' => 10,
@@ -50,9 +35,6 @@ class HuntFinder
     private const DPS_PER_LEVEL = [
         'knight' => 6.0, 'paladin' => 7.0, 'monk' => 6.5, 'sorcerer' => 8.0, 'druid' => 7.5, '' => 7.0,
     ];
-
-    /** Combined elemental resistance a full set can realistically reach (game-ish cap). */
-    private const RESIST_CAP = 60;
 
     /** Clustering: spawns within this many tiles (same floor) form one hunting area. */
     private const CLUSTER_THRESHOLD = 40;
@@ -91,13 +73,20 @@ class HuntFinder
         'Buried Cathedral' => 'quest',
     ];
 
-    public function find(int $level, string $vocation, string $mode, string $locale): array
+    /**
+     * @param  list<int>  $gearIds  entry ids of the player's REAL equipment (the
+     *                              map's character gear); when they resolve to
+     *                              wearable items the ranking runs against that
+     *                              set instead of the synthesized best-in-slot one.
+     */
+    public function find(int $level, string $vocation, string $mode, string $locale, array $gearIds = []): array
     {
         $level = max(1, $level);
         $vocation = GearRules::baseVocation($vocation);
         $team = $mode === 'team';
 
-        $set = $this->deriveSet($level, $vocation);
+        $set = $gearIds !== [] ? $this->setFromGear($gearIds, $vocation) : null;
+        $set ??= $this->deriveSet($level, $vocation);
         $creatures = $this->scoreCreatures($set, $level, $vocation, $team, $locale);
         $zones = $this->buildZones($creatures, $team);
 
@@ -110,6 +99,8 @@ class HuntFinder
                 'resists' => $set['resists'],
                 'armor' => $set['armor'],
                 'weapon' => $set['weapon'],
+                'weapon_type' => $set['weapon_type'],
+                'source' => $set['source'],
             ],
             'zones' => $zones,
             'count' => count($zones),
@@ -124,7 +115,7 @@ class HuntFinder
      * hunter carries out of it: the damage elements they can deal and the
      * elemental resistances they wear.
      *
-     * @return array{elements: list<string>, resists: array<string,int>, armor: int, weapon: ?string}
+     * @return array{elements: list<string>, resists: array<string,int>, armor: int, weapon: ?string, weapon_type: ?string, source: string}
      */
     private function deriveSet(int $level, string $vocation): array
     {
@@ -172,38 +163,71 @@ class HuntFinder
             }
         }
 
-        $resists = [];
-        $armor = 0;
-        foreach ($bestPerSlot as $slot => $meta) {
-            $armor += (int) ($meta['armor'] ?? 0);
-            foreach ((array) ($meta['resists'] ?? []) as $el => $pct) {
-                $resists[$el] = ($resists[$el] ?? 0) + (int) $pct;
-            }
-        }
-        foreach ($resists as $el => $pct) {
-            $resists[$el] = min(self::RESIST_CAP, $pct);
+        $agg = SetStats::aggregate(array_values($bestPerSlot), $vocation);
+        // Names live on translations, not meta — resolve the winning weapon's.
+        $weaponName = isset($bestId['weapon'])
+            ? Entry::find($bestId['weapon'])?->translation('en')?->name
+            : null;
+
+        return [
+            'elements' => $agg['elements'],
+            'resists' => $agg['resists'],
+            'armor' => $agg['armor'],
+            'weapon' => $weaponName,
+            'weapon_type' => $agg['weapon_meta']['weapon_type'] ?? null,
+            'source' => 'derived',
+        ];
+    }
+
+    /**
+     * Aggregate the player's REAL equipment (entry ids picked on the character
+     * card) into the same set shape deriveSet() produces, so the whole scoring
+     * pipeline runs against what they actually wear. No level/vocation/obtainable
+     * filtering here — it's their gear, they own it. Returns null when none of
+     * the ids resolves to a wearable item (caller falls back to deriveSet).
+     *
+     * @param  list<int>  $gearIds
+     * @return ?array{elements: list<string>, resists: array<string,int>, armor: int, weapon: ?string, weapon_type: ?string, source: string}
+     */
+    private function setFromGear(array $gearIds, string $vocation): ?array
+    {
+        $items = Entry::query()
+            ->ofType('item')
+            ->whereIn('id', $gearIds)
+            ->whereRaw("jsonb_exists(meta, 'equip_slot')")
+            ->get(['id', 'meta']);
+        if ($items->isEmpty()) {
+            return null;
         }
 
-        // Damage elements: vocation spell schools + the weapon's element + physical
-        // if the weapon swings for physical damage.
-        $elements = self::VOCATION_ELEMENTS[$vocation] ?? ['physical'];
-        $weapon = $bestPerSlot['weapon'] ?? null;
-        $weaponName = null;
-        if ($weapon !== null) {
-            // Names live on translations, not meta — resolve the winning weapon's.
-            $weaponName = isset($bestId['weapon'])
-                ? Entry::find($bestId['weapon'])?->translation('en')?->name
-                : null;
-            if ((float) ($weapon['element_attack'] ?? 0) > 0 && ! empty($weapon['element_attack_type'])) {
-                $elements[] = strtolower((string) $weapon['element_attack_type']);
+        // One piece per slot — a worn set can't double up.
+        $metas = [];
+        $weaponId = null;
+        foreach ($items as $item) {
+            $meta = $item->meta ?? [];
+            $slot = $meta['equip_slot'] ?? null;
+            if ($slot === null || isset($metas[$slot])) {
+                continue;
             }
-            if ((float) ($weapon['attack'] ?? 0) > 0) {
-                $elements[] = 'physical';
+            $metas[$slot] = $meta;
+            if ($slot === 'weapon') {
+                $weaponId = $item->id;
             }
         }
-        $elements = array_values(array_unique(array_filter($elements, fn ($e) => in_array($e, self::ELEMENTS, true))));
 
-        return ['elements' => $elements, 'resists' => $resists, 'armor' => $armor, 'weapon' => $weaponName];
+        $agg = SetStats::aggregate(array_values($metas), $vocation);
+        $weaponName = $weaponId !== null
+            ? Entry::find($weaponId)?->translation('en')?->name
+            : null;
+
+        return [
+            'elements' => $agg['elements'],
+            'resists' => $agg['resists'],
+            'armor' => $agg['armor'],
+            'weapon' => $weaponName,
+            'weapon_type' => $agg['weapon_meta']['weapon_type'] ?? null,
+            'source' => 'gear',
+        ];
     }
 
     // --- 2. Per-creature scoring --------------------------------------------
@@ -398,13 +422,13 @@ class HuntFinder
      */
     private function danger(array $meta, array $set, float $ehp, bool $team): float
     {
-        $armorRelief = min(0.45, $set['armor'] / 400);
+        $armorRelief = SetStats::armorRelief((int) $set['armor']);
         $burstByEl = (array) (($meta['ot'] ?? [])['burst_by_element'] ?? []);
 
         $incoming = 0.0;
         foreach ($burstByEl as $el => $dmg) {
             $resist = (int) ($set['resists'][$el] ?? 0);
-            $frac = in_array($el, self::ELEMENTS, true) ? max(0.0, 1 - $resist / 100) : 1.0;
+            $frac = in_array($el, SetStats::ELEMENTS, true) ? max(0.0, 1 - $resist / 100) : 1.0;
             if ($el === 'physical') {
                 $frac *= (1 - $armorRelief);
             }
@@ -445,7 +469,7 @@ class HuntFinder
         $elements = ['physical'];
         foreach ((array) ($meta['abilities'] ?? []) as $ab) {
             $el = strtolower((string) ($ab['element'] ?? ''));
-            if ($el !== '' && in_array($el, self::ELEMENTS, true)) {
+            if ($el !== '' && in_array($el, SetStats::ELEMENTS, true)) {
                 $elements[] = $el;
             }
         }
@@ -501,7 +525,7 @@ class HuntFinder
     {
         $out = [];
         foreach ((array) ($meta['damage_mods'] ?? []) as $el => $pct) {
-            if (! in_array($el, self::ELEMENTS, true)) {
+            if (! in_array($el, SetStats::ELEMENTS, true)) {
                 continue;
             }
             if ((float) $pct < 100) {

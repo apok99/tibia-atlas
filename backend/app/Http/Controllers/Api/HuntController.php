@@ -23,10 +23,23 @@ class HuntController extends Controller
         $mode = (string) $request->string('mode') === 'team' ? 'team' : 'solo';
         $locale = app()->getLocale();
 
+        // Optional real equipment (entry ids from the map's character gear):
+        // when present the finder scores against that set instead of deriving
+        // one. Sorted + capped so equivalent selections share a cache entry.
+        $gear = collect(explode(',', (string) $request->string('gear')))
+            ->map(fn ($v) => (int) trim($v))
+            ->filter(fn ($v) => $v > 0)
+            ->unique()
+            ->sort()
+            ->take(12)
+            ->values()
+            ->all();
+
         // Deterministic in its inputs and moderately expensive (scores every
         // creature, clusters every spawn), so cache the computed payload.
-        $key = ContentCache::key("hunts:{$level}:{$vocation}:{$mode}:{$locale}");
-        $payload = Cache::remember($key, 900, fn () => $finder->find($level, $vocation, $mode, $locale));
+        $gearKey = $gear === [] ? 'none' : implode('-', $gear);
+        $key = ContentCache::key("hunts:{$level}:{$vocation}:{$mode}:{$locale}:{$gearKey}");
+        $payload = Cache::remember($key, 900, fn () => $finder->find($level, $vocation, $mode, $locale, $gear));
 
         return response()->json($payload);
     }

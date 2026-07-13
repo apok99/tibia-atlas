@@ -31,10 +31,15 @@ import {
 import {
   type CharProfile,
   type Character,
+  type GearPiece,
+  type GearSlot,
+  GEAR_SLOTS,
   fetchCharacter,
+  gearIds,
   loadCharProfile,
   saveCharProfile,
 } from '../lib/charProfile'
+import { useItems, useSetStats } from '../hooks/useEntries'
 import { useGlossary } from '../hooks/useGlossary'
 import { useBosses, useKillWorlds, type BossRow } from '../hooks/useKillStats'
 import { useHunts, type HuntZone } from '../hooks/useHunts'
@@ -363,6 +368,21 @@ const HUNT_ELEMENT_COLOR: Record<string, string> = {
 function baseVocation(v: string): string {
   const s = v.toLowerCase()
   return (['knight', 'paladin', 'sorcerer', 'druid', 'monk'] as const).find((b) => s.includes(b)) ?? ''
+}
+
+// Compact one-line stat hint for a gear-picker row: the numbers that tell two
+// candidates apart at a glance (armor / attack / defense, then resists).
+function gearHint(it: EntryListItem): string {
+  const s = it.item
+  if (!s) return ''
+  const parts: string[] = []
+  if (s.armor) parts.push(`Arm ${s.armor}`)
+  const atk = (s.attack ?? 0) + (s.element_attack ?? 0)
+  if (atk) parts.push(`Atk ${atk}${s.element_attack_type ? ` ${s.element_attack_type}` : ''}`)
+  if (s.defense) parts.push(`Def ${s.defense}`)
+  const res = Object.entries(s.resists ?? {}).filter(([, p]) => p !== 0)
+  if (res.length) parts.push(res.map(([el, p]) => `${el} ${p > 0 ? '+' : ''}${p}%`).join(' '))
+  return parts.slice(0, 3).join(' · ')
 }
 
 // A zone/creature danger number (fraction of your effective HP a big hit takes)
@@ -1519,7 +1539,40 @@ export function MapPage() {
     saveCharProfile(null)
     setCharProfile(null)
     setCharDraft('')
+    setGearSlot(null)
+    setGearQuery('')
   }
+
+  // "Your equipment": the gear editor's open slot picker + its search text.
+  // The picked set itself lives on the profile (localStorage) so it survives
+  // reloads and feeds both the stats readout and the Hunt Finder.
+  const [gearSlot, setGearSlot] = useState<GearSlot | null>(null)
+  const [gearQuery, setGearQuery] = useState('')
+  const setGearPiece = (slot: GearSlot, piece: GearPiece | null) => {
+    setCharProfile((prev) => {
+      if (!prev) return prev
+      const gear = { ...(prev.gear ?? {}) }
+      if (piece) gear[slot] = piece
+      else delete gear[slot]
+      const next: CharProfile = Object.keys(gear).length ? { name: prev.name, gear } : { name: prev.name }
+      saveCharProfile(next)
+      return next
+    })
+    setGearSlot(null)
+    setGearQuery('')
+  }
+  const clearGear = () => {
+    setCharProfile((prev) => {
+      if (!prev) return prev
+      const next: CharProfile = { name: prev.name }
+      saveCharProfile(next)
+      return next
+    })
+    setGearSlot(null)
+    setGearQuery('')
+  }
+  // Sorted ids of the worn pieces — the `gear` the hunts + set-stats APIs take.
+  const gearIdList = useMemo(() => gearIds(charProfile), [charProfile])
 
   // --- Hunt Finder -----------------------------------------------------------
   // Panel ranking the best hunting zones for a level + vocation + solo/team.
@@ -1545,10 +1598,31 @@ export function MapPage() {
   // character — so with a character set the planner just works without re-asking
   // for level/vocation (you already told us who you are via the character gear).
   const charVoc = character?.vocation ? baseVocation(character.vocation) : ''
+  // Gear picker: catalogue items for the open slot (vocation-filtered when the
+  // character's vocation is known — items usable by all always pass).
+  const gearItemsQuery = useItems(
+    {
+      slot: gearSlot ?? undefined,
+      equippable: '1',
+      q: gearQuery.trim() || undefined,
+      per_page: 200,
+      ...(charVoc ? { vocation: charVoc } : {}),
+    },
+    charOpen && gearSlot !== null,
+  )
+  // Strongest first: the album endpoint orders by id, so sort by the imported
+  // power heuristic client-side — the piece you wear is usually near the top.
+  const gearChoices = useMemo(() => {
+    const rows = gearItemsQuery.data?.data ?? []
+    return [...rows].sort((a, b) => (b.item?.power ?? 0) - (a.item?.power ?? 0)).slice(0, 40)
+  }, [gearItemsQuery.data])
+  // Derived stats of the worn set — same math the Hunt Finder scores with.
+  const setStatsQuery = useSetStats(gearIdList, charVoc)
+  const setStats = setStatsQuery.data ?? null
   const huntLevelNum =
     huntLevel.trim() !== '' ? Math.max(1, parseInt(huntLevel, 10) || 0) : (character?.level ?? null)
   const effVoc = huntVoc.trim() !== '' ? huntVoc : charVoc
-  const huntQuery = useHunts(huntLevelNum, effVoc, huntMode, huntOpen)
+  const huntQuery = useHunts(huntLevelNum, effVoc, huntMode, huntOpen, gearIdList)
   const hunt = huntQuery.data ?? null
   // Localised element label, falling back to the prettified key (drown, life drain).
   const elLabel = (el: string) => t(`elements.${el}`, { defaultValue: el.replace(/_/g, ' ') })
@@ -1892,6 +1966,12 @@ export function MapPage() {
     setRouteMsg(null)
     setReportState('idle')
     setReportNote('')
+  }
+
+  // Close the directions bar entirely: wipe the route and leave route mode.
+  function closeRoute() {
+    resetRoute()
+    setRouteMode(false)
   }
 
   // Report the current route as wrong. Sends the two endpoints, an optional note
@@ -3330,6 +3410,16 @@ export function MapPage() {
     const pt = cr && routeEndForCreature(cr)
     if (!pt) return
     setRouteMode(true)
+    // Default the origin to Thais when none is picked yet, so the route computes
+    // immediately instead of waiting for the player to choose a starting city.
+    if (!routeStartRef.current) {
+      const thais = LANDMARKS.find((l) => l.name === 'Thais')
+      if (thais) {
+        const start: RoutePoint = { x: thais.x, y: thais.y, floor: thais.floor, label: thais.name }
+        routeStartRef.current = start
+        setRouteStart(start)
+      }
+    }
     applyRouteEnd(pt)
   }
 
@@ -4393,6 +4483,175 @@ export function MapPage() {
                 )}
               </div>
             )}
+
+            {/* "Your equipment": pick what you actually wear, slot by slot. The
+                stat readout below and the Hunt Finder both run on this exact
+                set. TibiaData doesn't expose worn items, so it's hand-picked. */}
+            {charProfile && (
+              <div className="mt-3 rounded-xl border border-line bg-bg-2 p-2.5">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-fg-mute">{t('map.charGear')}</span>
+                  {gearIdList.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={clearGear}
+                      className="text-[10px] font-semibold text-fg-mute transition hover:text-accent"
+                    >
+                      {t('map.charGearClear')}
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {GEAR_SLOTS.map((slot) => {
+                    const piece = charProfile.gear?.[slot] ?? null
+                    const open = gearSlot === slot
+                    return (
+                      <button
+                        key={slot}
+                        type="button"
+                        onClick={() => {
+                          setGearSlot(open ? null : slot)
+                          setGearQuery('')
+                        }}
+                        aria-pressed={open}
+                        className={`flex flex-col items-center gap-0.5 rounded-lg border px-1 py-1.5 text-center transition ${open ? 'border-accent bg-accent/10' : piece ? 'border-line-2 bg-bg-2 hover:border-accent' : 'border-dashed border-line bg-bg-2 hover:border-accent'}`}
+                      >
+                        {piece?.image ? (
+                          <img src={piece.image} alt="" className="h-7 w-7 object-contain" loading="lazy" />
+                        ) : (
+                          <span className="grid h-7 w-7 place-items-center text-lg leading-none text-fg-mute">+</span>
+                        )}
+                        <span className="text-[9px] font-bold uppercase tracking-wide text-fg-mute">
+                          {t(`items.slot.${slot}`)}
+                        </span>
+                        <span className={`w-full truncate text-[10px] ${piece ? 'font-semibold text-fg' : 'text-fg-mute'}`}>
+                          {piece?.name ?? '—'}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Item picker for the open slot: search the catalogue, strongest first. */}
+                {gearSlot && (
+                  <div className="mt-2">
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={gearQuery}
+                        onChange={(e) => setGearQuery(e.target.value)}
+                        placeholder={t('map.charGearSearch', { slot: t(`items.slot.${gearSlot}`) })}
+                        spellCheck={false}
+                        autoComplete="off"
+                        className="h-8 min-w-0 flex-1 rounded-lg border border-line bg-bg-2 px-2 text-xs font-semibold outline-none transition placeholder:font-normal placeholder:text-fg-mute focus:border-accent"
+                      />
+                      {charProfile.gear?.[gearSlot] && (
+                        <button
+                          type="button"
+                          onClick={() => setGearPiece(gearSlot, null)}
+                          className="h-8 shrink-0 rounded-lg border border-line-2 bg-bg-2 px-2 text-[10px] font-bold text-fg-mute transition hover:border-accent hover:text-accent"
+                        >
+                          {t('map.charGearRemove')}
+                        </button>
+                      )}
+                    </div>
+                    {gearItemsQuery.isLoading ? (
+                      <p className="py-2 text-center text-xs text-fg-mute">{t('map.charLoading')}</p>
+                    ) : gearChoices.length === 0 ? (
+                      <p className="py-2 text-center text-xs text-fg-mute">{t('map.charGearEmpty')}</p>
+                    ) : (
+                      <ul className="scroll-atlas mt-1.5 max-h-44 overflow-y-auto rounded-lg border border-line">
+                        {gearChoices.map((it) => (
+                          <li key={it.id}>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setGearPiece(gearSlot, {
+                                  id: it.id,
+                                  slug: it.slug,
+                                  name: it.name ?? it.slug,
+                                  image: it.primary_image,
+                                })
+                              }
+                              className="flex w-full items-center gap-2 px-2 py-1.5 text-left transition hover:bg-accent/10"
+                            >
+                              {it.primary_image ? (
+                                <img src={it.primary_image} alt="" className="h-6 w-6 shrink-0 object-contain" loading="lazy" />
+                              ) : (
+                                <span className="h-6 w-6 shrink-0" />
+                              )}
+                              <span className="min-w-0 flex-1 truncate text-xs font-semibold text-fg">{it.name ?? it.slug}</span>
+                              <span className="shrink-0 text-[10px] text-fg-mute">{gearHint(it)}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
+                {/* Derived stats of the worn set — the exact numbers the Hunt
+                    Finder scores zones with (shared backend math). */}
+                {gearIdList.length === 0 ? (
+                  <p className="mt-1.5 text-[10px] text-fg-mute">{t('map.charGearHint')}</p>
+                ) : setStats ? (
+                  <div className="mt-2 border-t border-line pt-2">
+                    <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-fg-mute">
+                      {t('map.charSetStats')}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span className="inline-flex items-center rounded border border-line-2 px-1.5 py-px text-[10px] font-semibold text-fg-dim">
+                        {t('map.charArmor')} {setStats.armor}
+                      </span>
+                      <span className="inline-flex items-center rounded border border-line-2 px-1.5 py-px text-[10px] font-semibold text-fg-dim">
+                        {t('map.charPhysRed')} −{setStats.physical_reduction}%
+                      </span>
+                      {setStats.weapon && (
+                        <span className="inline-flex items-center rounded border border-line-2 px-1.5 py-px text-[10px] font-semibold text-fg-dim">
+                          {t('map.charWeapon')}: {setStats.weapon.type ?? setStats.weapon.category ?? setStats.weapon.name}
+                          {setStats.weapon.element ? ` · ${elLabel(setStats.weapon.element)}` : ''}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-fg-mute">
+                        {t('map.huntSetResists')}:
+                      </span>
+                      {Object.entries(setStats.resists).filter(([, p]) => p !== 0).length === 0 ? (
+                        <span className="text-[10px] text-fg-dim">{t('map.huntSetNoResists')}</span>
+                      ) : (
+                        Object.entries(setStats.resists)
+                          .filter(([, p]) => p !== 0)
+                          .sort((a, b) => b[1] - a[1])
+                          .map(([el, p]) => (
+                            <span
+                              key={el}
+                              className="inline-flex items-center gap-0.5 rounded px-1.5 py-px text-[10px] font-semibold"
+                              style={{ background: `${HUNT_ELEMENT_COLOR[el] ?? '#8a8578'}22`, color: HUNT_ELEMENT_COLOR[el] ?? '#8a8578' }}
+                            >
+                              {elLabel(el)} {p > 0 ? '+' : ''}
+                              {p}%
+                            </span>
+                          ))
+                      )}
+                    </div>
+                    {Object.keys(setStats.bonuses).length > 0 && (
+                      <div className="mt-1 flex flex-wrap items-center gap-1">
+                        {Object.entries(setStats.bonuses).map(([skill, pts]) => (
+                          <span
+                            key={skill}
+                            className="inline-flex items-center rounded border border-line-2 px-1.5 py-px text-[10px] font-semibold text-fg-dim"
+                          >
+                            {skill} +{pts}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="mt-1.5 text-[10px] text-fg-mute">{t('map.charGearHunt')}</p>
+                  </div>
+                ) : null}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -4482,6 +4741,11 @@ export function MapPage() {
               <div className="mb-2.5 rounded-xl border border-line bg-bg-2 p-2 text-xs">
                 <div className="flex flex-wrap items-center gap-1">
                   <span className="text-[10px] font-bold uppercase tracking-wide text-fg-mute">{t('map.huntSetDeals')}:</span>
+                  {hunt.set.source === 'gear' && (
+                    <span className="order-last ml-auto rounded bg-accent/15 px-1.5 py-px text-[10px] font-bold text-accent">
+                      {t('map.huntSetReal')}
+                    </span>
+                  )}
                   {hunt.set.damage_elements.map((el) => (
                     <span
                       key={el}
@@ -4511,7 +4775,10 @@ export function MapPage() {
                       ))
                   )}
                   {hunt.set.weapon && (
-                    <span className="ml-auto truncate text-[10px] text-fg-dim">{hunt.set.weapon}</span>
+                    <span className="ml-auto truncate text-[10px] text-fg-dim">
+                      {hunt.set.weapon}
+                      {hunt.set.weapon_type ? ` (${hunt.set.weapon_type})` : ''}
+                    </span>
                   )}
                 </div>
               </div>
@@ -5125,7 +5392,6 @@ export function MapPage() {
                 >
                   <Icon name="star" size={14} />
                   <span className="tabular-nums">{cr.clusters[0].count}×</span>
-                  <span className="text-accent/70">z{cr.clusters[0].z}</span>
                 </button>
               )}
               {cr.clusters.length > 0 && (

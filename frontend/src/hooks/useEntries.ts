@@ -169,16 +169,57 @@ export function useItems(
     page?: number
     per_page?: number
   } = {},
+  enabled = true,
 ) {
   const { i18n } = useTranslation()
   return useQuery({
     queryKey: ['items', i18n.language, filters],
+    enabled,
     queryFn: async () => {
       const { data } = await api.get<Paginated<EntryListItem>>('/items', { params: filters })
       return data
     },
     placeholderData: keepPreviousData,
     // The catalogue only changes on (rare) imports.
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+// Aggregated combat stats for a worn equipment set (the map's character gear):
+// what /api/items/set-stats computes with the same math the Hunt Finder uses.
+export type SetStats = {
+  vocation: string
+  items: { id: number; slug: string; slot: string }[]
+  armor: number
+  resists: Record<string, number>
+  /** % of an incoming physical hit the armor absorbs in the hunt model. */
+  physical_reduction: number
+  damage_elements: string[]
+  bonuses: Record<string, number>
+  weapon: {
+    name: string | null
+    type: string | null
+    category: string | null
+    attack: number | null
+    element_attack: number | null
+    element: string | null
+    hands: string | null
+  } | null
+}
+
+/** Combat stats for a picked equipment set (entry ids, pre-sorted for a stable key). */
+export function useSetStats(ids: number[], vocation: string) {
+  const { i18n } = useTranslation()
+  return useQuery({
+    queryKey: ['set-stats', i18n.language, ids.join('-'), vocation],
+    enabled: ids.length > 0,
+    queryFn: async () => {
+      const { data } = await api.get<{ data: SetStats }>('/items/set-stats', {
+        params: { items: ids.join(','), vocation },
+      })
+      return data.data
+    },
+    placeholderData: keepPreviousData,
     staleTime: 5 * 60 * 1000,
   })
 }

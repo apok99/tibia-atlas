@@ -7,6 +7,7 @@ use App\Http\Resources\EntryListResource;
 use App\Models\Entry;
 use App\Support\ContentCache;
 use App\Support\GearRules;
+use App\Support\SetStats;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -213,6 +214,81 @@ class ItemController extends Controller
         });
 
         return response()->json($payload);
+    }
+
+    /**
+     * Aggregate combat stats for a worn equipment set — the map's "your
+     * character" gear readout. `items` is a comma-separated list of entry ids
+     * (one per slot; duplicates per slot are dropped). Returns total armor,
+     * per-element resistances, the estimated physical damage reduction, the
+     * damage elements the wearer can deal, summed skill bonuses and the
+     * weapon's identity — all through the same SetStats math the Hunt Finder
+     * scores with, so the card shows exactly what the ranking assumes.
+     */
+    public function setStats(Request $request): JsonResponse
+    {
+        $ids = collect(explode(',', (string) $request->string('items')))
+            ->map(fn ($v) => (int) trim($v))
+            ->filter(fn ($v) => $v > 0)
+            ->unique()
+            ->take(12)
+            ->values()
+            ->all();
+        $vocation = GearRules::baseVocation((string) $request->string('vocation'));
+
+        $rows = $ids === []
+            ? collect()
+            : Entry::query()
+                ->ofType('item')
+                ->whereIn('id', $ids)
+                ->whereRaw("jsonb_exists(meta, 'equip_slot')")
+                ->with('translations')
+                ->get();
+        $byId = $rows->keyBy('id');
+
+        // One piece per slot, keeping the caller's order on conflicts.
+        $metas = [];
+        $pieces = [];
+        $weapon = null;
+        foreach ($ids as $id) {
+            $row = $byId->get($id);
+            $meta = $row?->meta ?? [];
+            $slot = $meta['equip_slot'] ?? null;
+            if ($row === null || $slot === null || isset($metas[$slot])) {
+                continue;
+            }
+            $metas[$slot] = $meta;
+            $pieces[] = ['id' => $row->id, 'slug' => $row->slug, 'slot' => $slot];
+            if ($slot === 'weapon') {
+                $weapon = $row;
+            }
+        }
+
+        $agg = SetStats::aggregate(array_values($metas), $vocation);
+        $wMeta = $agg['weapon_meta'];
+
+        return response()->json(['data' => [
+            'vocation' => $vocation,
+            'items' => $pieces,
+            'armor' => $agg['armor'],
+            'resists' => $agg['resists'],
+            // % of an incoming physical hit the armor absorbs in the hunt model.
+            'physical_reduction' => (int) round(100 * SetStats::armorRelief($agg['armor'])),
+            'damage_elements' => $agg['elements'],
+            'bonuses' => $agg['bonuses'],
+            'weapon' => $weapon === null || $wMeta === null ? null : [
+                'name' => $weapon->translation(app()->getLocale())?->name
+                    ?? $weapon->translation('en')?->name,
+                'type' => $wMeta['weapon_type'] ?? null,
+                'category' => $wMeta['item_category'] ?? null,
+                'attack' => $wMeta['attack'] ?? null,
+                'element_attack' => $wMeta['element_attack'] ?? null,
+                'element' => ! empty($wMeta['element_attack_type'])
+                    ? strtolower((string) $wMeta['element_attack_type'])
+                    : null,
+                'hands' => $wMeta['hands'] ?? null,
+            ],
+        ]]);
     }
 
     /**
