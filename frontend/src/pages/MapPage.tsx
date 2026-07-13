@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -1484,7 +1484,7 @@ export function MapPage() {
   const [showPoi, setShowPoi] = useState(false) // imported minimap markers layer
   const [showHouses, setShowHouses] = useState(false) // rentable houses layer
   const [houseStatusFilter, setHouseStatusFilter] = useState<'all' | 'available' | 'rented'>('all') // rent-status filter
-  const [houseKind] = useState<'all' | 'house' | 'guild'>('all') // kind filter removed from UI — always show both
+  const [houseKind, setHouseKind] = useState<'all' | 'house' | 'guild'>('all') // house vs guildhall filter
   const [panelPos, setPanelPos] = useState<{ x: number; y: number } | null>(null) // draggable window position
   const [houseSearch, setHouseSearch] = useState('') // house-list name filter
   const [houseTownFilter, setHouseTownFilter] = useState('') // house-list city filter
@@ -1574,6 +1574,31 @@ export function MapPage() {
   // Sorted ids of the worn pieces — the `gear` the hunts + set-stats APIs take.
   const gearIdList = useMemo(() => gearIds(charProfile), [charProfile])
 
+  // Draggable char card: null = docked (centered above the hotbar); a point
+  // once the user grabs the header. Pointer capture keeps the drag alive when
+  // the cursor outruns the handle; position clamps to the viewport.
+  const [charPos, setCharPos] = useState<{ x: number; y: number } | null>(null)
+  const charCardRef = useRef<HTMLDivElement | null>(null)
+  const charDragOff = useRef<{ dx: number; dy: number } | null>(null)
+  const startCharDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const card = charCardRef.current
+    if (!card) return
+    const rect = card.getBoundingClientRect()
+    charDragOff.current = { dx: e.clientX - rect.left, dy: e.clientY - rect.top }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  const moveCharDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const off = charDragOff.current
+    const card = charCardRef.current
+    if (!off || !card) return
+    const x = Math.min(Math.max(8, e.clientX - off.dx), window.innerWidth - card.offsetWidth - 8)
+    const y = Math.min(Math.max(8, e.clientY - off.dy), window.innerHeight - 56)
+    setCharPos({ x, y })
+  }
+  const endCharDrag = () => {
+    charDragOff.current = null
+  }
+
   // --- Hunt Finder -----------------------------------------------------------
   // Panel ranking the best hunting zones for a level + vocation + solo/team.
   // Level/vocation auto-fill from the saved character (below) but stay editable.
@@ -1605,17 +1630,15 @@ export function MapPage() {
       slot: gearSlot ?? undefined,
       equippable: '1',
       q: gearQuery.trim() || undefined,
-      per_page: 200,
+      // Strongest first, SERVER-side: sorting client-side over an id-paged
+      // window silently hid every modern high-id piece (the Soulshredder bug).
+      sort: 'power',
+      per_page: 60,
       ...(charVoc ? { vocation: charVoc } : {}),
     },
     charOpen && gearSlot !== null,
   )
-  // Strongest first: the album endpoint orders by id, so sort by the imported
-  // power heuristic client-side — the piece you wear is usually near the top.
-  const gearChoices = useMemo(() => {
-    const rows = gearItemsQuery.data?.data ?? []
-    return [...rows].sort((a, b) => (b.item?.power ?? 0) - (a.item?.power ?? 0)).slice(0, 40)
-  }, [gearItemsQuery.data])
+  const gearChoices = useMemo(() => (gearItemsQuery.data?.data ?? []).slice(0, 40), [gearItemsQuery.data])
   // Derived stats of the worn set — same math the Hunt Finder scores with.
   const setStatsQuery = useSetStats(gearIdList, charVoc)
   const setStats = setStatsQuery.data ?? null
@@ -3101,6 +3124,26 @@ export function MapPage() {
     return { all: total, available, rented }
   }, [houseStatus, housesData, houseKind])
 
+  // Per-kind counts (status-filtered) for the house-vs-guildhall segmented
+  // control — mirrors statusCounts so each button shows its live tally.
+  const kindCounts = useMemo(() => {
+    const live = houseStatus?.houses
+    const all = housesData?.houses
+    if (!all) return { all: 0, house: 0, guild: 0 }
+    let total = 0
+    let house = 0
+    let guild = 0
+    for (const h of all) {
+      const s = live?.[h.id]?.status
+      if (houseStatusFilter === 'available' && !(s === 'free' || s === 'auctioned')) continue
+      if (houseStatusFilter === 'rented' && s !== 'rented') continue
+      total++
+      if (h.guild) guild++
+      else house++
+    }
+    return { all: total, house, guild }
+  }, [houseStatus, housesData, houseStatusFilter])
+
   // Total monthly rent (gold) paid across every currently-rented house on this
   // world — the "how much gold does this server pay for housing" figure. Only
   // rented houses count (free/auctioned pay nothing); respects the kind filter.
@@ -3410,12 +3453,17 @@ export function MapPage() {
     const pt = cr && routeEndForCreature(cr)
     if (!pt) return
     setRouteMode(true)
-    // Default the origin to Thais when none is picked yet, so the route computes
-    // immediately instead of waiting for the player to choose a starting city.
+    // Default the origin to the nearest city when none is picked yet, so the
+    // route computes immediately instead of waiting for the player to choose a
+    // starting city. Nearest is by horizontal distance — cities are surface
+    // entry points, so floor is irrelevant for the pick.
     if (!routeStartRef.current) {
-      const thais = LANDMARKS.find((l) => l.name === 'Thais')
-      if (thais) {
-        const start: RoutePoint = { x: thais.x, y: thais.y, floor: thais.floor, label: thais.name }
+      const near = LANDMARKS.reduce<Landmark | null>((best, l) => {
+        const d = (l.x - pt.x) ** 2 + (l.y - pt.y) ** 2
+        return !best || d < (best.x - pt.x) ** 2 + (best.y - pt.y) ** 2 ? l : best
+      }, null)
+      if (near) {
+        const start: RoutePoint = { x: near.x, y: near.y, floor: near.floor, label: near.name }
         routeStartRef.current = start
         setRouteStart(start)
       }
@@ -3705,7 +3753,7 @@ export function MapPage() {
               Empty categories (before the spawntype backfill lands) are hidden. */}
           {bossRailOpen && (
             <div
-              className="scroll-atlas mb-1 flex gap-1 overflow-x-auto pb-1"
+              className="scroll-atlas mb-1 flex shrink-0 gap-1 overflow-x-auto pb-1"
               role="tablist"
               aria-label={t('map.bossTypeFilter')}
             >
@@ -4367,16 +4415,37 @@ export function MapPage() {
           /api/character proxy and summarised here. This is the wiring the map's
           personal overlay (house pin, deaths) will read from. */}
       {charOpen && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
-          <div className="scroll-atlas pointer-events-auto max-h-[60vh] w-[22rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-3 shadow-2xl backdrop-blur-md">
-            <div className="mb-2 flex items-center gap-1.5 text-accent">
+        <div className={charPos ? 'pointer-events-none fixed inset-0 z-[1002]' : 'pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3'}>
+          <div
+            ref={charCardRef}
+            style={charPos ? { position: 'absolute', left: charPos.x, top: charPos.y } : undefined}
+            className="scroll-atlas pointer-events-auto max-h-[78vh] w-[30rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-3.5 shadow-2xl backdrop-blur-md"
+          >
+            {/* Header doubles as the drag handle — grab it to move the card. */}
+            <div
+              onPointerDown={startCharDrag}
+              onPointerMove={moveCharDrag}
+              onPointerUp={endCharDrag}
+              onPointerCancel={endCharDrag}
+              className="mb-2 flex cursor-grab touch-none select-none items-center gap-1.5 text-accent active:cursor-grabbing"
+            >
               <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="8" r="4" />
                 <path d="M4 21a8 8 0 0 1 16 0" />
               </svg>
-              <span className="text-[10px] font-bold uppercase tracking-widest">{t('map.charTitle')}</span>
+              <span className="text-xs font-bold uppercase tracking-widest">{t('map.charTitle')}</span>
+              <button
+                onClick={() => setCharOpen(false)}
+                onPointerDown={(e) => e.stopPropagation()}
+                aria-label={t('map.charTitle')}
+                className="ml-auto grid h-6 w-6 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:border-accent hover:text-accent"
+              >
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
             </div>
-            <p className="mb-2 text-xs text-fg-mute">{t('map.charHint')}</p>
+            <p className="mb-2 text-sm text-fg-dim">{t('map.charHint')}</p>
             <form
               onSubmit={(e) => {
                 e.preventDefault()
@@ -4418,30 +4487,30 @@ export function MapPage() {
             {charProfile && (
               <div className="mt-3">
                 {charQuery.isLoading ? (
-                  <p className="py-2 text-sm text-fg-mute">{t('map.charLoading')}</p>
+                  <p className="py-2 text-sm text-fg-dim">{t('map.charLoading')}</p>
                 ) : charQuery.isError ? (
                   <p className="py-2 text-sm text-accent">{t('map.charError')}</p>
                 ) : !character ? (
-                  <p className="py-2 text-sm text-fg-mute">{t('map.charNotFound')}</p>
+                  <p className="py-2 text-sm text-fg-dim">{t('map.charNotFound')}</p>
                 ) : (
-                  <div className="rounded-xl border border-line bg-bg-2 p-2.5">
-                    <div className="text-sm font-bold text-fg">{character.name}</div>
+                  <div className="rounded-xl border border-line bg-bg-2 p-3">
+                    <div className="text-base font-bold text-fg">{character.name}</div>
                     {character.level != null && (
-                      <div className="text-xs text-fg-dim">
+                      <div className="text-sm text-fg">
                         {t('map.charLevel', { level: character.level, vocation: character.vocation ?? '' })}
                       </div>
                     )}
-                    <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs">
+                    <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-sm">
                       {character.world && (
                         <>
-                          <dt className="font-bold uppercase tracking-wide text-fg-mute">{t('map.charWorld')}</dt>
-                          <dd className="text-fg-dim">{character.world}</dd>
+                          <dt className="font-bold uppercase tracking-wide text-fg-dim">{t('map.charWorld')}</dt>
+                          <dd className="text-fg">{character.world}</dd>
                         </>
                       )}
                       {character.guild && (
                         <>
-                          <dt className="font-bold uppercase tracking-wide text-fg-mute">{t('map.charGuild')}</dt>
-                          <dd className="truncate text-fg-dim">
+                          <dt className="font-bold uppercase tracking-wide text-fg-dim">{t('map.charGuild')}</dt>
+                          <dd className="truncate text-fg">
                             {character.guild.name}
                             {character.guild.rank ? ` · ${character.guild.rank}` : ''}
                           </dd>
@@ -4449,8 +4518,8 @@ export function MapPage() {
                       )}
                       {character.houses[0] && (
                         <>
-                          <dt className="font-bold uppercase tracking-wide text-fg-mute">{t('map.charHouse')}</dt>
-                          <dd className="truncate text-fg-dim">
+                          <dt className="font-bold uppercase tracking-wide text-fg-dim">{t('map.charHouse')}</dt>
+                          <dd className="truncate text-fg">
                             {character.houses[0].name}
                             {character.houses[0].town ? ` · ${character.houses[0].town}` : ''}
                           </dd>
@@ -4458,19 +4527,19 @@ export function MapPage() {
                       )}
                     </dl>
                     <div className="mt-2.5 border-t border-line pt-2">
-                      <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-fg-mute">
+                      <div className="mb-1 text-xs font-bold uppercase tracking-widest text-fg-dim">
                         {t('map.charDeaths')}
                       </div>
                       {character.deaths.length === 0 ? (
-                        <p className="text-xs text-fg-mute">{t('map.charNoDeaths')}</p>
+                        <p className="text-sm text-fg-dim">{t('map.charNoDeaths')}</p>
                       ) : (
                         <ul className="flex flex-col gap-1">
                           {character.deaths.slice(0, 5).map((d, i) => (
-                            <li key={i} className="flex items-baseline gap-1.5 text-xs">
-                              <svg viewBox="0 0 24 24" className="h-3 w-3 shrink-0 translate-y-0.5 text-accent" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <li key={i} className="flex items-baseline gap-1.5 text-sm">
+                              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 translate-y-0.5 text-accent" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M9 12h.01M15 12h.01M8 20v2h8v-2M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20" />
                               </svg>
-                              <span className="min-w-0 flex-1 text-fg-dim">
+                              <span className="min-w-0 flex-1 text-fg">
                                 {d.level != null ? `Lvl ${d.level} · ` : ''}
                                 {d.killers.map((k) => k.name).filter(Boolean).join(', ') || d.reason}
                               </span>
@@ -4490,18 +4559,18 @@ export function MapPage() {
             {charProfile && (
               <div className="mt-3 rounded-xl border border-line bg-bg-2 p-2.5">
                 <div className="mb-1.5 flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-fg-mute">{t('map.charGear')}</span>
+                  <span className="text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.charGear')}</span>
                   {gearIdList.length > 0 && (
                     <button
                       type="button"
                       onClick={clearGear}
-                      className="text-[10px] font-semibold text-fg-mute transition hover:text-accent"
+                      className="text-xs font-semibold text-fg-dim transition hover:text-accent"
                     >
                       {t('map.charGearClear')}
                     </button>
                   )}
                 </div>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-3 gap-2">
                   {GEAR_SLOTS.map((slot) => {
                     const piece = charProfile.gear?.[slot] ?? null
                     const open = gearSlot === slot
@@ -4514,17 +4583,17 @@ export function MapPage() {
                           setGearQuery('')
                         }}
                         aria-pressed={open}
-                        className={`flex flex-col items-center gap-0.5 rounded-lg border px-1 py-1.5 text-center transition ${open ? 'border-accent bg-accent/10' : piece ? 'border-line-2 bg-bg-2 hover:border-accent' : 'border-dashed border-line bg-bg-2 hover:border-accent'}`}
+                        className={`flex flex-col items-center gap-0.5 rounded-lg border px-1 py-2 text-center transition ${open ? 'border-accent bg-accent/10' : piece ? 'border-line-2 bg-bg-2 hover:border-accent' : 'border-dashed border-line bg-bg-2 hover:border-accent'}`}
                       >
                         {piece?.image ? (
-                          <img src={piece.image} alt="" className="h-7 w-7 object-contain" loading="lazy" />
+                          <img src={piece.image} alt="" className="h-8 w-8 object-contain" loading="lazy" />
                         ) : (
-                          <span className="grid h-7 w-7 place-items-center text-lg leading-none text-fg-mute">+</span>
+                          <span className="grid h-8 w-8 place-items-center text-xl leading-none text-fg-dim">+</span>
                         )}
-                        <span className="text-[9px] font-bold uppercase tracking-wide text-fg-mute">
+                        <span className="text-[11px] font-bold uppercase tracking-wide text-fg-dim">
                           {t(`items.slot.${slot}`)}
                         </span>
-                        <span className={`w-full truncate text-[10px] ${piece ? 'font-semibold text-fg' : 'text-fg-mute'}`}>
+                        <span className={`w-full truncate text-xs ${piece ? 'font-semibold text-fg' : 'text-fg-dim'}`}>
                           {piece?.name ?? '—'}
                         </span>
                       </button>
@@ -4543,24 +4612,24 @@ export function MapPage() {
                         placeholder={t('map.charGearSearch', { slot: t(`items.slot.${gearSlot}`) })}
                         spellCheck={false}
                         autoComplete="off"
-                        className="h-8 min-w-0 flex-1 rounded-lg border border-line bg-bg-2 px-2 text-xs font-semibold outline-none transition placeholder:font-normal placeholder:text-fg-mute focus:border-accent"
+                        className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-bg-2 px-2.5 text-sm font-semibold outline-none transition placeholder:font-normal placeholder:text-fg-mute focus:border-accent"
                       />
                       {charProfile.gear?.[gearSlot] && (
                         <button
                           type="button"
                           onClick={() => setGearPiece(gearSlot, null)}
-                          className="h-8 shrink-0 rounded-lg border border-line-2 bg-bg-2 px-2 text-[10px] font-bold text-fg-mute transition hover:border-accent hover:text-accent"
+                          className="h-9 shrink-0 rounded-lg border border-line-2 bg-bg-2 px-2.5 text-xs font-bold text-fg-dim transition hover:border-accent hover:text-accent"
                         >
                           {t('map.charGearRemove')}
                         </button>
                       )}
                     </div>
                     {gearItemsQuery.isLoading ? (
-                      <p className="py-2 text-center text-xs text-fg-mute">{t('map.charLoading')}</p>
+                      <p className="py-2 text-center text-sm text-fg-dim">{t('map.charLoading')}</p>
                     ) : gearChoices.length === 0 ? (
-                      <p className="py-2 text-center text-xs text-fg-mute">{t('map.charGearEmpty')}</p>
+                      <p className="py-2 text-center text-sm text-fg-dim">{t('map.charGearEmpty')}</p>
                     ) : (
-                      <ul className="scroll-atlas mt-1.5 max-h-44 overflow-y-auto rounded-lg border border-line">
+                      <ul className="scroll-atlas mt-1.5 max-h-56 overflow-y-auto rounded-lg border border-line">
                         {gearChoices.map((it) => (
                           <li key={it.id}>
                             <button
@@ -4576,12 +4645,12 @@ export function MapPage() {
                               className="flex w-full items-center gap-2 px-2 py-1.5 text-left transition hover:bg-accent/10"
                             >
                               {it.primary_image ? (
-                                <img src={it.primary_image} alt="" className="h-6 w-6 shrink-0 object-contain" loading="lazy" />
+                                <img src={it.primary_image} alt="" className="h-7 w-7 shrink-0 object-contain" loading="lazy" />
                               ) : (
-                                <span className="h-6 w-6 shrink-0" />
+                                <span className="h-7 w-7 shrink-0" />
                               )}
-                              <span className="min-w-0 flex-1 truncate text-xs font-semibold text-fg">{it.name ?? it.slug}</span>
-                              <span className="shrink-0 text-[10px] text-fg-mute">{gearHint(it)}</span>
+                              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-fg">{it.name ?? it.slug}</span>
+                              <span className="shrink-0 text-xs text-fg-dim">{gearHint(it)}</span>
                             </button>
                           </li>
                         ))}
@@ -4593,32 +4662,32 @@ export function MapPage() {
                 {/* Derived stats of the worn set — the exact numbers the Hunt
                     Finder scores zones with (shared backend math). */}
                 {gearIdList.length === 0 ? (
-                  <p className="mt-1.5 text-[10px] text-fg-mute">{t('map.charGearHint')}</p>
+                  <p className="mt-2 text-xs text-fg-dim">{t('map.charGearHint')}</p>
                 ) : setStats ? (
                   <div className="mt-2 border-t border-line pt-2">
-                    <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-fg-mute">
+                    <div className="mb-1 text-xs font-bold uppercase tracking-widest text-fg-dim">
                       {t('map.charSetStats')}
                     </div>
                     <div className="flex flex-wrap items-center gap-1">
-                      <span className="inline-flex items-center rounded border border-line-2 px-1.5 py-px text-[10px] font-semibold text-fg-dim">
+                      <span className="inline-flex items-center rounded border border-line-2 px-1.5 py-0.5 text-xs font-semibold text-fg">
                         {t('map.charArmor')} {setStats.armor}
                       </span>
-                      <span className="inline-flex items-center rounded border border-line-2 px-1.5 py-px text-[10px] font-semibold text-fg-dim">
+                      <span className="inline-flex items-center rounded border border-line-2 px-1.5 py-0.5 text-xs font-semibold text-fg">
                         {t('map.charPhysRed')} −{setStats.physical_reduction}%
                       </span>
                       {setStats.weapon && (
-                        <span className="inline-flex items-center rounded border border-line-2 px-1.5 py-px text-[10px] font-semibold text-fg-dim">
+                        <span className="inline-flex items-center rounded border border-line-2 px-1.5 py-0.5 text-xs font-semibold text-fg">
                           {t('map.charWeapon')}: {setStats.weapon.type ?? setStats.weapon.category ?? setStats.weapon.name}
                           {setStats.weapon.element ? ` · ${elLabel(setStats.weapon.element)}` : ''}
                         </span>
                       )}
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wide text-fg-mute">
+                      <span className="text-xs font-bold uppercase tracking-wide text-fg-dim">
                         {t('map.huntSetResists')}:
                       </span>
                       {Object.entries(setStats.resists).filter(([, p]) => p !== 0).length === 0 ? (
-                        <span className="text-[10px] text-fg-dim">{t('map.huntSetNoResists')}</span>
+                        <span className="text-xs text-fg-dim">{t('map.huntSetNoResists')}</span>
                       ) : (
                         Object.entries(setStats.resists)
                           .filter(([, p]) => p !== 0)
@@ -4626,7 +4695,7 @@ export function MapPage() {
                           .map(([el, p]) => (
                             <span
                               key={el}
-                              className="inline-flex items-center gap-0.5 rounded px-1.5 py-px text-[10px] font-semibold"
+                              className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs font-semibold"
                               style={{ background: `${HUNT_ELEMENT_COLOR[el] ?? '#8a8578'}22`, color: HUNT_ELEMENT_COLOR[el] ?? '#8a8578' }}
                             >
                               {elLabel(el)} {p > 0 ? '+' : ''}
@@ -4640,14 +4709,14 @@ export function MapPage() {
                         {Object.entries(setStats.bonuses).map(([skill, pts]) => (
                           <span
                             key={skill}
-                            className="inline-flex items-center rounded border border-line-2 px-1.5 py-px text-[10px] font-semibold text-fg-dim"
+                            className="inline-flex items-center rounded border border-line-2 px-1.5 py-0.5 text-xs font-semibold text-fg"
                           >
                             {skill} +{pts}
                           </span>
                         ))}
                       </div>
                     )}
-                    <p className="mt-1.5 text-[10px] text-fg-mute">{t('map.charGearHunt')}</p>
+                    <p className="mt-2 text-xs text-fg-dim">{t('map.charGearHunt')}</p>
                   </div>
                 ) : null}
               </div>
@@ -4995,6 +5064,35 @@ export function MapPage() {
           {/* Filters — rent status + name search. Both drive this list AND the
               map pins. */}
           <div className="flex flex-col gap-1.5 border-b border-line/70 px-3 py-2.5">
+            {/* House vs guildhall — segmented control with live count */}
+            <div className="flex gap-0.5 rounded-lg border border-line-2/60 bg-bg/40 p-0.5">
+              {(['all', 'house', 'guild'] as const).map((k) => {
+                const on = houseKind === k
+                const col = k === 'guild' ? '#7c6cf0' : k === 'house' ? '#b3873f' : '#8a8f98'
+                const n = kindCounts[k]
+                return (
+                  <button
+                    key={k}
+                    onClick={() => setHouseKind(k)}
+                    aria-pressed={on}
+                    className={`flex-1 rounded-md px-1 py-1.5 text-xs font-semibold transition ${
+                      on ? '' : 'text-fg-dim hover:text-fg'
+                    }`}
+                    style={on ? { background: `${col}22`, color: col, boxShadow: `inset 0 0 0 1px ${col}66` } : undefined}
+                  >
+                    <span className="flex items-center justify-center gap-1">
+                      {k !== 'all' && (
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: col }} />
+                      )}
+                      <span className="truncate">
+                        {k === 'all' ? t('map.houseKindAll') : k === 'house' ? t('map.houseKindHouse') : t('map.houseKindGuild')}
+                      </span>
+                      <span className={`shrink-0 tabular-nums ${on ? 'opacity-80' : 'text-fg-dim'}`}>{n}</span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
             {/* Rent status — segmented control with colour dot + live count */}
             <div className="flex gap-0.5 rounded-lg border border-line-2/60 bg-bg/40 p-0.5">
               {(['all', 'available', 'rented'] as const).map((s) => {

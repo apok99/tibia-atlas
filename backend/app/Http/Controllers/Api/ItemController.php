@@ -89,7 +89,14 @@ class ItemController extends Controller
                 $term = '%'.addcslashes((string) $request->string('q'), '%_\\').'%';
                 $q->whereHas('translations', fn ($t) => $t->where('name', 'ilike', $term));
             })
-            ->orderBy('id')
+            // The gear picker pages by the imported power heuristic (strongest
+            // first) — by id, modern high-id gear never reaches page one. The
+            // id tiebreaker keeps pagination stable.
+            ->when(
+                (string) $request->string('sort') === 'power',
+                fn ($q) => $q->orderByRaw("coalesce((meta->>'power')::numeric, 0) desc")->orderBy('id'),
+                fn ($q) => $q->orderBy('id'),
+            )
             ->paginate($this->clamp($request, 'per_page', 60, 1, 200))
             ->withQueryString();
 

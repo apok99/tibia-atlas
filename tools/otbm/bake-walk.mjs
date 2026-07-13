@@ -461,6 +461,24 @@ function mergeWaypointCost(walk) {
   return { cost, client }
 }
 
+// --- Owner-verified scripted entrances the OTBM can't express --------------------
+// A handful of real in-game descents are pure server-lua (dug / scripted sand
+// holes) and leave NO floor-change item in the OTBM, so the bake can't derive them
+// — yet the rope-spot the client puts on the floor BELOW proves the passage is
+// real (you drop in from above and rope back out). Each entry is an owner-confirmed
+// route-report fix. Appended straight to the final link set (both endpoints
+// hand-verified walkable). Keep this list SMALL and specific: it is the only place
+// we assert a link the map data does not contain.
+//   [fromX, fromY, fromZ, toX, toY, toZ, type]  (type 0=down hole, 4=shovel)
+const MANUAL_LINKS = [
+  // Larva Cave — Kha'labal desert SE of Ankrahmun. You drop through a hole in the
+  // sand (33161,32598,z7) into the cave (z8) and rope back up; the OTBM only carries
+  // the rope-ceiling ground below (id 386 "dirt floor"), never the hole above.
+  // Route report #1 (Thais→Larva) was detouring through the Ancient Tombs teleport
+  // maze because this was the sole modelled way into the cave's z8 component.
+  [33161, 32598, 7, 33161, 32598, 8, 0],
+]
+
 // --- 5. validate links against the baked walkability ------------------------------
 // A link is only usable if its destination is a tile you can actually stand on.
 // Tens of thousands of raw links land in solid rock / water / void: map noise,
@@ -583,6 +601,23 @@ const { cost, client } = mergeWaypointCost(parsed.walk)
 }
 
 const links = validateLinks(resolveLinks(parsed), cost, client)
+// Owner-verified scripted entrances (MANUAL_LINKS): append after validation and
+// force both endpoints standable so the leg can never dangle.
+{
+  const setWalk = (x, y, z) => {
+    if (z < 0 || z > 15 || x < X0 || x >= X1 || y < Y0 || y >= Y1) return false
+    const i = (y - Y0) * W + (x - X0)
+    if (cost[z][i] === 0) cost[z][i] = DEFAULT_COST
+    return true
+  }
+  let added = 0
+  for (const l of MANUAL_LINKS) {
+    const [x, y, z, dx, dy, dz] = l
+    if (!setWalk(x, y, z) || !setWalk(dx, dy, dz)) { console.warn('  MANUAL_LINK out of bounds, skipped:', l); continue }
+    links.push([...l]); added++
+  }
+  console.log('manual links appended:', added)
+}
 const byT = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0 }
 for (const l of links) byT[l[6]]++
 console.log('floor-links:', links.length, '| down:', byT[0], 'up:', byT[1], 'teleport:', byT[2], 'rope:', byT[3], 'shovel:', byT[4])

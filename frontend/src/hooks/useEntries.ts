@@ -166,6 +166,8 @@ export function useItems(
     vocation?: string
     equippable?: '0' | '1'
     q?: string
+    /** 'power' pages strongest-first (gear picker); default is by id (album). */
+    sort?: 'power'
     page?: number
     per_page?: number
   } = {},
