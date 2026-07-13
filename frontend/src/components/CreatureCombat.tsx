@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import type { ReactNode } from 'react'
+import { localizeAbilityName } from '../lib/abilityName'
 
 /**
  * Unified "Combat" panel for a creature — merges the old DamageAffinity and
@@ -212,6 +213,14 @@ function parseLabels(value: unknown): Set<string> {
   )
 }
 
+/** Peak numeric damage from a "250-550" / "1,200-6,500" range (max of all numbers). */
+function peakDamage(dmg?: string): number | null {
+  if (typeof dmg !== 'string') return null
+  const nums = dmg.replace(/,/g, '').match(/\d+/g)
+  if (!nums) return null
+  return Math.max(...nums.map(Number))
+}
+
 function statusFromPct(pct: number): Status {
   if (pct === 0) return 'immune'
   if (pct < 100) return 'resistant'
@@ -237,7 +246,8 @@ function ElementIcon({ def, size = 18, tint }: { def: ElementDef; size?: number;
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function CreatureCombat({ meta }: { meta: Record<string, unknown> }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const lang = (i18n.language || 'es').slice(0, 2)
 
   // --- Affinity data ---------------------------------------------------------
   const rawMods = meta?.damage_mods
@@ -276,6 +286,19 @@ export function CreatureCombat({ meta }: { meta: Record<string, unknown> }) {
       )
     : []
   const hasAbilities = abilities.length > 0
+
+  // Peak elemental damage per element — powers the "predominant element" chart.
+  const damageByElement = new Map<string, number>()
+  for (const a of abilities) {
+    if (!a.element || !ELEMENT[a.element]) continue
+    const peak = peakDamage(a.damage)
+    if (peak == null || peak <= 1) continue
+    damageByElement.set(a.element, Math.max(damageByElement.get(a.element) ?? 0, peak))
+  }
+  const damageRows = [...damageByElement.entries()]
+    .map(([id, val]) => ({ def: ELEMENT[id], val }))
+    .sort((a, b) => b.val - a.val)
+  const maxDamage = damageRows[0]?.val ?? 0
 
   if (!hasAffinity && !hasAbilities) return null
 
@@ -416,13 +439,58 @@ export function CreatureCombat({ meta }: { meta: Record<string, unknown> }) {
             </span>
           </SubHeader>
 
+          {/* Predominant-element chart: peak damage per element, tallest first. */}
+          {damageRows.length >= 2 && (
+            <div className="px-4 pb-3 pt-1">
+              <div className="mb-2 flex items-baseline gap-2">
+                <h4 className="text-[10px] font-bold uppercase tracking-[0.14em] text-fg-mute">
+                  {t('combat.byElement')}
+                </h4>
+                <span className="text-[10px] text-fg-mute">{t('combat.byElementHint')}</span>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {damageRows.map(({ def, val }, idx) => (
+                  <div key={def.id} className="flex items-center gap-2">
+                    <ElementIcon def={def} size={18} />
+                    <span className="w-20 shrink-0 truncate text-[11px] font-semibold text-fg-dim">
+                      {t(`elements.${def.id}`)}
+                    </span>
+                    <div className="relative h-3.5 flex-1 overflow-hidden rounded-[3px] bg-bg-2">
+                      <div
+                        className="h-full rounded-[3px]"
+                        style={{
+                          width: `${maxDamage ? Math.max(6, (val / maxDamage) * 100) : 0}%`,
+                          background: def.color,
+                          opacity: idx === 0 ? 1 : 0.66,
+                        }}
+                      />
+                    </div>
+                    {idx === 0 && (
+                      <span
+                        className="shrink-0 rounded-[3px] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
+                        style={{ color: def.color, background: `${def.color}1f` }}
+                      >
+                        {t('combat.predominant')}
+                      </span>
+                    )}
+                    <span className="w-12 shrink-0 text-right font-mono text-[11px] font-bold tabular-nums text-fg">
+                      {val}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <ul className="divide-y divide-line">
             {abilities.map((a, i) => {
               const label = a.kind
                 ? a.kind === 'summon' && a.name
                   ? `${t('abilities.kind.summon')}: ${a.name}`
                   : t(`abilities.kind.${a.kind}`, { defaultValue: a.name ?? a.kind })
-                : (a.name ?? '')
+                : a.name
+                  ? localizeAbilityName(a.name, lang)
+                  : ''
 
               const elDef = a.element ? ELEMENT[a.element] : null
               const kindColor = a.kind ? KIND_COLOR[a.kind] : null

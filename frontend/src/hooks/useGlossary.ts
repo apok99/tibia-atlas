@@ -10,6 +10,8 @@ export interface GlossaryItem {
   image: string | null
   /** Present (true) only for boss creatures — powers the map's boss search. */
   boss?: boolean
+  /** Boss spawntypes (Raid/Unique/Unblockable/Triggered/Regular/Event) — for the Boss Watch tabs. Multi-valued. */
+  spawn_type?: string[]
 }
 
 /** Index of all published entry names in the active locale, for auto-linking. */

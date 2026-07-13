@@ -75,6 +75,13 @@ const HEAT_STYLE = {
   cold: { cls: 'text-interp', glyph: '❄', label: 'map.bossCold' },
 } as const
 
+// Boss Watch category tabs, keyed by TibiaWiki spawntype. 'all' keeps the classic
+// hottest-first mixed roster; the rest slice the roster to one spawntype so a
+// player can browse e.g. every raid boss or every lever ("Triggered") boss. Order
+// = how a hunter thinks about them (raids first, curiosities last).
+type BossType = 'all' | 'Raid' | 'Unique' | 'Triggered' | 'Regular' | 'Event' | 'Unblockable'
+const BOSS_TYPES: BossType[] = ['all', 'Raid', 'Unique', 'Triggered', 'Regular', 'Event', 'Unblockable']
+
 type Marker = { id: string; x: number; y: number; floor: number; label: string }
 type Cluster = { x: number; y: number; z: number; count: number; score: number }
 type ActiveCreature = {
@@ -1552,6 +1559,7 @@ export function MapPage() {
   const [showTour, setShowTour] = useState(false) // guided how-to overlay
   const [bossRailOpen, setBossRailOpen] = useState(false) // world-boss watch sidebar (starts minimized so it doesn't cover the map)
   const [bossQuery, setBossQuery] = useState('') // free-text filter for the boss watch rail
+  const [bossType, setBossType] = useState<BossType>('all') // spawntype tab (Raid/Unique/…)
   // Bosses the player has pinned to "follow" — kept at the top of the rail and
   // never dropped by the hottest-16 cut. Persisted so a watch survives reloads.
   const [pinnedBosses, setPinnedBosses] = useState<Set<string>>(() => {
@@ -3372,49 +3380,81 @@ export function MapPage() {
     [bossWatch],
   )
   // Rail row shape — heat-tracked bosses carry a heat/worlds read; bosses pulled
-  // from the glossary (rare ones with no kill-stats) carry heat = null.
-  type RailBoss = { race: string; slug: string; image: string | null; heat: number | null; worlds: string[] }
-  // Free-text filter for the rail. When empty it keeps the default "hottest 16"
-  // cut (plus any pins). A query searches the whole boss roster — both the
-  // heat-tracked API list AND every published boss from the glossary, so rare
-  // bosses missing from kill-stats (e.g. Gaz'haragoth) are still findable and
-  // followable. Pinned ("followed") bosses always float to the top and skip the
-  // 16-cap, so a watch never scrolls out of view.
-  const shownBosses = useMemo<RailBoss[]>(() => {
-    const q = bossQuery.trim().toLowerCase()
+  // from the glossary (rare ones with no kill-stats) carry heat = null. spawn_type
+  // (from the glossary) drives the category tabs.
+  type RailBoss = { race: string; slug: string; image: string | null; heat: number | null; worlds: string[]; spawn_type: string[] | null }
+  // slug → spawntypes, so the heat-tracked list (which the kill-stats API doesn't
+  // tag) can be classified for the tabs by borrowing the glossary's spawn_type.
+  const spawnTypeBySlug = useMemo(() => {
+    const m = new Map<string, string[]>()
+    for (const g of glossary ?? []) if (g.boss && g.spawn_type?.length) m.set(g.slug, g.spawn_type)
+    return m
+  }, [glossary])
+  // The whole boss roster (heat-tracked + glossary-only), each tagged with its
+  // spawntype. The rail derives both the tab counts and the shown list from it.
+  const allRailBosses = useMemo<RailBoss[]>(() => {
     const heatList: RailBoss[] = bosses.map((b) => ({
       race: b.race,
       slug: b.slug,
       image: b.image,
       heat: b.heat,
       worlds: b.worlds,
+      spawn_type: spawnTypeBySlug.get(b.slug) ?? null,
     }))
     const heatSlugs = new Set(heatList.map((b) => b.slug))
     // Published bosses the heat roster doesn't cover (floor-independent).
     const glossaryBosses: RailBoss[] = (glossary ?? [])
       .filter((g) => g.boss && g.type === 'creature' && !heatSlugs.has(g.slug))
-      .map((g) => ({ race: g.name, slug: g.slug, image: g.image, heat: null, worlds: [] }))
-    const resolve = (slug: string): RailBoss | undefined =>
-      heatList.find((b) => b.slug === slug) ?? glossaryBosses.find((b) => b.slug === slug)
+      .map((g) => ({ race: g.name, slug: g.slug, image: g.image, heat: null, worlds: [], spawn_type: g.spawn_type ?? null }))
+    return [...heatList, ...glossaryBosses]
+  }, [bosses, glossary, spawnTypeBySlug])
+  // Count per tab, for the little badges. A boss counts toward every spawntype it
+  // carries; 'all' = the whole roster.
+  const bossTypeCounts = useMemo(() => {
+    const c: Record<BossType, number> = { all: allRailBosses.length, Raid: 0, Unique: 0, Triggered: 0, Regular: 0, Event: 0, Unblockable: 0 }
+    for (const b of allRailBosses) for (const st of b.spawn_type ?? []) if (st in c) c[st as BossType]++
+    return c
+  }, [allRailBosses])
+  // Free-text filter + spawntype tab for the rail. 'all' with no query keeps the
+  // classic "hottest 16" cut (plus pins); a specific tab shows that spawntype's
+  // whole roster (hottest first, then A–Z), and a query searches within the tab.
+  // The heat-tracked API list AND every published boss from the glossary are both
+  // in scope, so rare bosses missing from kill-stats (e.g. Gaz'haragoth) stay
+  // findable and followable. Pinned ("followed") bosses always float to the top
+  // and skip the cap, so a watch never scrolls out of view.
+  const shownBosses = useMemo<RailBoss[]>(() => {
+    const q = bossQuery.trim().toLowerCase()
+    const byHeatThenName = (a: RailBoss, b: RailBoss) =>
+      (b.heat ?? -1) - (a.heat ?? -1) || a.race.localeCompare(b.race)
+    const inTab = (b: RailBoss) => bossType === 'all' || (b.spawn_type?.includes(bossType) ?? false)
+    const pool = allRailBosses.filter(inTab)
+    const resolve = (slug: string): RailBoss | undefined => allRailBosses.find((b) => b.slug === slug)
 
     if (q) {
       const match = (b: RailBoss) =>
         b.race.toLowerCase().includes(q) || b.worlds.some((w) => w.toLowerCase().includes(q))
-      const heatMatched = heatList.filter(match)
-      const glossMatched = glossaryBosses.filter(match).sort((a, b) => a.race.localeCompare(b.race))
-      const matched = [...heatMatched, ...glossMatched]
+      const matched = pool.filter(match).sort(byHeatThenName)
       const pinned = matched.filter((b) => pinnedBosses.has(b.slug))
       const rest = matched.filter((b) => !pinnedBosses.has(b.slug))
       return [...pinned, ...rest]
     }
 
-    // No query: pins first (resolved from either source so a followed rare boss
-    // stays visible), then the hottest 16 heat-tracked bosses.
-    const pinnedList = [...pinnedBosses].map(resolve).filter((b): b is RailBoss => !!b)
-    const pinnedSlugs = new Set(pinnedList.map((b) => b.slug))
-    const rest = heatList.filter((b) => !pinnedSlugs.has(b.slug)).slice(0, 16)
-    return [...pinnedList, ...rest]
-  }, [bosses, bossQuery, pinnedBosses, glossary])
+    // No query, 'all' tab: pins first (resolved from either source so a followed
+    // rare boss stays visible), then the hottest 16 heat-tracked bosses.
+    if (bossType === 'all') {
+      const pinnedList = [...pinnedBosses].map(resolve).filter((b): b is RailBoss => !!b)
+      const pinnedSlugs = new Set(pinnedList.map((b) => b.slug))
+      const rest = allRailBosses.filter((b) => !pinnedSlugs.has(b.slug)).slice(0, 16)
+      return [...pinnedList, ...rest]
+    }
+
+    // A specific spawntype tab: the whole category (hottest first, then A–Z),
+    // pins on top and exempt from the cap.
+    const sorted = [...pool].sort(byHeatThenName)
+    const pinned = sorted.filter((b) => pinnedBosses.has(b.slug))
+    const rest = sorted.filter((b) => !pinnedBosses.has(b.slug)).slice(0, 40)
+    return [...pinned, ...rest]
+  }, [allRailBosses, bossQuery, bossType, pinnedBosses])
 
   // Published community routes, most-loaded first. Only fetched once the gallery
   // is opened.
@@ -3571,6 +3611,35 @@ export function MapPage() {
               </svg>
             </button>
           </div>
+          {/* Spawntype tabs — split the roster into Raid / Unique / Triggered / …
+              Empty categories (before the spawntype backfill lands) are hidden. */}
+          {bossRailOpen && (
+            <div
+              className="scroll-atlas mb-1 flex gap-1 overflow-x-auto pb-1"
+              role="tablist"
+              aria-label={t('map.bossTypeFilter')}
+            >
+              {BOSS_TYPES.map((bt) => {
+                const active = bossType === bt
+                const count = bossTypeCounts[bt]
+                if (bt !== 'all' && count === 0 && !active) return null
+                return (
+                  <button
+                    key={bt}
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setBossType(bt)}
+                    className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide transition ${
+                      active ? 'border-theory bg-theory text-white' : 'border-line text-fg-mute hover:border-line-2 hover:text-fg'
+                    }`}
+                  >
+                    {t(`map.bossType.${bt.toLowerCase()}`)}
+                    {count > 0 && <span className="ml-1 font-normal opacity-70">{count}</span>}
+                  </button>
+                )
+              })}
+            </div>
+          )}
           {/* Boss filter — only when the rail is expanded (collapsed it's a 5rem strip) */}
           {bossRailOpen && (
             <div className="mb-1 flex items-center gap-1.5 rounded-lg border border-line bg-bg/50 px-2 focus-within:border-accent">
@@ -3685,7 +3754,7 @@ export function MapPage() {
               })
               : (
                 <p className="px-2 py-4 text-center text-xs text-fg-mute">
-                  {t('map.bossSearchEmpty', { q: bossQuery.trim() })}
+                  {bossQuery.trim() ? t('map.bossSearchEmpty', { q: bossQuery.trim() }) : t('map.bossTypeEmpty')}
                 </p>
               )
             : Array.from({ length: 8 }).map((_, i) => (

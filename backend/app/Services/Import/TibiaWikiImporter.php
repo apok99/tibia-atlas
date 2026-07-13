@@ -726,6 +726,22 @@ class TibiaWikiImporter
         }
         if (($p['isboss'] ?? '') === 'yes') {
             $meta['rank'] = 'Boss';
+            // How the boss enters the world (TibiaWiki `spawntype`). MULTI-VALUED —
+            // a boss can be "Raid, Unique, Unblockable" at once (comma- or
+            // slash-separated). Split, normalise casing, and keep only the known
+            // categories (drops "--" and markup noise). Stored as a list so the map
+            // Boss Watch's per-category tabs can match membership.
+            $spawn = trim($this->cleanWikitext($p['spawntype'] ?? ''));
+            $types = [];
+            foreach (preg_split('/[,\/]+/', $spawn) as $tok) {
+                $tok = ucfirst(strtolower(trim($tok)));
+                if (in_array($tok, ['Raid', 'Unique', 'Unblockable', 'Triggered', 'Regular', 'Event'], true)) {
+                    $types[] = $tok;
+                }
+            }
+            if ($types !== []) {
+                $meta['spawn_type'] = array_values(array_unique($types));
+            }
         }
 
         // Numeric stats: strip thousands separators, then take the first number
@@ -790,9 +806,9 @@ class TibiaWikiImporter
         if (isset($p['paraimmune'])) {
             $meta['paralysable'] = $p['paraimmune'] === 'yes' ? 'No' : 'Yes';
         }
-        if (! empty($p['spawntype'])) {
-            $meta['spawn_type'] = $this->cleanWikitext($p['spawntype']);
-        }
+        // NOTE: `spawn_type` is captured (as a normalised list) in the boss block
+        // above — don't re-assign it here as a raw string, or the two writers clobber
+        // each other on every import.
 
         // Battle cry (first phrase in the sounds list).
         if (! empty($p['sounds'])) {
@@ -866,7 +882,14 @@ class TibiaWikiImporter
      */
     private function parseAbilityTemplate(string $tpl): ?array
     {
-        $parts = $this->splitTopLevelPipes(substr(trim($tpl), 2, -2));
+        // Take only the leading balanced {{…}} — an Ability List child can carry
+        // trailing prose on the same line ("{{Healing|range=2,500-3,500}} (every
+        // turn)"), which must not bleed into the parsed fields.
+        $inner = $this->firstBalancedTemplate(trim($tpl));
+        if ($inner === null) {
+            return null;
+        }
+        $parts = $this->splitTopLevelPipes($inner);
         $tname = strtolower(str_replace([' ', '_'], '', trim(array_shift($parts) ?? '')));
         if ($tname === '') {
             return null;
@@ -908,21 +931,22 @@ class TibiaWikiImporter
                     return null;
                 }
                 [$dmg, $el] = $this->damageAndElement(array_slice($pos, 1));
-                return $prune(['name' => $name, 'damage' => $dmg, 'element' => $kvElement ?? $el]);
+                return $prune(['name' => $name, 'damage' => $kv['damage'] ?? $dmg, 'element' => $kvElement ?? $el]);
             default:
                 $name = $this->cleanWikitext($pos[0] ?? ucfirst($tname));
                 if ($name === '') {
                     return null;
                 }
                 [$dmg, $el] = $this->damageAndElement(array_slice($pos, 1));
-                return $prune(['name' => $name, 'damage' => $dmg, 'element' => $kvElement ?? $el]);
+                return $prune(['name' => $name, 'damage' => $kv['damage'] ?? $dmg, 'element' => $kvElement ?? $el]);
         }
     }
 
     /**
      * From an ability's positional args, pull the first numeric damage range
      * ("0-120", "150-250", "160-240 …" → "160-240") and the first short element
-     * or status word ("fire", "life drain", "slowed"), normalized.
+     * or status word ("fire", "life drain", "slowed"), normalized. Thousands
+     * separators are kept ("0-7,200", "1,200-6,500").
      *
      * @param  list<string>  $pos
      * @return array{0:?string,1:?string} [damage, element]
@@ -933,8 +957,8 @@ class TibiaWikiImporter
         $element = null;
         foreach ($pos as $raw) {
             $r = trim((string) $raw);
-            if ($damage === null && preg_match('/^\d[\d\s]*(?:[-–]\s*\d[\d\s]*)?\+?/u', $r, $m)) {
-                $damage = trim($m[0]);
+            if ($damage === null && preg_match('/^\d[\d,\s]*(?:[-–]\s*\d[\d,\s]*)?\+?/u', $r, $m)) {
+                $damage = rtrim(trim($m[0]), ', ');
 
                 continue;
             }
@@ -1002,6 +1026,35 @@ class TibiaWikiImporter
         }
 
         return $depth === 0 ? $out : null;
+    }
+
+    /**
+     * Return the inner body of the first balanced {{…}} at the start of $s,
+     * ignoring anything after its closing braces. Null when $s doesn't open
+     * with a template or the braces never balance.
+     */
+    private function firstBalancedTemplate(string $s): ?string
+    {
+        if (! str_starts_with($s, '{{')) {
+            return null;
+        }
+        $depth = 0;
+        $len = strlen($s);
+        for ($i = 0; $i < $len; $i++) {
+            $two = substr($s, $i, 2);
+            if ($two === '{{') {
+                $depth++;
+                $i++;
+            } elseif ($two === '}}') {
+                $depth--;
+                if ($depth === 0) {
+                    return substr($s, 2, $i - 2);
+                }
+                $i++;
+            }
+        }
+
+        return null;
     }
 
     /**
