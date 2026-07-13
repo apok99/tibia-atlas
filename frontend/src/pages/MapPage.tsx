@@ -3366,7 +3366,9 @@ export function MapPage() {
           (b): b is BossRow & { slug: string; image: string } =>
             !!b.slug && !!b.image && b.week_killed > 0,
         )
-        .sort((a, b) => b.heat - a.heat || b.due - a.due),
+        // heat null = world-scoped with no kill recorded there — sink those below
+        // any real reading so the rail leads with bosses we can actually call.
+        .sort((a, b) => (b.heat ?? -1) - (a.heat ?? -1) || b.due - a.due),
     [bossWatch],
   )
   // Rail row shape — heat-tracked bosses carry a heat/worlds read; bosses pulled

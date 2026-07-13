@@ -82,7 +82,8 @@ export interface BossRow {
   due: number
   day_killed: number
   week_killed: number
-  heat: number
+  /** 0-100 respawn progress; null when world-scoped with no recorded kill there. */
+  heat: number | null
   worlds: string[]
   iconic: boolean
   rank: number

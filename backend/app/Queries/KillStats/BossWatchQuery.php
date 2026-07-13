@@ -58,13 +58,20 @@ class BossWatchQuery
             ]);
 
         // Per-world scope: whether this boss was killed today on the chosen world
-        // (so it's on cooldown there) and whether it appears there at all. The
-        // roster qualification above stays cross-world so the rare-boss set is
+        // (so it's on cooldown there) and how many days ago its LAST kill there
+        // was (null = never recorded — no anchor to reason from). The roster
+        // qualification above stays cross-world so the rare-boss set is
         // unchanged — only the heat/status is re-derived per world.
         if ($world !== null) {
             $query
                 ->selectRaw('BOOL_OR(w.name = ? AND kd.day_killed > 0) AS world_killed_today', [$world])
-                ->selectRaw('BOOL_OR(w.name = ?) AS world_present', [$world]);
+                ->selectRaw('BOOL_OR(w.name = ?) AS world_present', [$world])
+                ->selectRaw(
+                    '(?::date - (SELECT MAX(kd2.snapshot_date) FROM kill_daily kd2'
+                    .' JOIN tibia_worlds w2 ON w2.id = kd2.world_id'
+                    .' WHERE kd2.race_id = MIN(kd.race_id) AND w2.name = ? AND kd2.day_killed > 0)) AS world_days_since',
+                    [$latest, $world]
+                );
         }
 
         return $query->get();

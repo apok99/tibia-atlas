@@ -62,12 +62,21 @@ class BossWatchTransformer
             ? array_filter(explode(',', (string) $r->cooldown_worlds))
             : array_filter(explode(',', (string) $r->open_worlds));
 
-        // Scoped to a single world: heat collapses to a clear up/down read —
-        // killed there in the last 24h → cold (on cooldown), otherwise hot
-        // (likely up). The world list shows just that world.
+        // Scoped to a single world: heat = respawn progress there. Days since
+        // the last recorded kill on that world, against the boss's estimated
+        // per-world respawn cycle (from its real global kill rate: a boss killed
+        // 15×/week across 22 worlds respawns every ~10 days per world). A rare
+        // boss killed 2 days ago reads ~20 ("just killed"), NOT "likely up";
+        // a daily boss is back to 100 the next day. Never killed there → null:
+        // no anchor, no fabricated probability (the UI says "no data").
         if ($world !== null) {
-            $killedToday = filter_var($r->world_killed_today ?? false, FILTER_VALIDATE_BOOLEAN);
-            $heat = $killedToday ? 0 : 100;
+            $days = $r->world_days_since ?? null;
+            if ($days === null) {
+                $heat = null;
+            } else {
+                $cycle = max(1.0, min(30.0, 7.0 * $worlds / max(1, (int) $r->week_killed)));
+                $heat = (int) min(100, round(100 * max(0, (int) $days) / $cycle));
+            }
             $list = [$world];
         }
 
