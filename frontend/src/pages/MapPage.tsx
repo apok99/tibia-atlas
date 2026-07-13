@@ -5623,6 +5623,16 @@ export function MapPage() {
                 ✕ {t('map.routeClear')}
               </button>
             )}
+
+            {/* Dismiss the whole directions bar (works even with no route yet). */}
+            <button
+              onClick={closeRoute}
+              title={t('map.routeClose')}
+              aria-label={t('map.routeClose')}
+              className="grid h-7 w-7 place-items-center rounded-md text-base leading-none text-fg-mute transition hover:bg-bg hover:text-accent"
+            >
+              ✕
+            </button>
           </div>
         </div>
       )}
