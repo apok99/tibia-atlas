@@ -3609,7 +3609,7 @@ export function MapPage() {
                       onClick={() => (on ? removeCreature(b.slug) : addCreature(b.slug))}
                       title={
                         hs
-                          ? `${b.race} · ${t(hs.label)} ${b.heat}%${b.worlds.length ? ` · ${b.worlds.join(', ')}` : ''}`
+                          ? `${b.race} · ${t(hs.label)}${b.worlds.length ? ` · ${b.worlds.join(', ')}` : ''}`
                           : `${b.race} · ${t('map.bossNoHeat')}`
                       }
                       className={`flex min-w-0 flex-1 items-center gap-2 text-left ${bossRailOpen ? '' : 'justify-center'}`}
@@ -3637,7 +3637,6 @@ export function MapPage() {
                             <span className={`flex items-center gap-1 text-[15px] font-bold ${hs.cls}`}>
                               <span aria-hidden>{hs.glyph}</span>
                               <span className="truncate">{t(hs.label)}</span>
-                              <span className="tabular-nums opacity-70">{b.heat}%</span>
                             </span>
                           ) : (
                             <span className="block truncate text-xs italic text-fg-mute">{t('map.bossNoHeat')}</span>
