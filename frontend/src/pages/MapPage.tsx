@@ -2447,6 +2447,11 @@ export function MapPage() {
         const gy = coords.y * TILE
         img.alt = ''
         img.style.imageRendering = 'pixelated'
+        // leaflet.css sets mix-blend-mode:plus-lighter on tiles (Chromium
+        // hairline workaround). Combined with our 1px tile overlap (see
+        // _initTile) the overlapping strip ADDS both tiles' colours — a
+        // bright white/cyan grid. Our tiles are opaque; blend normally.
+        img.style.mixBlendMode = 'normal'
         const f = (this as L.GridLayer).options as { floor: number }
         img.onerror = () => {
           img.style.visibility = 'hidden'
