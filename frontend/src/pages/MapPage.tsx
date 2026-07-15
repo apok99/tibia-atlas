@@ -1654,12 +1654,15 @@ export function MapPage() {
       // Strongest first, SERVER-side: sorting client-side over an id-paged
       // window silently hid every modern high-id piece (the Soulshredder bug).
       sort: 'power',
-      per_page: 60,
-      ...(charVoc ? { vocation: charVoc } : {}),
+      per_page: 120,
+      // Vocation narrows the BROWSE list only. A typed search drops it: if you
+      // name the item, it's yours — a wrong/failed vocation lookup must never
+      // turn a real weapon into "no results".
+      ...(charVoc && !gearQuery.trim() ? { vocation: charVoc } : {}),
     },
     charOpen && gearSlot !== null,
   )
-  const gearChoices = useMemo(() => (gearItemsQuery.data?.data ?? []).slice(0, 40), [gearItemsQuery.data])
+  const gearChoices = gearItemsQuery.data?.data ?? []
   // Derived stats of the worn set — same math the Hunt Finder scores with.
   const setStatsQuery = useSetStats(gearIdList, charVoc)
   const setStats = setStatsQuery.data ?? null
