@@ -4173,51 +4173,6 @@ export function MapPage() {
               </button>
             </HotbarGroup>
 
-            {/* Markers — add + clear (with a live count badge) under one slot. */}
-            <HotbarGroup
-              label={t('map.markersGroup')}
-              active={placing}
-              badge={markers.length}
-              icon={
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
-                  <path d="M12 8v4M10 10h4" />
-                </svg>
-              }
-            >
-              {/* Add a marker (nearest the primary) */}
-              <button
-                onClick={() => {
-                  setPlacing((p) => !p)
-                  setRouteMode(false)
-                  setBuildMode(false)
-                }}
-                title={t('map.addMarker')}
-                aria-label={t('map.addMarker')}
-                aria-pressed={placing}
-                className={`${SLOT} ${placing ? SLOT_ON : SLOT_OFF}`}
-              >
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
-                  <path d="M12 8v4M10 10h4" />
-                </svg>
-              </button>
-
-              {/* Clear markers (only when there are any) */}
-              {markers.length > 0 && (
-                <button
-                  onClick={() => setMarkers([])}
-                  title={`${t('map.clear')} (${markers.length})`}
-                  aria-label={`${t('map.clear')} (${markers.length})`}
-                  className={`${SLOT} ${SLOT_OFF}`}
-                >
-                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                  </svg>
-                </button>
-              )}
-            </HotbarGroup>
-
             <span className="mx-0.5 h-6 w-px bg-line/50" />
 
             {/* Share this view */}
@@ -4337,19 +4292,78 @@ export function MapPage() {
 
             <span className="mx-0.5 h-6 w-px bg-line/50" />
 
-            {/* Imported client markers (points of interest) */}
-            <button
-              onClick={() => setShowPoi((v) => !v)}
-              title={t('map.markersLayer')}
-              aria-label={t('map.markersLayer')}
-              aria-pressed={showPoi}
-              className={`${SLOT} ${showPoi ? 'border-interp bg-interp/15 text-interp' : SLOT_OFF}`}
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-                <path d="M4 22v-7" />
-              </svg>
-            </button>
+            {/* Markers — everything about marks on the atlas hangs off one slot.
+                The primary toggles the imported client markers (points of
+                interest); while it's on, your own marker actions (add / clear)
+                sprout UP from it like the Houses tree below. */}
+            <div className="relative flex items-center">
+              {showPoi && (
+                <div className="absolute bottom-full left-1/2 mb-2 flex -translate-x-1/2 flex-col-reverse items-center gap-1.5">
+                  {/* trunk connecting the branch down to the markers icon */}
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute left-1/2 top-1 -bottom-2.5 -z-10 w-0.5 -translate-x-1/2 rounded"
+                    style={{ background: 'var(--color-interp)', opacity: 0.45 }}
+                  />
+                  <button
+                    onClick={() => {
+                      setPlacing((p) => !p)
+                      setRouteMode(false)
+                      setBuildMode(false)
+                    }}
+                    title={t('map.addMarker')}
+                    aria-label={t('map.addMarker')}
+                    aria-pressed={placing}
+                    className={`${SLOT} ${placing ? SLOT_ON : SLOT_OFF}`}
+                  >
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
+                      <path d="M12 8v4M10 10h4" />
+                    </svg>
+                  </button>
+
+                  {/* Clear your markers (only when there are any) */}
+                  {markers.length > 0 && (
+                    <button
+                      onClick={() => setMarkers([])}
+                      title={`${t('map.clear')} (${markers.length})`}
+                      aria-label={`${t('map.clear')} (${markers.length})`}
+                      className={`${SLOT} ${SLOT_OFF}`}
+                    >
+                      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              )}
+              <button
+                onClick={() => {
+                  const next = !showPoi
+                  setShowPoi(next)
+                  // Collapsing the branch would strand "placing" with no visible
+                  // way out, so close it with the tree.
+                  if (!next) setPlacing(false)
+                }}
+                title={t('map.markersLayer')}
+                aria-label={t('map.markersLayer')}
+                aria-pressed={showPoi}
+                className={`relative ${SLOT} ${showPoi || placing ? 'border-interp bg-interp/15 text-interp' : SLOT_OFF}`}
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                  <path d="M4 22v-7" />
+                </svg>
+                {markers.length > 0 && (
+                  <span
+                    className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-bold leading-none text-white"
+                    style={{ background: 'var(--color-interp)' }}
+                  >
+                    {markers.length}
+                  </span>
+                )}
+              </button>
+            </div>
 
             {/* Rentable houses — the layer toggle. When the layer is on, its
                 sub-controls (available-only filter + availability/alerts panel)
@@ -4454,6 +4468,44 @@ export function MapPage() {
               </div>
             )}
           </div>
+
+          {/* Imported-marker category legend — rides in the bar's flow (its own
+              wrapped line) rather than floating over it, so the marker/house
+              trees have clear air to sprout into. */}
+          {showPoi && (
+            <div className="pointer-events-auto flex max-w-[94vw] flex-wrap items-center justify-center gap-x-4 gap-y-2 overflow-x-auto rounded-2xl border border-line-2 bg-surface/95 px-3 py-2 text-xs font-semibold text-fg-dim shadow-lg backdrop-blur-md">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-fg-mute">
+                {t('map.markersLegend')}
+              </span>
+              {[
+                { c: '#d23d2f', i: POI_ICONS.boss, l: t('map.poiBoss') },
+                { c: '#3fa7d6', i: POI_ICONS.travel, l: t('map.poiTravel') },
+                { c: '#6cc551', i: POI_ICONS.service, l: t('map.poiService') },
+                { c: '#e0a531', i: POI_ICONS.quest, l: t('map.poiQuest') },
+                { c: '#9b8cff', i: POI_ICONS.poi, l: t('map.poiOther') },
+              ].map((e) => (
+                <span key={e.l} className="flex items-center gap-1.5">
+                  <span
+                    className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white/90"
+                    style={{ background: e.c }}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#fff"
+                      strokeWidth="2.4"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="h-3.5 w-3.5"
+                    >
+                      <path d={e.i} />
+                    </svg>
+                  </span>
+                  {e.l}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -5951,42 +6003,6 @@ export function MapPage() {
 
         </div>
       </div>
-
-      {/* Imported-marker category legend — floats along the bottom when the layer is on */}
-      {showPoi && (
-        <div className="pointer-events-auto absolute bottom-20 left-1/2 z-[1000] flex max-w-[94vw] -translate-x-1/2 flex-wrap items-center justify-center gap-x-4 gap-y-2 overflow-x-auto rounded-xl border border-line bg-bg/85 px-3 py-2 text-xs font-semibold text-fg-dim backdrop-blur-md">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-fg-mute">
-            {t('map.markersLegend')}
-          </span>
-          {[
-            { c: '#d23d2f', i: POI_ICONS.boss, l: t('map.poiBoss') },
-            { c: '#3fa7d6', i: POI_ICONS.travel, l: t('map.poiTravel') },
-            { c: '#6cc551', i: POI_ICONS.service, l: t('map.poiService') },
-            { c: '#e0a531', i: POI_ICONS.quest, l: t('map.poiQuest') },
-            { c: '#9b8cff', i: POI_ICONS.poi, l: t('map.poiOther') },
-          ].map((e) => (
-            <span key={e.l} className="flex items-center gap-1.5">
-              <span
-                className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white/90"
-                style={{ background: e.c }}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#fff"
-                  strokeWidth="2.4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="h-3.5 w-3.5"
-                >
-                  <path d={e.i} />
-                </svg>
-              </span>
-              {e.l}
-            </span>
-          ))}
-        </div>
-      )}
 
       <p className="pointer-events-none absolute bottom-2 right-2 z-[1000] max-w-[42vw] text-right text-[10px] leading-tight text-fg-mute/70">
         {t('map.disclaimer')}
