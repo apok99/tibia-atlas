@@ -1621,10 +1621,9 @@ export function MapPage() {
   }
 
   // --- Hunt Finder -----------------------------------------------------------
-  // Panel ranking the best hunting zones for a level + vocation + solo/team.
+  // Panel ranking the best hunting zones for a level + vocation (solo hunts).
   // Level/vocation auto-fill from the saved character (below) but stay editable.
   const [huntOpen, setHuntOpen] = useState(false)
-  const [huntMode, setHuntMode] = useState<'solo' | 'team'>('solo')
   const [huntLevel, setHuntLevel] = useState('')
   const [huntVoc, setHuntVoc] = useState('')
   const [huntZoneId, setHuntZoneId] = useState<number | null>(null)
@@ -1674,7 +1673,7 @@ export function MapPage() {
   const huntLevelNum =
     huntLevel.trim() !== '' ? Math.max(1, parseInt(huntLevel, 10) || 0) : (character?.level ?? null)
   const effVoc = huntVoc.trim() !== '' ? huntVoc : charVoc
-  const huntQuery = useHunts(huntLevelNum, effVoc, huntMode, huntOpen, gearIdList)
+  const huntQuery = useHunts(huntLevelNum, effVoc, 'solo', huntOpen, gearIdList)
   const hunt = huntQuery.data ?? null
   // Localised element label, falling back to the prettified key (drown, life drain).
   const elLabel = (el: string) => t(`elements.${el}`, { defaultValue: el.replace(/_/g, ' ') })
@@ -4674,6 +4673,10 @@ export function MapPage() {
                     </div>
                     {gearItemsQuery.isLoading ? (
                       <p className="py-2 text-center text-sm text-fg-dim">{t('map.charLoading')}</p>
+                    ) : gearItemsQuery.isError ? (
+                      // A dead API is NOT "no results" — misreporting it sent
+                      // us chasing phantom missing-item bugs.
+                      <p className="py-2 text-center text-sm text-accent">{t('map.charError')}</p>
                     ) : gearChoices.length === 0 ? (
                       <p className="py-2 text-center text-sm text-fg-dim">{t('map.charGearEmpty')}</p>
                     ) : (
@@ -4797,7 +4800,7 @@ export function MapPage() {
       )}
 
       {/* Hunt Finder — a floating card above the hotbar. Filters (vocation +
-          level + solo/team) drive the /api/hunts ranking; each result is a
+          level) drive the /api/hunts ranking; each result is a
           hunting zone you can click to fly to, expanding into its per-creature
           breakdown (what to hit it with, reward, danger). */}
       {huntOpen && (
@@ -4822,8 +4825,8 @@ export function MapPage() {
             </div>
             <p className="mb-2.5 text-xs text-fg-mute">{t('map.huntHint')}</p>
 
-            {/* Filters: vocation + level + solo/team. */}
-            <div className="mb-2 flex items-center gap-1.5">
+            {/* Filters: vocation + level. */}
+            <div className="mb-2.5 flex items-center gap-1.5">
               <select
                 value={huntVoc}
                 onChange={(e) => {
@@ -4853,28 +4856,11 @@ export function MapPage() {
                 className="h-9 w-20 rounded-lg border border-line bg-bg-2 px-2.5 text-sm font-semibold outline-none transition placeholder:font-normal placeholder:text-fg-mute focus:border-accent"
               />
             </div>
-            <div className="mb-2.5 flex items-center gap-2">
-              <div className="inline-flex overflow-hidden rounded-lg border border-line">
-                {(['solo', 'team'] as const).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => {
-                      setHuntMode(m)
-                      resetHuntSel()
-                    }}
-                    aria-pressed={huntMode === m}
-                    className={`px-3 py-1.5 text-xs font-bold transition ${huntMode === m ? 'bg-accent text-white' : 'bg-bg-2 text-fg-mute hover:text-accent'}`}
-                  >
-                    {t(`map.hunt${m === 'solo' ? 'Solo' : 'Team'}`)}
-                  </button>
-                ))}
-              </div>
-              {huntAuto && character && (
-                <span className="truncate text-[10px] text-fg-mute">
-                  {t('map.huntFromChar', { name: character.name })}
-                </span>
-              )}
-            </div>
+            {huntAuto && character && (
+              <p className="mb-2.5 truncate text-[10px] text-fg-mute">
+                {t('map.huntFromChar', { name: character.name })}
+              </p>
+            )}
 
             {/* Derived-set summary: what you deal and resist. */}
             {hunt && (

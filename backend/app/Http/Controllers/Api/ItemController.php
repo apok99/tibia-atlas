@@ -86,8 +86,20 @@ class ItemController extends Controller
                 [json_encode([(string) $request->string('vocation')])]
             ))
             ->when($request->filled('q'), function ($q) use ($request) {
-                $term = '%'.addcslashes((string) $request->string('q'), '%_\\').'%';
-                $q->whereHas('translations', fn ($t) => $t->where('name', 'ilike', $term));
+                $raw = trim((string) $request->string('q'));
+                $term = '%'.addcslashes($raw, '%_\\').'%';
+                // Substring match, plus trigram similarity (pg_trgm %) so a
+                // typo — "soulshedder" — still finds Soulshredder. Similarity
+                // only kicks in from 4 chars: shorter terms would flood the
+                // results with near-everything.
+                $q->whereHas('translations', function ($t) use ($term, $raw) {
+                    $t->where(function ($w) use ($term, $raw) {
+                        $w->where('name', 'ilike', $term);
+                        if (mb_strlen($raw) >= 4) {
+                            $w->orWhereRaw('name % ?', [$raw]);
+                        }
+                    });
+                });
             })
             // The gear picker pages by the imported power heuristic (strongest
             // first) — by id, modern high-id gear never reaches page one. The
