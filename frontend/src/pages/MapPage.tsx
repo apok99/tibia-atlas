@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -49,7 +49,7 @@ import { useHunts, type HuntZone } from '../hooks/useHunts'
 import { TypeIcon } from '../components/TypeIcon'
 import { Skeleton } from '../components/Skeleton'
 import { MapTutorial, mapTourSeen } from '../components/MapTutorial'
-import type { Dropper, Entry, EntryListItem, ItemDetail, Paginated, Spawn } from '../types'
+import type { Dropper, Entry, EntryListItem, ItemDetail, ItemTrade, Paginated, Spawn } from '../types'
 import {
   TILE,
   X_MIN,
@@ -958,6 +958,61 @@ function parseHash(): {
   return { x: num('x'), y: num('y'), z: num('z'), floor: num('f'), markers, creatures, routeStart, routeEnd, build }
 }
 
+// --- item trade pins -----------------------------------------------------------
+// A merchant on the trade layer, with both sides of the deal merged: buyPrice =
+// what YOU pay to buy from the NPC, sellPrice = what the NPC pays you.
+type TradePin = {
+  npc: string
+  city: string | null
+  currency: string | null
+  buyPrice: number | null
+  sellPrice: number | null
+  coords: [number, number, number][]
+}
+
+// Marker budget (markers, not merchants) — a mass-market item like mana potion
+// has 31 sellers; both API lists arrive best-price-first so the cut keeps winners.
+const TRADE_PIN_CAP = 60
+
+function mergeTradePins(trade: ItemTrade): TradePin[] {
+  const byNpc = new Map<string, TradePin>()
+  const add = (offers: ItemTrade['buy'], side: 'buy' | 'sell') => {
+    for (const o of offers) {
+      if (!o.coords || o.coords.length === 0) continue
+      let pin = byNpc.get(o.npc)
+      if (!pin) {
+        pin = {
+          npc: o.npc,
+          city: o.city,
+          currency: o.currency,
+          buyPrice: null,
+          sellPrice: null,
+          coords: o.coords,
+        }
+        byNpc.set(o.npc, pin)
+      }
+      if (side === 'buy') pin.buyPrice = o.price
+      else pin.sellPrice = o.price
+    }
+  }
+  add(trade.buy, 'buy')
+  add(trade.sell, 'sell')
+
+  const pins: TradePin[] = []
+  let markers = 0
+  for (const pin of byNpc.values()) {
+    markers += pin.coords.length
+    if (markers > TRADE_PIN_CAP) break
+    pins.push(pin)
+  }
+  return pins
+}
+
+// lucide "shopping bag", inlined like the other divIcon glyphs.
+const TRADE_PIN_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>'
+
 // --- immersive map "hotbar" styling -------------------------------------------
 // A compact row of square icon slots: the search field stays the hero, and every
 // secondary action collapses into a tooltip-labelled icon. PILL is the slotted
@@ -1528,6 +1583,19 @@ function LorePanel({ poi, onClose }: { poi: LorePoi; onClose: () => void }) {
   )
 }
 
+// Breakpoint feed for the creature-bar page size (3 cards wide, 1 on phones).
+// useSyncExternalStore re-reads the snapshot on every render, so a missed
+// media-query event can never leave a stale page size behind.
+const WIDE_MQ = '(min-width: 640px)'
+function subscribeWideMq(cb: () => void) {
+  const mq = window.matchMedia(WIDE_MQ)
+  mq.addEventListener('change', cb)
+  return () => mq.removeEventListener('change', cb)
+}
+function isWideMq() {
+  return window.matchMedia(WIDE_MQ).matches
+}
+
 export function MapPage() {
   const { t, i18n } = useTranslation()
   const queryClient = useQueryClient()
@@ -1547,6 +1615,7 @@ export function MapPage() {
   const poiGroupRef = useRef<L.LayerGroup | null>(null)
   const houseGroupRef = useRef<L.LayerGroup | null>(null)
   const loreGroupRef = useRef<L.LayerGroup | null>(null)
+  const tradeGroupRef = useRef<L.LayerGroup | null>(null)
   // Highlight ring drawn over the hunting zone the user picked in the Hunt Finder.
   const huntHiRef = useRef<L.LayerGroup | null>(null)
   // A dedicated SVG renderer for that ring, so it draws crisply above the canvas
@@ -1592,6 +1661,15 @@ export function MapPage() {
 
   // Creature spawn overlay.
   const [creatures, setCreatures] = useState<ActiveCreature[]>([])
+  // The active-creature bar pages 3 cards at a time (1 on small screens) so an
+  // item batch ("Lo dejan caer N criaturas") never buries the map in cards.
+  const [creaturePage, setCreaturePage] = useState(0)
+  const creaturePageSize = useSyncExternalStore(subscribeWideMq, isWideMq) ? 3 : 1
+  const creaturePageCount = Math.max(1, Math.ceil(creatures.length / creaturePageSize))
+  const creaturePageSafe = Math.min(creaturePage, creaturePageCount - 1)
+  useEffect(() => {
+    setCreaturePage((p) => Math.min(p, creaturePageCount - 1))
+  }, [creaturePageCount])
   const [query, setQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   // What the search box looks up: a creature (plot its spawns) or an item (plot
@@ -1604,6 +1682,7 @@ export function MapPage() {
     image: string | null
     plotted: string[] // dropper slugs plotted as creatures
     total: number // droppers with a slug (may exceed plotted if capped)
+    trade: ItemTrade | null // merchants that buy/sell it (trade pins layer)
   } | null>(null)
   const [itemBusy, setItemBusy] = useState(false)
   const [showAll, setShowAll] = useState(true)
@@ -2630,6 +2709,7 @@ export function MapPage() {
     const spawnGroup = L.layerGroup().addTo(map)
     const cityGroup = L.layerGroup().addTo(map)
     const loreGroup = L.layerGroup().addTo(map)
+    const tradeGroup = L.layerGroup().addTo(map)
     const markersGroup = L.layerGroup().addTo(map)
     const routeGroup = L.layerGroup().addTo(map)
     const buildGroup = L.layerGroup().addTo(map)
@@ -2651,6 +2731,7 @@ export function MapPage() {
     poiGroupRef.current = poiGroup
     houseGroupRef.current = houseGroup
     loreGroupRef.current = loreGroup
+    tradeGroupRef.current = tradeGroup
     routeGroupRef.current = routeGroup
     buildGroupRef.current = buildGroup
     // Fresh map, fresh layer groups: the diff caches hold markers bound to the
@@ -2784,6 +2865,7 @@ export function MapPage() {
       poiGroupRef.current = null
       houseGroupRef.current = null
       loreGroupRef.current = null
+      tradeGroupRef.current = null
       routeGroupRef.current = null
       buildGroupRef.current = null
     }
@@ -2881,6 +2963,40 @@ export function MapPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [floor, mapReady, showLore, lorePoi])
+
+  // Trade pins for the searched item: one pin per merchant spawn — gold when
+  // the NPC sells it, green when it pays you for it, split when both. Pins on
+  // other floors render dimmed; clicking one flies there (switching floor) and
+  // presets the "Cómo llegar" destination on that merchant.
+  useEffect(() => {
+    const grp = tradeGroupRef.current
+    if (!grp) return
+    grp.clearLayers()
+    const trade = activeItem?.trade
+    if (!trade) return
+    for (const p of mergeTradePins(trade)) {
+      const kind =
+        p.buyPrice != null && p.sellPrice != null ? 'is-both' : p.buyPrice != null ? 'is-buy' : 'is-sell'
+      const gp = (n: number) => `${n.toLocaleString()} ${escapeHtml(p.currency ?? 'gp')}`
+      const lines = [`<b>${escapeHtml(p.npc)}</b>${p.city ? ` · ${escapeHtml(p.city)}` : ''}`]
+      if (p.buyPrice != null) lines.push(`${t('map.tradeSellsFor')} ${gp(p.buyPrice)}`)
+      if (p.sellPrice != null) lines.push(`${t('map.tradePaysYou')} ${gp(p.sellPrice)}`)
+      const tip = lines.join('<br>')
+      for (const c of p.coords) {
+        const off = c[2] !== floor
+        const icon = L.divIcon({
+          className: '',
+          html: `<div class="tm-trade ${kind}${off ? ' is-off' : ''}">${TRADE_PIN_SVG}</div>`,
+          iconSize: [0, 0],
+        })
+        L.marker(toLatLng(c[0], c[1]), { icon, interactive: true, keyboard: false, zIndexOffset: 600 })
+          .addTo(grp)
+          .bindTooltip(tip, { direction: 'top', offset: [0, -12] })
+          .on('click', () => routeToTradeNpc(p.npc, c))
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeItem, floor, mapReady])
 
   // Draw the selected creatures' spawn icons. Seven creatures can carry ~700
   // spawn points and Leaflet repositions every DOM marker on each zoom, so only
@@ -3578,7 +3694,12 @@ export function MapPage() {
     setSearchOpen(false)
     setItemBusy(true)
     try {
-      const { data } = await api.get<{ data: ItemDetail }>(`/items/${slug}`)
+      // Trade offers ride along with the detail: the same search also answers
+      // "¿dónde lo compro/vendo?" with merchant pins. Non-fatal if it fails.
+      const [{ data }, tradeRes] = await Promise.all([
+        api.get<{ data: ItemDetail }>(`/items/${slug}`),
+        api.get<{ data: ItemTrade }>(`/items/${slug}/trade`).catch(() => null),
+      ])
       const it = data.data
       const droppers = it.dropped_by.filter((d): d is Dropper & { slug: string } => !!d.slug)
       const plotted = droppers.slice(0, PALETTE.length)
@@ -3588,6 +3709,7 @@ export function MapPage() {
         image: it.image,
         plotted: plotted.map((d) => d.slug),
         total: droppers.length,
+        trade: tradeRes?.data.data ?? null,
       })
       // Jump to the first dropper's densest spawn, then plot the rest quietly.
       if (plotted.length) {
@@ -3655,27 +3777,38 @@ export function MapPage() {
     if (map) map.setView(toLatLng(pt.x, pt.y), Math.max(map.getZoom(), 3))
   }
 
+  // Default the route origin to the nearest city when none is picked yet, so
+  // the route computes immediately instead of waiting for the player to choose
+  // a starting city. Nearest is by horizontal distance — cities are surface
+  // entry points, so floor is irrelevant for the pick.
+  function ensureRouteStartNear(pt: RoutePoint) {
+    if (routeStartRef.current) return
+    const near = LANDMARKS.reduce<Landmark | null>((best, l) => {
+      const d = (l.x - pt.x) ** 2 + (l.y - pt.y) ** 2
+      return !best || d < (best.x - pt.x) ** 2 + (best.y - pt.y) ** 2 ? l : best
+    }, null)
+    if (near) {
+      const start: RoutePoint = { x: near.x, y: near.y, floor: near.floor, label: near.name }
+      routeStartRef.current = start
+      setRouteStart(start)
+    }
+  }
+
   // "Cómo llegar" from a plotted creature's active spawn cluster.
   function routeToSpawn(slug: string) {
     const cr = creaturesRef.current.find((c) => c.slug === slug)
     const pt = cr && routeEndForCreature(cr)
     if (!pt) return
     setRouteMode(true)
-    // Default the origin to the nearest city when none is picked yet, so the
-    // route computes immediately instead of waiting for the player to choose a
-    // starting city. Nearest is by horizontal distance — cities are surface
-    // entry points, so floor is irrelevant for the pick.
-    if (!routeStartRef.current) {
-      const near = LANDMARKS.reduce<Landmark | null>((best, l) => {
-        const d = (l.x - pt.x) ** 2 + (l.y - pt.y) ** 2
-        return !best || d < (best.x - pt.x) ** 2 + (best.y - pt.y) ** 2 ? l : best
-      }, null)
-      if (near) {
-        const start: RoutePoint = { x: near.x, y: near.y, floor: near.floor, label: near.name }
-        routeStartRef.current = start
-        setRouteStart(start)
-      }
-    }
+    ensureRouteStartNear(pt)
+    applyRouteEnd(pt)
+  }
+
+  // "Cómo llegar" to a merchant pin from the item trade layer.
+  function routeToTradeNpc(name: string, c: [number, number, number]) {
+    const pt: RoutePoint = { x: c[0], y: c[1], floor: c[2], label: name }
+    setRouteMode(true)
+    ensureRouteStartNear(pt)
     applyRouteEnd(pt)
   }
 
@@ -5855,6 +5988,16 @@ export function MapPage() {
                   +{activeItem.total - activeItem.plotted.length} {t('map.itemMore')}
                 </span>
               )}
+              {(activeItem.trade?.buy.length ?? 0) > 0 && (
+                <span className="rounded-[2px] border border-[#c79a3f]/50 bg-[#c79a3f]/10 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-[#c79a3f]">
+                  {t('map.itemSoldBy', { count: activeItem.trade!.buy.length })}
+                </span>
+              )}
+              {(activeItem.trade?.sell.length ?? 0) > 0 && (
+                <span className="rounded-[2px] border border-[#6faf52]/50 bg-[#6faf52]/10 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-[#6faf52]">
+                  {t('map.itemBoughtBy', { count: activeItem.trade!.sell.length })}
+                </span>
+              )}
               <button
                 onClick={clearItem}
                 className="ml-auto text-xs font-bold uppercase tracking-wider text-fg-mute transition hover:text-accent"
@@ -5870,7 +6013,34 @@ export function MapPage() {
           (◀ 1/4 ▶) is immediately visible after plotting a creature. */}
       {creatures.length > 0 && (
         <div className="pointer-events-auto flex flex-wrap items-center gap-2">
-          {creatures.map((cr) => (
+          {creatures.length > creaturePageSize && (
+            <div className="flex items-center gap-0.5 rounded-xl border border-line bg-bg-2 p-0.5 shadow-sm">
+              <button
+                onClick={() => setCreaturePage(Math.max(0, creaturePageSafe - 1))}
+                disabled={creaturePageSafe === 0}
+                className="grid h-8 w-8 place-items-center rounded-md text-sm text-fg-dim transition hover:bg-line/50 hover:text-fg disabled:opacity-30 disabled:hover:bg-transparent"
+                title={t('map.prevCreatures')}
+                aria-label={t('map.prevCreatures')}
+              >
+                ◀
+              </button>
+              <span className="px-1 text-xs font-bold tabular-nums text-fg">
+                {creaturePageSafe + 1}/{creaturePageCount}
+              </span>
+              <button
+                onClick={() => setCreaturePage(Math.min(creaturePageCount - 1, creaturePageSafe + 1))}
+                disabled={creaturePageSafe >= creaturePageCount - 1}
+                className="grid h-8 w-8 place-items-center rounded-md text-sm text-fg-dim transition hover:bg-line/50 hover:text-fg disabled:opacity-30 disabled:hover:bg-transparent"
+                title={t('map.nextCreatures')}
+                aria-label={t('map.nextCreatures')}
+              >
+                ▶
+              </button>
+            </div>
+          )}
+          {creatures
+            .slice(creaturePageSafe * creaturePageSize, (creaturePageSafe + 1) * creaturePageSize)
+            .map((cr) => (
             <div
               key={cr.slug}
               className="flex items-center gap-2.5 rounded-xl border-2 bg-bg-2 py-1.5 pl-2 pr-2 shadow-sm"
