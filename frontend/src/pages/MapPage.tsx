@@ -3537,6 +3537,21 @@ export function MapPage() {
   const spawnsOnFloor = (cr: ActiveCreature) => cr.spawns.filter((s) => s.z === floor).length
   const activeFilterCount = [catFilter, zoneFilter, levelFilter].filter(Boolean).length
 
+  // The layer trees (markers, houses) sprout up out of the hotbar into the band
+  // straight above it, and they're absolutely positioned — nothing in the bar's
+  // flow knows they're there. The legend line rides above the bar, so it has to
+  // leave that band clear itself or it lands on top of the trees and eats their
+  // clicks. Height of the tallest open tree, in rem so it tracks the slots when
+  // the root font-size scales: N slots (h-11) + the gaps between them (gap-1.5),
+  // plus a little air. The tree's own stem (mb-2) is paid for by the bar's gap-2.
+  const treeSlots = Math.max(
+    showPoi ? 1 + (markers.length > 0 ? 1 : 0) : 0,
+    showHouses ? 2 : 0,
+  )
+  const treeClearance = treeSlots
+    ? `calc(${treeSlots} * 2.75rem + ${treeSlots - 1} * 0.375rem + 0.25rem)`
+    : undefined
+
   const activeSlugs = useMemo(() => new Set(creatures.map((c) => c.slug)), [creatures])
 
   // "Boss Watch": the raid/world bosses ranked by spawn heat (likelihood of
@@ -4096,7 +4111,52 @@ export function MapPage() {
             like a game action bar (fixed, so it escapes the top control column and
             anchors to the viewport). Tooltips name each action. */}
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[1000] flex flex-wrap items-end justify-center gap-2 p-2 sm:p-3">
-          {/* Navigate & plan routes */}
+          {/* Imported-marker category legend — a full-width line, so it always
+              sits on its own row above the pills. It rides in the bar's flow
+              rather than floating over it, and holds `treeClearance` of empty
+              air below so the trees sprouting out of the pills stay clickable. */}
+          {showPoi && (
+            <div
+              className="flex w-full justify-center"
+              style={{ marginBottom: treeClearance }}
+            >
+              <div className="pointer-events-auto flex max-w-[94vw] flex-wrap items-center justify-center gap-x-4 gap-y-2 overflow-x-auto rounded-2xl border border-line-2 bg-surface/95 px-3 py-2 text-xs font-semibold text-fg-dim shadow-lg backdrop-blur-md">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-fg-mute">
+                  {t('map.markersLegend')}
+                </span>
+                {[
+                  { c: '#d23d2f', i: POI_ICONS.boss, l: t('map.poiBoss') },
+                  { c: '#3fa7d6', i: POI_ICONS.travel, l: t('map.poiTravel') },
+                  { c: '#6cc551', i: POI_ICONS.service, l: t('map.poiService') },
+                  { c: '#e0a531', i: POI_ICONS.quest, l: t('map.poiQuest') },
+                  { c: '#9b8cff', i: POI_ICONS.poi, l: t('map.poiOther') },
+                ].map((e) => (
+                  <span key={e.l} className="flex items-center gap-1.5">
+                    <span
+                      className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white/90"
+                      style={{ background: e.c }}
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="#fff"
+                        strokeWidth="2.4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="h-3.5 w-3.5"
+                      >
+                        <path d={e.i} />
+                      </svg>
+                    </span>
+                    {e.l}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Go — everything about moving around the atlas: jump to a city, or
+              plan a route there. */}
           <div className={PILL}>
             {/* Jump to a city — custom themed dropdown (see CityJumpPicker). */}
             <CityJumpPicker
@@ -4172,81 +4232,6 @@ export function MapPage() {
                 </svg>
               </button>
             </HotbarGroup>
-
-            <span className="mx-0.5 h-6 w-px bg-line/50" />
-
-            {/* Share this view */}
-            <button
-              onClick={share}
-              title={t('map.share')}
-              aria-label={t('map.share')}
-              className={`${SLOT} ${copied ? 'border-canon bg-canon/15 text-canon' : SLOT_OFF}`}
-            >
-              {copied ? (
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 6 9 17l-5-5" />
-                </svg>
-              ) : (
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="18" cy="5" r="3" />
-                  <circle cx="6" cy="12" r="3" />
-                  <circle cx="18" cy="19" r="3" />
-                  <path d="m8.6 13.5 6.8 4M15.4 6.5 8.6 10.5" />
-                </svg>
-              )}
-            </button>
-
-            <span className="mx-0.5 h-6 w-px bg-line/50" />
-
-            {/* How-to tour */}
-            <button
-              onClick={() => setShowTour(true)}
-              title={t('map.tutorial.open')}
-              aria-label={t('map.tutorial.open')}
-              className={`${SLOT} ${SLOT_OFF}`}
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3" />
-                <path d="M12 17h.01" />
-              </svg>
-            </button>
-
-            {/* Your character — settings gear. Lit when a profile is saved; the
-                badge shows the character's level once looked up. */}
-            <button
-              onClick={() => setCharOpen((v) => !v)}
-              title={t('map.charTitle')}
-              aria-label={t('map.charTitle')}
-              aria-pressed={charOpen}
-              className={`relative ${SLOT} ${charOpen || charProfile ? SLOT_ON : SLOT_OFF}`}
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="8" r="4" />
-                <path d="M4 21a8 8 0 0 1 16 0" />
-              </svg>
-              {character?.level != null && (
-                <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none text-white">
-                  {character.level}
-                </span>
-              )}
-            </button>
-
-            {/* Hunt Finder — ranks the best hunting zones for your level/vocation/set. */}
-            <button
-              onClick={() => setHuntOpen((v) => !v)}
-              title={t('map.huntTitle')}
-              aria-label={t('map.huntTitle')}
-              aria-pressed={huntOpen}
-              className={`${SLOT} ${huntOpen ? SLOT_ON : SLOT_OFF}`}
-            >
-              {/* crosshair / target — "find a hunt" */}
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="9" />
-                <circle cx="12" cy="12" r="3.5" />
-                <path d="M12 1v4M12 19v4M1 12h4M19 12h4" />
-              </svg>
-            </button>
           </div>
 
           {/* Layers — what's drawn on the atlas */}
@@ -4288,6 +4273,25 @@ export function MapPage() {
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 12h.01M15 12h.01M8 20v2h8v-2M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20" />
               </svg>
+            </button>
+
+            {/* Refine filters — sits with the creature toggles because that's
+                exactly what it narrows down (category / zone / level). */}
+            <button
+              onClick={() => setShowFilters((v) => !v)}
+              title={t('map.filters')}
+              aria-label={t('map.filters')}
+              aria-pressed={showFilters}
+              className={`relative ${SLOT} ${showFilters || activeFilterCount ? SLOT_ON : SLOT_OFF}`}
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 6h16M7 12h10M10 18h4" />
+              </svg>
+              {activeFilterCount > 0 && (
+                <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold text-white">
+                  {activeFilterCount}
+                </span>
+              )}
             </button>
 
             <span className="mx-0.5 h-6 w-px bg-line/50" />
@@ -4423,24 +4427,6 @@ export function MapPage() {
               </button>
             </div>
 
-            {/* Refine filters */}
-            <button
-              onClick={() => setShowFilters((v) => !v)}
-              title={t('map.filters')}
-              aria-label={t('map.filters')}
-              aria-pressed={showFilters}
-              className={`relative ${SLOT} ${showFilters || activeFilterCount ? SLOT_ON : SLOT_OFF}`}
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 6h16M7 12h10M10 18h4" />
-              </svg>
-              {activeFilterCount > 0 && (
-                <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold text-white">
-                  {activeFilterCount}
-                </span>
-              )}
-            </button>
-
             {/* Profit / wealth legend — a framed chip with a gold coin so it
                 clearly reads as the "how rich is this spot" bar, not just a
                 swatch lost among the icon slots. Only meaningful while dots show. */}
@@ -4469,43 +4455,83 @@ export function MapPage() {
             )}
           </div>
 
-          {/* Imported-marker category legend — rides in the bar's flow (its own
-              wrapped line) rather than floating over it, so the marker/house
-              trees have clear air to sprout into. */}
-          {showPoi && (
-            <div className="pointer-events-auto flex max-w-[94vw] flex-wrap items-center justify-center gap-x-4 gap-y-2 overflow-x-auto rounded-2xl border border-line-2 bg-surface/95 px-3 py-2 text-xs font-semibold text-fg-dim shadow-lg backdrop-blur-md">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-fg-mute">
-                {t('map.markersLegend')}
-              </span>
-              {[
-                { c: '#d23d2f', i: POI_ICONS.boss, l: t('map.poiBoss') },
-                { c: '#3fa7d6', i: POI_ICONS.travel, l: t('map.poiTravel') },
-                { c: '#6cc551', i: POI_ICONS.service, l: t('map.poiService') },
-                { c: '#e0a531', i: POI_ICONS.quest, l: t('map.poiQuest') },
-                { c: '#9b8cff', i: POI_ICONS.poi, l: t('map.poiOther') },
-              ].map((e) => (
-                <span key={e.l} className="flex items-center gap-1.5">
-                  <span
-                    className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white/90"
-                    style={{ background: e.c }}
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="#fff"
-                      strokeWidth="2.4"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="h-3.5 w-3.5"
-                    >
-                      <path d={e.i} />
-                    </svg>
-                  </span>
-                  {e.l}
+          {/* You & utilities — your character and the hunt finder that reads it,
+              then the two actions that act on the page itself (share, help). */}
+          <div className={PILL}>
+            {/* Your character — settings gear. Lit when a profile is saved; the
+                badge shows the character's level once looked up. */}
+            <button
+              onClick={() => setCharOpen((v) => !v)}
+              title={t('map.charTitle')}
+              aria-label={t('map.charTitle')}
+              aria-pressed={charOpen}
+              className={`relative ${SLOT} ${charOpen || charProfile ? SLOT_ON : SLOT_OFF}`}
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="8" r="4" />
+                <path d="M4 21a8 8 0 0 1 16 0" />
+              </svg>
+              {character?.level != null && (
+                <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none text-white">
+                  {character.level}
                 </span>
-              ))}
-            </div>
-          )}
+              )}
+            </button>
+
+            {/* Hunt Finder — ranks the best hunting zones for your level/vocation/set. */}
+            <button
+              onClick={() => setHuntOpen((v) => !v)}
+              title={t('map.huntTitle')}
+              aria-label={t('map.huntTitle')}
+              aria-pressed={huntOpen}
+              className={`${SLOT} ${huntOpen ? SLOT_ON : SLOT_OFF}`}
+            >
+              {/* crosshair / target — "find a hunt" */}
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <circle cx="12" cy="12" r="3.5" />
+                <path d="M12 1v4M12 19v4M1 12h4M19 12h4" />
+              </svg>
+            </button>
+
+            <span className="mx-0.5 h-6 w-px bg-line/50" />
+
+            {/* Share this view */}
+            <button
+              onClick={share}
+              title={t('map.share')}
+              aria-label={t('map.share')}
+              className={`${SLOT} ${copied ? 'border-canon bg-canon/15 text-canon' : SLOT_OFF}`}
+            >
+              {copied ? (
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="18" cy="5" r="3" />
+                  <circle cx="6" cy="12" r="3" />
+                  <circle cx="18" cy="19" r="3" />
+                  <path d="m8.6 13.5 6.8 4M15.4 6.5 8.6 10.5" />
+                </svg>
+              )}
+            </button>
+
+            {/* How-to tour — last slot in the bar, where help conventionally sits. */}
+            <button
+              onClick={() => setShowTour(true)}
+              title={t('map.tutorial.open')}
+              aria-label={t('map.tutorial.open')}
+              className={`${SLOT} ${SLOT_OFF}`}
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3" />
+                <path d="M12 17h.01" />
+              </svg>
+            </button>
+          </div>
+
         </div>
       </div>
 

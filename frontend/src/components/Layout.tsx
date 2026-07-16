@@ -17,7 +17,6 @@ const primaryNav: NavItem[] = [
   { to: '/wordle', key: 'nav.wordle' },
   { to: '/altar', key: 'nav.altar' },
   { to: '/geo', key: 'nav.geo' },
-  { to: '/idle', key: 'nav.idle' },
   { to: '/browse/creature', key: 'nav.bestiary' },
 ]
 
@@ -46,7 +45,6 @@ const footerCols: { heading: string; links: NavItem[] }[] = [
       { to: '/wordle', key: 'nav.wordle' },
       { to: '/altar', key: 'nav.altar' },
       { to: '/geo', key: 'nav.geo' },
-      { to: '/idle', key: 'nav.idle' },
       { to: '/items', key: 'nav.items' },
       { to: '/killstats', key: 'nav.killstats' },
       { to: '/soundtrack', key: 'nav.soundtrack' },

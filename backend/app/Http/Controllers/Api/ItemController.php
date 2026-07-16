@@ -68,6 +68,12 @@ class ItemController extends Controller
      */
     public function index(Request $request): AnonymousResourceCollection
     {
+        // TEMP DEBUG (remove): log the exact picker request + what it returns.
+        \Illuminate\Support\Facades\Log::info('ITEMS-DEBUG', [
+            'url' => $request->fullUrl(),
+            'params' => $request->query(),
+        ]);
+
         $items = Entry::query()
             ->ofType('item')
             ->with('translations')
