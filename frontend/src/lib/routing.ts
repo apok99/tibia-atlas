@@ -300,16 +300,21 @@ const FERRY_LINES: FerryLineDef[] = [
       { name: 'Yalahar', x: 32805, y: 31234 },
     ],
   },
-  // Buddel's raft between Svargrond's hunting islands (dock coords = his map markers).
+  // Buddel's raft between Svargrond and its hunting islands. Stop names + coords
+  // are Buddel's ACTUAL travel keywords/destinations (data-otservbr buddel*.lua):
+  // svargrond, okolnir, helheim, tyrsung, and camp (the barbarian/raider camp,
+  // where the Barbarian Headsplitters live). The old line mislabeled them with a
+  // nonexistent 'Grimlund'/'Hrodmir' and swapped Svargrond/Tyrsung/Helheim — route
+  // report #5 hit this: Buddel doesn't understand "grimlund"; the keyword is "camp".
   {
     name: 'Buddel',
     icon: 'sailboat',
     stops: [
-      { name: 'Svargrond', x: 32333, y: 31227 },
-      { name: 'Grimlund', x: 32021, y: 31294 },
-      { name: 'Okolnir', x: 32224, y: 31382 },
-      { name: 'Hrodmir', x: 32256, y: 31197 },
-      { name: 'Tyrsung', x: 32464, y: 31173 },
+      { name: 'Svargrond', x: 32255, y: 31197 },
+      { name: 'Okolnir', x: 32225, y: 31381 },
+      { name: 'Helheim', x: 32462, y: 31174 },
+      { name: 'Tyrsung', x: 32333, y: 31227 },
+      { name: 'Campamento bárbaro', x: 32021, y: 31294 },
     ],
   },
   // Ice passages / dog sled between Svargrond's coast, Nibelor and Inukaya.
