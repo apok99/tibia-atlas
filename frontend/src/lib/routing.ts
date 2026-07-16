@@ -340,6 +340,18 @@ const FERRY_LINES: FerryLineDef[] = [
   // Great-Gate compound (an 821-tile pocket unreachable from the mainland),
   // so the line could never be boarded — dead weight in the search.
   { name: 'Barca', icon: 'sailboat', stops: [{ name: 'Liberty Bay', x: 32347, y: 32858 }, { name: 'Meriana', x: 32132, y: 32912 }] },
+  // The Forbidden Islands (Talahu / Malada / Nargor — the far-west "Ferumbras"
+  // isles: Crypt Shamblers, serpent spawns, Lich Hell). In-game they're reached
+  // only through the scripted Shattered Isles portal chain from the main isles —
+  // a pure-lua ritual/turtle hop with NO map data, so this whole island cluster
+  // (51k connected tiles) sits disconnected from everything in the bake. Meriana
+  // is already boat-served (the Waverider 'Barca' from Liberty Bay); this curated
+  // hop bridges Meriana to the Forbidden Islands surface, whose interior then walks
+  // to the spawns. Route report #3 (Ankrahmun->Crypt Shambler) dead-ended without it.
+  { name: 'Portal de quest', icon: 'sparkles', stops: [
+    { name: 'Meriana', x: 32132, y: 32912, floor: 7 },
+    { name: 'Islas Prohibidas (Talahu)', x: 31961, y: 32636, floor: 8 },
+  ] },
   // Marapur (Moonfall): its "To Port Hope" dock marker pairs with Port Hope's harbour.
   { name: 'Barca', icon: 'sailboat', stops: [{ name: 'Port Hope', x: 32629, y: 32769 }, { name: 'Marapur', x: 33842, y: 32852 }] },
   // Gray Island (the gateway to Quirefang/The Hive): sailed from the eastern
@@ -917,6 +929,7 @@ function loadLinks(): Promise<void> {
       [33200, 33210, 32526, 32536, 7, 8], // pyramid portal (desert, into the tomb network)
       [33188, 33200, 32842, 32856, 4, 8], // pyramid portal (city top f4, into the under-city crypts)
       [33390, 33400, 32655, 32668, 6, 6], // Cobra Bastion gate (5-tile f6 hop; its stairs are all real links)
+      [31880, 32160, 32440, 32820, 0, 15], // Forbidden Islands (Talahu/Malada/Nargor): the "Shattered Isles portals" web that stitches the sub-islands (Lich Hell / serpent spawns / Crypt Shamblers). Entry = curated Meriana->Talahu hop above.
     ]
     // A teleport is kept iff ONE plane contains BOTH of its ends ("shared
     // plane"), not "first matching plane of each end is the same" — planes may
