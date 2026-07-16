@@ -314,7 +314,11 @@ const FERRY_LINES: FerryLineDef[] = [
       { name: 'Okolnir', x: 32225, y: 31381 },
       { name: 'Helheim', x: 32462, y: 31174 },
       { name: 'Tyrsung', x: 32333, y: 31227 },
-      { name: 'Campamento bárbaro', x: 32021, y: 31294 },
+      // NOTE: Buddel's "camp" stop (32021,31294) is deliberately NOT listed. The
+      // barbarian camp it serves is walkable from Svargrond (~378 tiles), and
+      // Buddel is quest-gated (Barbarian Test — "you are no barbarian, talk to the
+      // Jarl"). Listing it gave a cheaper 215t boat route that hijacked the
+      // walkable Barbarian Headsplitter/Skullhunter camps (route report #5).
     ],
   },
   // Ice passages / dog sled between Svargrond's coast, Nibelor and Inukaya.
