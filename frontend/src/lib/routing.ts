@@ -712,7 +712,13 @@ const FERRY_LINES: FerryLineDef[] = [
     icon: 'door',
     stops: [
       { name: 'Horestis Tomb', x: 33060, y: 32734 },
-      { name: 'Horestis Tomb (medio)', x: 33025, y: 32704, floor: 9 },
+      // (removed) 'Horestis Tomb (medio)' (33025,32704,f9) was a mis-anchor: that
+      // 88-tile f9 pocket is NOT a tomb wing — its only link is a rope down into the
+      // Terramite desert cave (33011,32695,f8), which has its OWN real desert-hole
+      // entrances (32974,32685 / 33052,32693, f7↔f8). The stop gave a cheaper tomb-
+      // ferry route that hijacked the Terramite (route report #4 "mal esta"); with it
+      // gone the planner uses the real desert descent. Deep Horestis (f13) still
+      // routes via the entrance↔profundo clique hop.
       { name: 'Horestis Tomb (profundo)', x: 33028, y: 32736, floor: 13 },
     ],
   },
