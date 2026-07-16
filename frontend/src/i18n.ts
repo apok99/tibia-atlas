@@ -522,6 +522,9 @@ const resources = {
         routesGalleryHint: 'Load a route others shared — most popular first',
         routesLoading: 'Loading routes…',
         routesEmpty: 'No published routes yet',
+        routesPrev: 'Prev',
+        routesNext: 'Next',
+        routesPageOf: 'Page {{page}} of {{total}}',
         routeLike: 'Like this route',
         routeUnlike: 'Remove like',
         // "Your character" overlay
@@ -1442,6 +1445,9 @@ const resources = {
         routesGalleryHint: 'Carga una ruta que compartieron otros — populares primero',
         routesLoading: 'Cargando rutas…',
         routesEmpty: 'Aún no hay rutas publicadas',
+        routesPrev: 'Anterior',
+        routesNext: 'Siguiente',
+        routesPageOf: 'Página {{page}} de {{total}}',
         routeLike: 'Me gusta esta ruta',
         routeUnlike: 'Quitar me gusta',
         // Overlay "tu personaje"

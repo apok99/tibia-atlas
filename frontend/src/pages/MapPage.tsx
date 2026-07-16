@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { api } from '../lib/api'
@@ -47,7 +47,7 @@ import { useHunts, type HuntZone } from '../hooks/useHunts'
 import { TypeIcon } from '../components/TypeIcon'
 import { Skeleton } from '../components/Skeleton'
 import { MapTutorial, mapTourSeen } from '../components/MapTutorial'
-import type { Dropper, Entry, EntryListItem, ItemDetail, Spawn } from '../types'
+import type { Dropper, Entry, EntryListItem, ItemDetail, Paginated, Spawn } from '../types'
 import {
   TILE,
   X_MIN,
@@ -1763,7 +1763,9 @@ export function MapPage() {
   const [buildBusy, setBuildBusy] = useState(false)
   const [publishState, setPublishState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle')
   // Community route gallery: published routes others submitted, ranked by likes.
+  // The list is paginated (server-side, most popular first); this holds the page.
   const [routesOpen, setRoutesOpen] = useState(false)
+  const [routesPage, setRoutesPage] = useState(1)
   // Routes this visitor has "liked". No accounts, so a like is client-side: we
   // remember the ids here (persisted) to show the heart filled and to avoid
   // double-counting; the server just holds the aggregate counter.
@@ -3669,17 +3671,22 @@ export function MapPage() {
     return [...pinned, ...rest]
   }, [allRailBosses, bossQuery, bossType, pinnedBosses])
 
-  // Published community routes, most-loaded first. Only fetched once the gallery
-  // is opened.
-  const { data: communityRoutes, isLoading: routesLoading } = useQuery({
-    queryKey: ['community-routes'],
+  // Published community routes, most popular first, one page at a time. Only
+  // fetched once the gallery is opened; keepPreviousData keeps the current page
+  // on screen (no flash to empty) while the next page loads.
+  const { data: routesData, isLoading: routesLoading } = useQuery({
+    queryKey: ['community-routes', routesPage],
     enabled: routesOpen,
     staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
     queryFn: async () => {
-      const { data } = await api.get<{ data: CommunityRoute[] }>('/routes')
-      return data.data
+      const { data } = await api.get<Paginated<CommunityRoute>>('/routes', {
+        params: { page: routesPage },
+      })
+      return data
     },
   })
+  const communityRoutes = routesData?.data
 
   // Load a community route onto the map: drop it into the builder (so it renders
   // with pins + legs and can be tweaked/re-published), fly to its start, and bump
@@ -3716,10 +3723,17 @@ export function MapPage() {
       else next.add(r.id)
       return next
     })
-    // …and the count in the query cache.
+    // …and the count in the query cache (the current page's slice).
     const bump = (d: number) =>
-      queryClient.setQueryData<CommunityRoute[]>(['community-routes'], (old) =>
-        old?.map((x) => (x.id === r.id ? { ...x, likes: Math.max(0, x.likes + d) } : x)),
+      queryClient.setQueryData<Paginated<CommunityRoute>>(['community-routes', routesPage], (old) =>
+        old
+          ? {
+              ...old,
+              data: old.data.map((x) =>
+                x.id === r.id ? { ...x, likes: Math.max(0, x.likes + d) } : x,
+              ),
+            }
+          : old,
       )
     bump(delta)
     api.post(`/routes/${r.id}/${liked ? 'unlike' : 'like'}`).catch(() => {
@@ -4219,7 +4233,10 @@ export function MapPage() {
 
               {/* Community routes gallery */}
               <button
-                onClick={() => setRoutesOpen((v) => !v)}
+                onClick={() => {
+                  setRoutesPage(1)
+                  setRoutesOpen((v) => !v)
+                }}
                 title={t('map.routesGallery')}
                 aria-label={t('map.routesGallery')}
                 aria-pressed={routesOpen}
@@ -5168,6 +5185,33 @@ export function MapPage() {
             </div>
           ) : (
             <p className="py-2 text-sm text-fg-mute">{t('map.routesEmpty')}</p>
+          )}
+          {/* Pager — the gallery serves one page at a time, popular first. */}
+          {routesData && routesData.meta.last_page > 1 && (
+            <div className="mt-2 flex items-center justify-between gap-2 border-t border-line/70 pt-2">
+              <button
+                onClick={() => setRoutesPage((p) => Math.max(1, p - 1))}
+                disabled={routesData.meta.current_page <= 1}
+                className="rounded-md border border-line px-2.5 py-1 text-xs font-semibold text-fg-dim transition hover:border-accent/60 hover:text-fg disabled:opacity-40 disabled:hover:border-line disabled:hover:text-fg-dim"
+              >
+                ‹ {t('map.routesPrev')}
+              </button>
+              <span className="text-xs tabular-nums text-fg-mute">
+                {t('map.routesPageOf', {
+                  page: routesData.meta.current_page,
+                  total: routesData.meta.last_page,
+                })}
+              </span>
+              <button
+                onClick={() =>
+                  setRoutesPage((p) => Math.min(routesData.meta.last_page, p + 1))
+                }
+                disabled={routesData.meta.current_page >= routesData.meta.last_page}
+                className="rounded-md border border-line px-2.5 py-1 text-xs font-semibold text-fg-dim transition hover:border-accent/60 hover:text-fg disabled:opacity-40 disabled:hover:border-line disabled:hover:text-fg-dim"
+              >
+                {t('map.routesNext')} ›
+              </button>
+            </div>
           )}
         </div>
       )}

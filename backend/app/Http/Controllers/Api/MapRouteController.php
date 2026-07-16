@@ -18,19 +18,30 @@ class MapRouteController extends Controller
 {
     /**
      * Published community routes, most popular first (by likes, then load count,
-     * then newest), for the map's route gallery.
+     * then newest), for the map's route gallery. Paginated — the gallery is a
+     * small popover, so it pulls one page at a time (default 6) rather than the
+     * whole published set. Response shape matches the frontend `Paginated<T>`.
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
+        $perPage = max(1, min(50, (int) $request->integer('per_page', 6)));
+
         $routes = MapRoute::query()
             ->where('status', 'published')
             ->orderByDesc('likes')
             ->orderByDesc('views')
             ->latest()
-            ->limit(200)
-            ->get(['id', 'name', 'description', 'waypoints', 'connect', 'author', 'views', 'likes', 'created_at']);
+            ->paginate($perPage, ['id', 'name', 'description', 'waypoints', 'connect', 'author', 'views', 'likes', 'created_at']);
 
-        return response()->json(['data' => $routes]);
+        return response()->json([
+            'data' => $routes->items(),
+            'meta' => [
+                'current_page' => $routes->currentPage(),
+                'last_page' => $routes->lastPage(),
+                'total' => $routes->total(),
+                'per_page' => $routes->perPage(),
+            ],
+        ]);
     }
 
     /** Bump a published route's load counter (drives the "popular" ranking). */
