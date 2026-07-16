@@ -1645,23 +1645,36 @@ export function MapPage() {
   const charVoc = character?.vocation ? baseVocation(character.vocation) : ''
   // Gear picker: catalogue items for the open slot (vocation-filtered when the
   // character's vocation is known — items usable by all always pass).
+  // Debounced like the map's own search: one request per pause, not per
+  // keystroke (typing "Souls" used to queue five 120-item round trips).
+  const gearSearch = useDebouncedValue(gearQuery.trim(), 250)
+  // Below 2 chars a search is all noise (every "s" item), so browse instead.
+  const gearTerm = gearSearch.length >= 2 ? gearSearch : ''
   const gearItemsQuery = useItems(
     {
       slot: gearSlot ?? undefined,
       equippable: '1',
-      q: gearQuery.trim() || undefined,
+      q: gearTerm || undefined,
       // Strongest first, SERVER-side: sorting client-side over an id-paged
       // window silently hid every modern high-id piece (the Soulshredder bug).
       sort: 'power',
       per_page: 120,
+      // The picker only needs name/image/stats — skip the listing payload the
+      // album needs (overview, view counts, quest facets): ~half the bytes.
+      light: '1',
       // Vocation narrows the BROWSE list only. A typed search drops it: if you
       // name the item, it's yours — a wrong/failed vocation lookup must never
       // turn a real weapon into "no results".
-      ...(charVoc && !gearQuery.trim() ? { vocation: charVoc } : {}),
+      ...(charVoc && !gearTerm ? { vocation: charVoc } : {}),
     },
-    charOpen && gearSlot !== null,
+    // Wait for the character lookup to settle: firing while it loads asks
+    // twice (once vocation-less, once with it) for the same browse list.
+    charOpen && gearSlot !== null && !charQuery.isLoading,
   )
   const gearChoices = gearItemsQuery.data?.data ?? []
+  // The list lags the input by the debounce; say so instead of showing the
+  // previous term's hits as if they were results for what you just typed.
+  const gearSearching = gearItemsQuery.isFetching || gearSearch !== gearQuery.trim()
   // Derived stats of the worn set — same math the Hunt Finder scores with.
   const setStatsQuery = useSetStats(gearIdList, charVoc)
   const setStats = setStatsQuery.data ?? null
@@ -4749,16 +4762,20 @@ export function MapPage() {
                         </button>
                       )}
                     </div>
-                    {gearItemsQuery.isLoading ? (
-                      <p className="py-2 text-center text-sm text-fg-dim">{t('map.charLoading')}</p>
-                    ) : gearItemsQuery.isError ? (
+                    {gearItemsQuery.isError ? (
                       // A dead API is NOT "no results" — misreporting it sent
                       // us chasing phantom missing-item bugs.
                       <p className="py-2 text-center text-sm text-accent">{t('map.charError')}</p>
                     ) : gearChoices.length === 0 ? (
-                      <p className="py-2 text-center text-sm text-fg-dim">{t('map.charGearEmpty')}</p>
+                      // Never claim "no results" mid-search: that's the lie
+                      // that made a working search look broken.
+                      <p className="py-2 text-center text-sm text-fg-dim">
+                        {gearSearching ? t('map.charLoading') : t('map.charGearEmpty')}
+                      </p>
                     ) : (
-                      <ul className="scroll-atlas mt-1.5 max-h-56 overflow-y-auto rounded-lg border border-line">
+                      <ul
+                        className={`scroll-atlas mt-1.5 max-h-56 overflow-y-auto rounded-lg border border-line transition-opacity ${gearSearching ? 'opacity-50' : ''}`}
+                      >
                         {gearChoices.map((it) => (
                           <li key={it.id}>
                             <button

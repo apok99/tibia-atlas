@@ -52,6 +52,13 @@ class HuntFinder
     private const KILL_OVERHEAD = 3.0;
 
     /**
+     * Zones returned to the UI. `tibia:hunt-calibrate` passes a huge limit
+     * instead: it has to tell "this zone isn't in our data" apart from "it's in
+     * our data but ranks 40th", and a truncated list makes both look identical.
+     */
+    private const DEFAULT_LIMIT = 24;
+
+    /**
      * Hunting complexes gated behind a quest line, keyed by zone name (the
      * creatures' shared bestiary place). The OT data can't express access
      * requirements, so this is curated — same approach as the boss locations.
@@ -79,7 +86,7 @@ class HuntFinder
      *                              wearable items the ranking runs against that
      *                              set instead of the synthesized best-in-slot one.
      */
-    public function find(int $level, string $vocation, string $mode, string $locale, array $gearIds = []): array
+    public function find(int $level, string $vocation, string $mode, string $locale, array $gearIds = [], int $limit = self::DEFAULT_LIMIT): array
     {
         $level = max(1, $level);
         $vocation = GearRules::baseVocation($vocation);
@@ -88,7 +95,7 @@ class HuntFinder
         $set = $gearIds !== [] ? $this->setFromGear($gearIds, $vocation) : null;
         $set ??= $this->deriveSet($level, $vocation);
         $creatures = $this->scoreCreatures($set, $level, $vocation, $team, $locale);
-        $zones = $this->buildZones($creatures, $team);
+        $zones = $this->buildZones($creatures, $team, $limit);
 
         return [
             'level' => $level,
@@ -309,7 +316,7 @@ class HuntFinder
 
             $expEffVals[] = $expEff;
             $profitVals[] = $profitEff;
-            $stats[$c->id] = compact('meta', 'hp', 'exp', 'gold', 'off', 'offElement', 'expEff', 'profitEff', 'danger') + [
+            $stats[$c->id] = compact('meta', 'hp', 'exp', 'gold', 'off', 'offElement', 'expEff', 'profitEff', 'danger', 'cycle') + [
                 'slug' => $c->slug,
                 'name' => $c->translation('en')?->name ?? $c->translation($locale)?->name ?? $c->slug,
                 'image' => $c->primary_image,
@@ -365,6 +372,17 @@ class HuntFinder
                 'resists' => $this->resistHints($s['meta']),
                 'experience' => $s['exp'],
                 'gold' => $s['gold'],
+                // Reward per HOUR at this player's kill speed — the same
+                // per-kill figures over the kill cycle. This is the shape the
+                // community hunting guides publish, so it's what the
+                // tibia:hunt-calibrate report measures us against.
+                'exp_h' => (int) round($s['expEff'] * 3600),
+                'profit_h' => (int) round($s['profitEff'] * 3600),
+                // Seconds this kill costs. Carried so a zone can add up total
+                // reward over total TIME instead of averaging per-creature
+                // rates — averaging rates answers a question nobody asked
+                // ("what if you only ever killed one species?").
+                'cycle' => round($s['cycle'], 2),
                 'hp' => $s['hp'],
                 'danger' => round($s['danger'], 2),
                 'too_dangerous' => $tooDangerous,
@@ -548,7 +566,7 @@ class HuntFinder
      * @param  array<int, array<string, mixed>>  $creatures  keyed by creature id
      * @return list<array<string, mixed>>
      */
-    private function buildZones(array $creatures, bool $team): array
+    private function buildZones(array $creatures, bool $team, int $limit = self::DEFAULT_LIMIT): array
     {
         // Bucket spawn points by floor, tagged with their creature id.
         $byFloor = [];
@@ -590,7 +608,7 @@ class HuntFinder
         // Cap the list and give each a stable id + a 0-100 "match" relative to
         // the best zone for this profile (the raw score is unbounded once the
         // density multiplier applies, so it's not display-friendly on its own).
-        $zones = array_slice($zones, 0, 24);
+        $zones = array_slice($zones, 0, $limit);
         $top = $zones[0]['score'] ?? 1;
         foreach ($zones as $i => &$zone) {
             $zone['id'] = $i;
@@ -666,6 +684,7 @@ class HuntFinder
         $weightedScore = 0.0;
         $weightedExp = 0.0;
         $weightedGold = 0.0;
+        $totalSeconds = 0.0;
         $bestScore = 0.0;
         $zoneDanger = 0.0;
         $weightedDanger = 0.0;
@@ -689,6 +708,7 @@ class HuntFinder
             $weightedScore += $c['score'] * $count;
             $weightedExp += $c['experience'] * $count;
             $weightedGold += $c['gold'] * $count;
+            $totalSeconds += $c['cycle'] * $count;
             $bestScore = max($bestScore, $c['score']);
             if (! $c['too_dangerous']) {
                 $zoneDanger = max($zoneDanger, $c['danger']);
@@ -770,6 +790,12 @@ class HuntFinder
             'access' => $access !== null ? 'quest' : null,
             'exp_avg' => (int) round($weightedExp / $totalCount),
             'profit_avg' => (int) round($weightedGold / $totalCount),
+            // What an hour here pays: total reward over total TIME, killing the
+            // residents in proportion to how common they are. Not the average
+            // of their individual rates — that overweights the fast trash you'd
+            // only meet occasionally.
+            'exp_h' => $totalSeconds > 0 ? (int) round(3600 * $weightedExp / $totalSeconds) : 0,
+            'profit_h' => $totalSeconds > 0 ? (int) round(3600 * $weightedGold / $totalSeconds) : 0,
             'spawn_count' => $cluster['count'],
             'creatures' => $members,
         ];

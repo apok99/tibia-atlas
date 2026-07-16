@@ -1,0 +1,176 @@
+1000|Forsaken Crypt|-|-|Diamond Arrows, Divine
+1000|Feru Infernatil|-|-|Diamond Arrows, Divine
+1000|Feru Juggernauts|-|-|Diamond Arrows, Divine
+1000|Podzilla Quaras|-|-|Diamond Arrows, Ethereal
+1000|Feru DT|-|-|Diamond Arrows, Divine
+1000|Azzilon Catacombs|-|-|Diamond Arrows, Divine
+1000|Ingol -3/-4/-5|-|-|Diamond Arrows, Divine
+800|Ingol Surface/-1/-2|-|-|Diamond Arrows, Divine
+800|True Asuras|-|-|Diamond Arrows, Ethereal
+800|Bloodfire Gorge|-|-|Diamond Arrows, Ethereal
+800|Warzone 9|-|-|Diamond Arrows, Divine
+800|Warzone 8|-|-|Diamond Arrows, Divine
+800|Warzone 7|-|-|Diamond Arrows, Divine
+800|Ferumbras Way|-|-|Diamond Arrows, Divine
+800|Bulltaur Lair|-|-|Diamond Arrows, Divine
+800|Feru Undead Dragons|-|-|Diamond Arrows, Divine
+800|Issavi Surface|-|-|Diamond Arrows, Divine
+800|Feru Pumin|-|-|Diamond Arrows, Divine
+700|Norcferatu Dungeons East|-|-|Diamond Arrows, Divine
+700|Norcferatu Dungeons West|-|-|Diamond Arrows, Divine
+600|Issavi Sphinx & Crypt Wardens|-|-|Diamond Arrows, Ethereal
+600|Cobra Bastion|-|-|Diamond Arrows, Divine
+600|Cobras -1|-|-|Diamond Arrows, Divine
+600|Issavi Puzzle|-|-|Diamond Arrows, Divine
+600|Issavi Sewers|-|-|Diamond Arrows, Divine
+600|Deep Desert|-|-|Diamond Arrows, Divine
+600|Nimmersatt's Boss Floor (-6)|-|-|Diamond Arrows, Divine
+600|Oramond Mountain Hideout -1/-2|-|-|Diamond Arrows, Divine
+600|Nimmersatt's Bottom Floor (-7)|-|-|Diamond Arrows, Divine
+600|Floating Savants MoTA|-|-|Diamond Arrows, Ethereal
+600|Usurpers|-|-|Diamond Arrows, Ethereal
+600|Issavi Ogres|-|-|Diamond Arrows, Divine
+600|Azzilon Castle|-|-|Diamond Arrows, Divine
+600|Norcferatu Fortress|-|-|Diamond Arrows, Divine
+600|Warzone 3|-|-|Diamond Arrows, Divine
+600|Warzone 2|-|-|Diamond Arrows, Divine
+600|Warzone 1|-|-|Diamond Arrows, Ethereal
+600|Girtablilu|-|-|Diamond Arrows, Divine
+600|Port Hope Flimsies|-|-|Firestorm Arrows, Divine
+600|Venore Flimsies|-|-|Firestorm Arrows, Divine
+550|Falcon's Eagle|-|-|Diamond Arrows, Divine
+550|Upper Roshamuul (South)|-|-|Diamond Arrows, Divine
+500|Azzilon Walls|-|-|Diamond Arrows, Divine
+500|Bashmu|-|-|Diamond Arrows, Divine
+500|Upper Roshamuul (North)|-|-|Diamond Arrows, Divine
+500|Deathlings|-|-|Diamond Arrows, Divine
+500|Marapur Naga|-|-|Diamond Arrows, Divine
+500|Carnisylvans|-|-|Diamond Arrows, Divine
+500|Crypt Warriors|-|-|Diamond Arrows, Divine
+450|Otherworld|-|-|Diamond Arrows, Divine
+450|Rosha Bones|-|-|Diamond Arrows, Divine
+450|Roshamuul Mines (Terrorsleeps)|-|-|Diamond Arrows, Divine
+450|Rosha West|-|-|Diamond Arrows, Divine
+450|Rosha Shockheads|-|-|Diamond Arrows, Divine
+400|Summer Court|-|-|Diamond Arrows, Ethereal, Divine
+400|Nightmare Isles|-|-|Diamond Arrows, Divine
+400|Marapur Turtles and Foam Stalkers|-|-|Diamond Arrows, Divine
+400|Oramond Abandoned Sewers|-|-|Diamond Arrows, Divine
+400|Gazer Spectres|-|-|Froststorm Arrows, Divine
+400|Buried Cathedral -8|-|-|Firestorm Arrows, Divine
+400|Ripper Spectres|-|-|Firestorm Arrows, Divine
+400|Burster Spectres|-|-|Firestorm Arrows, Divine
+400|Wote 8 Drakens|-|-|Diamond Arrows, Ethereal
+400|Werecrocodiles -1|-|-|Diamond Arrows, Divine
+400|Weretigers -2|-|-|Diamond Arrows, Ethereal
+400|Winter Court|-|-|Diamond Arrows, Divine
+400|Iksupan Last Stand|-|-|Diamond Arrows, Divine
+400|Iksupan Occupied Sanctuary|-|-|Diamond Arrows, Divine
+400|Oramond Catacombs|-|-|Diamond Arrows, Divine
+350|Lower Roshamuul|-|-|Diamond Arrows, Divine
+350|Warzone 4|-|-|Diamond Arrows, Divine
+350|Oramond Fury Dungeon|-|-|Diamond Arrows, Ethereal
+350|Warzone 5|-|-|Diamond Arrows, Divine
+350|Asura Mirror|-|-|Diamond Arrows, Ethereal
+300|Weretigers -1|-|-|Diamond Arrows, Ethereal
+300|Book World: Chapter IV|-|-|Diamond Arrows, Divine
+300|Book World: Chapter III|-|-|Diamond Arrows, Divine
+300|Candia Nibblemaws|-|-|Diamond Arrows, Divine
+300|Draken Walls|-|-|Diamond Arrows, Divine
+300|Warzone 6|-|-|Diamond Arrows, Divine
+300|Werelions -2|-|-|Diamond Arrows, Divine
+300|Drefia Grim Reapers|-|-|Diamond Arrows, Divine
+300|Werelions -1|-|-|Diamond Arrows, Divine
+300|Asura Palace|-|-|Diamond Arrows, Ethereal
+300|Oramond Wildlife Raid|-|-|Diamond Arrows, Ethereal
+250|Seacrest Serpents Birthing Grounds|-|-|Diamond Arrows, Divine
+250|Elder Wyrms Drefia|-|-|Diamond Arrows, Divine
+250|Deeper Banuta -6|-|-|Diamond Arrows, Divine
+250|Hive Stage 3|-|-|Diamond Arrows, Divine
+250|Diremaw Task Area|-|-|Diamond Arrows, Divine
+250|Deeper Banuta -8|-|-|Diamond Arrows, Divine
+250|Medusa Tower|-|-|Diamond Arrows, Divine
+250|Carnivora's Rocks|-|-|Firestorm Arrows, Divine
+250|Werehyaenas South|-|-|Diamond Arrows, Divine
+200|Book World: Chapter II|-|-|Diamond Arrows, Ethereal
+200|Brimstone Bugs WOTE|-|-|Diamond Arrows, Ethereal
+200|Otherworld Kazordoon (Dwarf Bridge)|-|-|Diamond Arrows, Ethereal
+200|Werecreatures Edron|-|-|Diamond Arrows, Ethereal
+200|Lizard City|-|-|Diamond Arrows, Ethereal
+200|Otherworld Edron|-|-|Diamond Arrows, Ethereal
+200|Glooth Tower|-|-|Diamond Arrows, Ethereal
+200|Werehyaenas North|-|-|Diamond Arrows, Divine
+200|Barkless Elves|-|-|Diamond Arrows, Ethereal
+200|Pirats|-|-|Diamond Arrows, Ethereal
+200|Yalahar Grim Reapers|-|-|Diamond Arrows, Divine
+150|Glooth Bandits|-|-|Diamond Arrows, Ethereal
+150|Oramond West|-|-|Diamond Arrows, Ethereal
+150|Edron Heroes -2|-|-|Diamond Arrows, Ethereal
+150|Carlin Cults|-|-|Diamond Arrows, Ethereal
+150|Edron Heroes -3|-|-|Diamond Arrows, Ethereal
+150|Deeplings Library|-|-|Diamond Arrows, Ethereal
+150|Exotic Cave|-|-|Diamond Arrows, Ethereal
+150|Ravenous Lava Lurkers|-|-|Diamond Arrows, Ethereal
+130|MoTa Fury|-|-|Crystalline Arrows, Ethereal
+130|Ghastly Dragons|-|-|Crystalline Arrows, Ethereal
+130|Talahu Medusas/Serpents|-|-|Crystalline Arrows, Ethereal
+125|Souleater Mountain|-|-|Firestorm Arrows, Ethereal
+100|Ravenous Lava Lurkers|-|-|Shatterstorm Arrows, Ethereal
+90|Edron Vampire Crypt -4|-|-|Crystalline Arrows, Ethereal
+90|Okolnir Frost Dragons|-|-|Crystalline Arrows, Ethereal
+90|Yalahar Sunken Quarter|-|-|Crystalline Arrows, Ethereal
+90|Edron Vampire Crypt|-|-|Crystalline Arrows, Ethereal
+90|Dark Faun Cave|-|-|Crystalline Arrows, Ethereal
+90|Orc Cults|-|-|Crystalline Arrows, Ethereal
+90|Lizard Chosens|-|-|Crystalline Arrows, Ethereal
+90|Putrid Mummy|-|-|Crystalline Arrows, Ethereal
+90|Misguided|-|-|Crystalline Arrows, Ethereal
+90|Quaras Liberty Bay|-|-|Crystalline Arrows, Ethereal
+90|Old Masonry (Death portal)|-|-|Crystalline Arrows, Ethereal
+90|Ice Witch Temple|-|-|Crystalline Arrows, Ethereal
+90|Feyrist Surface|-|-|Crystalline Arrows, Ethereal
+90|Yielothax|-|-|Crystalline Arrows, Ethereal
+90|Mini Rosha|-|-|Crystalline Arrows, Ethereal
+90|Exotic Cave|-|-|Crystalline Arrows, Ethereal
+90|Oramond Minos|-|-|Crystalline Arrows, Ethereal
+90|Werehyaenas -1|-|-|Crystalline Arrows, Ethereal
+90|Grimvale -4|-|-|Crystalline Arrows, Ethereal
+90|Edron South Were|-|-|Crystalline Arrows, Ethereal
+90|Dragon Lords Fenrock|-|-|Crystalline Arrows, Ethereal
+90|Holy Portal|-|-|Crystalline Arrows, Ethereal
+90|Nightmare Scions Krailos|-|-|Crystalline Arrows, Ethereal
+80|Hive Surface|550k|350k|Drill Bolts, Ethereal
+80|MoSL -4 (Ancient Scarabs)|700k|10k|Shatterstorm Arrows, Ethereal, Divine
+80|Demonwar Crypt (Both Spawns)|1.0kk|-200k|Shatterstorm Arrows, Ethereal
+70|Liberty Bay Bonelord Cave (Full Lap)|320k|400k|Drill Bolts, Ethereal
+70|Werebadgers Grimvale -1|675k|250k|Drill Bolts, Ethereal
+70|Iksupan|950k|200k|Drill Bolts, Ethereal, Divine
+60|Cults Yalahar|350k|350k|Shatterstorm Arrows, Ethereal
+60|Peninsula Tomb|400k|20k|Shatterstorm Arrows, Ethereal
+60|Nibelor Crystal Spiders|400k|30k|Onyx Arrows, Ethereal
+60|Forbidden Temple (Ankrahmun Cults)|400k|400k|Shatterstorm Arrows, Ethereal
+60|Lion's Rock|480k|30k|Onyx Arrows, Ethereal
+60|Ramoa Bonebeast Island|500k|-10k|Shatterstorm Arrows, Ethereal
+50|Laguna Islands (Profit)|170k|500k|Shatterstorm Arrows
+50|Krailos Surface|230k|250k|Onyx Arrows
+50|Edron Vampire Crypt -3|280k|100k|Onyx Arrows
+50|Wyrms Liberty Bay -1|350k|0k|Onyx Arrows, Ethereal
+40|Banuta Apes|120k|300k|Onyx Arrows
+40|Pirates Yalahar|150k|150k|Onyx Arrows
+40|MoSL -3 (Mummy/Bonebeasts)|190k|200k|Onyx Arrows
+40|Chor|200k|-10k|Onyx Arrows
+40|Zombies Cemetery Yalahar|215k|150k|Onyx Arrows
+40|Darashia Dragon Lair|220k|0k|Onyx Arrows
+40|Yalahar Dragons|250k|10k|Onyx Arrows
+40|Edron Old Fortress -1 (Bonebeasts)|330k|30k|Onyx Arrows
+25|Mammoths/Badgers Svargrond|60k|70k|Royal Spears
+23|Mutated Humans Yalahar|150k|70k|Sniper Arrows
+23|Coryms Port Hope (Stealth Ring)|160k|120k|Sniper Arrows
+23|Stonerefiners (Stealth Ring)|210k|140k|Sniper Arrows
+20|Elves Yalahar|50k|40k|Sniper Arrows
+15|Amazon Camp|35k|60k|Spears
+15|Edron Tomb|55k|30k|Arrows
+12|Targuna Infernoids|85k|40k|Arrows/Simple Arrows
+10|Targuna Pirates|75k|40k|Arrows/Simple Arrows
+8|Swamp Trolls Port Hope/Venore|30k|55k|Spears
+8|Targuna Lizards|60k|55k|Arrows/Simple Arrows

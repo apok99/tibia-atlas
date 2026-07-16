@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\EntryListResource;
+use App\Http\Resources\ItemPickerResource;
 use App\Models\Entry;
 use App\Support\ContentCache;
 use App\Support\GearRules;
@@ -68,15 +69,13 @@ class ItemController extends Controller
      */
     public function index(Request $request): AnonymousResourceCollection
     {
-        // TEMP DEBUG (remove): log the exact picker request + what it returns.
-        \Illuminate\Support\Facades\Log::info('ITEMS-DEBUG', [
-            'url' => $request->fullUrl(),
-            'params' => $request->query(),
-        ]);
-
         $items = Entry::query()
             ->ofType('item')
-            ->with('translations')
+            // The album lists every locale it has; the picker only renders one
+            // name, so don't drag the other translations across for it.
+            ->with($request->boolean('light')
+                ? ['translations' => fn ($t) => $t->whereIn('locale', [app()->getLocale(), 'en'])]
+                : ['translations'])
             ->when($request->filled('category'), fn ($q) => $q
                 ->where('meta->item_category', (string) $request->string('category')))
             ->when($request->filled('slot'), fn ($q) => $q
@@ -120,7 +119,9 @@ class ItemController extends Controller
 
         // Stable album order = by name; do it after pagination would be wrong, so
         // sort the page contents client-side. The DB order (id) keeps pages stable.
-        return EntryListResource::collection($items);
+        return $request->boolean('light')
+            ? ItemPickerResource::collection($items)
+            : EntryListResource::collection($items);
     }
 
     /**

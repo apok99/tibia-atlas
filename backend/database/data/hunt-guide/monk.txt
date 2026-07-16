@@ -1,0 +1,176 @@
+1000|Ice Library|-|-|Earth
+1000|Fire Library|-|-|Earth
+1000|Energy Library|-|-|Earth
+1000|Podzilla Quaras|-|-|Earth
+800|Ingol -3|-|-|Physical
+800|Azzilon Catacombs|-|-|Earth
+800|True Asuras|-|-|Physical, Energy, Earth
+800|Ingol Surface|-|-|Physical
+800|Bulltaurs -2|-|-|Earth
+800|Raubritters Ada Outskirts|-|-|Physical
+800|Raubritters Bloodfire Gorge|-|-|Physical
+700|Norcferatu Dungeons West|-|-|Earth
+700|Norcferatu Dungeons East|-|-|Earth
+600|Warzone 9|-|-|Earth
+600|Deep Desert (Darashia Skeletons)|-|-|Earth
+600|Otherworld (Sanguine)|-|-|Earth
+600|Warzone 7|-|-|Physical
+600|Warzone 8|-|-|Earth
+600|Juggernaut Feru Seal|-|-|Energy
+600|Issavi Sewers|-|-|Earth
+600|Infernatil Feru Seal|-|-|Energy
+600|Undead Dragon Feru Seal|-|-|Energy
+600|Prison -3|-|-|Physical
+600|Issavi Puzzle|-|-|Earth
+600|Feru DT Seal -2|-|-|Physical
+600|Flimsy Lost Souls Port Hope|-|-|Earth
+600|Summer Court (Sanguine)|-|-|Earth
+600|Winter Court (Sanguine)|-|-|Earth
+600|Feru Way|-|-|Physical
+600|Buried Cathedral (Sanguine)|-|-|Earth
+600|Feru DT Seal -1|-|-|Physical
+600|Falcons (Sanguine)|-|-|Earth
+600|Flimsy Lost Souls Venore|-|-|Earth
+600|Feru Mazoran Seal|-|-|Physical
+600|Oramond Catacombs|-|-|Physical
+600|Feru Undead Dragon Seal|-|-|Physical
+600|Nimmersatt's Dragons -6 (Boss Floor)|-|-|Earth
+600|Upper Roshamuul|-|-|Physical
+600|Roshamuul West|-|-|Physical
+600|Nimmersatt's Dragons -7 (Bottom Floor)|-|-|Earth
+600|Norcferatu Fortress|-|-|Earth
+500|Warzone 7|-|-|Energy
+500|Bashmu|-|-|Energy
+500|Girtablilu|-|-|Energy
+500|Plague Feru Seal|-|-|Energy
+500|Pumin Feru Seal|-|-|Energy
+500|Warzone 2|-|-|Physical, Energy
+500|Issavi Goannas - Central Steppe|-|-|Energy
+500|Cobra Bastion|-|-|Energy
+450|Azzilon Castle|-|-|Energy
+400|Warzone 1|-|-|Physical
+400|Oramond Hideout -1|-|-|Energy
+400|Floating Savants MoTA|-|-|Energy
+400|Warzone 3|-|-|Energy
+400|Oramond Catacombs|-|-|Physical
+400|Rosha West|-|-|Physical
+400|Sphinx/Crypt Warden Issavi|-|-|Energy
+400|Azzilon Walls|-|-|Energy
+400|Deathlings|-|-|Energy, Earth
+400|Falcons|-|-|Energy, Earth
+400|Upper Roshamuul|-|-|Energy
+400|Crypt Warriors|-|-|Energy
+400|Cobra Bastion -1 (Basement)|-|-|Energy
+400|Marapur Nagas (Soulkamas)|-|-|Energy
+350|Iksupan Last Stand (Entrance)|-|-|Energy
+350|Buried Cathedral|-|-|Earth
+350|Iksupan Occupied Sanctuary|-|-|Energy
+300|Otherworld|-|-|Earth
+300|Marapur Turtles|-|-|Earth
+300|Gazer Spectre|-|-|Earth
+300|Lower Rosh|-|-|Physical
+300|Warzone 6|-|-|Energy
+300|Warzone 4|-|-|Physical
+300|Oskayaat Werecrocodiles|-|-|Energy
+300|Burster Spectres|-|-|Earth, Energy
+300|Oskayaat Weretigers -2|-|-|Earth
+300|Summer Court|-|-|Earth
+300|Winter Court|-|-|Earth
+300|Roshamuul Mines|-|-|Energy
+300|Marapur Nagas|-|-|Earth
+270|Werelions|-|-|Energy
+270|Oramond Fury Dungeon|-|-|Energy
+270|Warzone 5|-|-|Earth
+270|Asura Mirror|-|-|Energy
+250|Pirats|-|-|Earth
+250|Carnivoras|-|-|Energy
+250|Deeper Banuta -8|-|-|Energy
+250|Lower Spike|-|-|Physical
+250|Asura Palace|-|-|Physical, Energy
+250|Candia Nibblemaws|-|-|Energy
+250|Weretigers -1|-|-|Earth
+250|Book World: Chapter IV|-|-|Earth
+220|Book World: Chapter III|-|-|Physical, Earth, Energy
+200|Otherworld (Edron)|-|-|Earth
+200|Draken Walls|-|-|Physical, Energy
+200|Book World: Chapter II|-|-|Physical
+200|Hive Stage3|-|-|Physical
+200|Seacrest Serpents|-|-|Physical, Energy
+200|Medusa Tower|-|-|Physical, Energy
+200|Werehyaenas|-|-|Physical
+200|Wildlife Raid (Active)|-|-|Physical
+175|Brimstone Bugs WOTE|-|-|Energy
+150|Otherworld (Kazo)|-|-|Earth
+150|Deeper Banuta -6|-|-|Energy
+150|Glooth Tower|-|-|Energy
+150|Yalahar Grim Reapers|-|-|Energy
+130|Hydras Oramond|-|-|Energy
+130|Elder Wyrms Drefia|-|-|Physical
+130|Deeplings Library|-|-|Energy
+130|Barkless Elves Ab|-|-|Physical, Earth
+100|Replica Dungeon|-|-|Physical
+100|Mini Rosha|-|-|Physical
+100|Lizard Chosens|-|-|Physical, Energy
+100|Edron Orc Cults|-|-|Earth
+100|Exotic Cave|-|-|Physical
+100|Ravenous Lava Lurkers|-|-|Energy, Earth
+90|Putrid Mummy|-|-|Energy
+90|Dark Faun Cave|-|-|Energy
+90|Orclops (Desecrated Glade)|-|-|Energy
+90|Souleater Mountain|-|-|Energy
+90|Okolnir|-|-|Energy
+90|Sunken Quarter|-|-|Energy
+90|Oramond West|-|-|Energy
+80|Giant Spiders Task - Port Hope|-|-|Physical
+80|Yielothaxes|-|-|Physical
+80|Inner Hive Stage2 (East)|-|-|Physical
+80|Carlin Cults|-|-|Physical
+80|Edron Old Fortress Heroes|-|-|Physical
+75|Middle Spike|-|-|Physical
+75|POI Dragon Lords|-|-|Physical
+75|Fenrock Dragon Lords|-|-|Physical
+70|Yalahar Bog Raiders Central|-|-|Energy
+70|Mother of Scarabs Lair|-|-|Physical
+70|Iksupan Entrance|-|-|Energy
+70|Edron Vampire Crypts|-|-|Physical
+70|Quaras LB|-|-|Energy
+70|Nightmare Scions Krailos|-|-|Physical, Energy
+60|Nibelor Crystal Spiders|-|-|Energy
+60|Water Elementals West Port Hope|-|-|Energy
+60|Water Elementals South Port Hope|-|-|Energy
+50|Kha'Zeel Ancient Scarabs|-|-|Physical
+50|Vengoth Haunted Treelings|-|-|Physical
+50|Killer Caiman Cave Zao|-|-|Physical
+50|Edron Bonebeasts|-|-|Physical
+50|Lion's Rock|-|-|Physical
+50|Wyrms LB|-|-|Physical
+40|LB Quara Scouts|-|-|Earth
+40|Yalahar Cults|-|-|Physical
+35|Mutated Rats Yalahar Arena|-|-|Physical
+35|Laguna Blood Crabs (Runes)|-|-|Physical
+35|Meriana Gargoyle Cave (Runes)|-|-|Physical
+35|Mutated Rats Yalahar Alchemist|-|-|Physical
+35|Peninsula Tomb|-|-|Physical
+35|MoSL -3|-|-|Physical
+35|Upper Spike (Runes)|-|-|Physical
+35|Coryms PH (Runes)|-|-|Physical
+30|Carniphilas Port Hope|-|-|Physical
+30|Banuta Apes (Runes)|-|-|Physical
+30|Zombies Treasure Island|-|-|Physical
+30|Chor (Runes)|-|-|Physical
+20|Mutated Humans Alchemist|-|-|Energy
+20|Stonerefiners (Stealth Ring)|-|-|Energy
+15|Cyclops Mistrock/Mount Sternum|-|-|Earth
+15|Elves Yalahar|-|-|Earth
+15|Minotaurs Darashia (Stealth Ring)|-|-|Earth
+14|Amazon Camp (Profit)|-|-|Energy
+14|Larva/Mummy MOSL -1/-2|-|-|Energy
+14|Tarantulas Port Hope|-|-|Energy
+14|Edron Forgotten Tomb|-|-|Energy
+12|Targuna Infernoids|-|-|Energy
+10|Targuna Pirates|-|-|Energy
+8|Crocodiles Port Hope|-|-|Energy
+8|Larva Ankh|-|-|Energy
+8|Swamp Trolls Port Hope/Venore|-|-|Energy
+8|Rotworms Liberty Bay/Darashia|-|-|Energy
+8|Targuna Lizards|-|-|Energy

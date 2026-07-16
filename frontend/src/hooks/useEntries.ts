@@ -168,6 +168,8 @@ export function useItems(
     q?: string
     /** 'power' pages strongest-first (gear picker); default is by id (album). */
     sort?: 'power'
+    /** '1' trims the payload to what a picker renders (name/image/stats). */
+    light?: '1'
     page?: number
     per_page?: number
   } = {},
