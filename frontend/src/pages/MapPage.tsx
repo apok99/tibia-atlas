@@ -39,7 +39,9 @@ import {
   loadCharProfile,
   saveCharProfile,
 } from '../lib/charProfile'
-import { useItems, useSetStats } from '../hooks/useEntries'
+import { useItems, useSetStats, useEntry } from '../hooks/useEntries'
+import { LoreText } from '../components/LoreText'
+import { LORE_POIS, type LorePoi } from '../lib/lorePois'
 import { SKILL_LABELS, signed } from '../components/items/itemStats'
 import { useGlossary } from '../hooks/useGlossary'
 import { useBosses, useKillWorlds, type BossRow } from '../hooks/useKillStats'
@@ -1420,6 +1422,112 @@ function FloorStepper({
   )
 }
 
+// The in-map lore reader: fetches a published entry and renders its story
+// (overview → canon → interpretations) with the same auto-linking as the full
+// article page, plus a link out to that page. Floats bottom-centre like the
+// hunt/house panels so it never covers the map controls.
+function LorePanel({ poi, onClose }: { poi: LorePoi; onClose: () => void }) {
+  const { t } = useTranslation()
+  const { data: entry, isLoading, isError } = useEntry(poi.slug)
+  // Lead paragraph = overview, falling back to canon (mirrors EntryPage). When
+  // the overview supplies the lead, canon becomes the body so it isn't repeated.
+  const lead = entry?.content.overview || entry?.content.canon || null
+  const canonBody = entry?.content.overview ? entry.content.canon : null
+  // Entry-less mystery spot: show its factual caption instead of fetched lore.
+  const blurbOnly = !poi.slug
+
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
+      <div className="scroll-atlas pointer-events-auto max-h-[70vh] w-[30rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-4 shadow-2xl backdrop-blur-md">
+        <div className="mb-2 flex items-center gap-1.5 text-[#c79a3f]">
+          <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+          </svg>
+          <span className="text-[10px] font-bold uppercase tracking-widest">{t('map.loreTitle')}</span>
+          <button
+            onClick={onClose}
+            aria-label={t('common.close')}
+            className="ml-auto grid h-6 w-6 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:border-[#c79a3f] hover:text-[#c79a3f]"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {blurbOnly && (
+          <>
+            <h3 className="font-serif text-lg font-bold leading-tight text-fg">{poi.title}</h3>
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-fg-mute">
+              {t('map.loreMystery')}
+            </span>
+            <p className="prose-atlas mt-3 text-sm leading-relaxed text-fg-dim">{poi.blurb}</p>
+          </>
+        )}
+
+        {!blurbOnly && isLoading && <Skeleton className="h-24 w-full" />}
+        {!blurbOnly && isError && <p className="text-sm text-fg-mute">{t('common.error')}</p>}
+
+        {!blurbOnly && entry && (
+          <>
+            <div className="flex items-start gap-3">
+              {entry.primary_image && (
+                <img
+                  src={entry.primary_image}
+                  alt=""
+                  className="h-14 w-14 shrink-0 rounded-lg border border-line-2 object-contain p-1"
+                />
+              )}
+              <div className="min-w-0">
+                <h3 className="font-serif text-lg font-bold leading-tight text-fg">
+                  {entry.name ?? poi.title}
+                </h3>
+                {entry.type_label && (
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-fg-mute">
+                    {entry.type_label}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="prose-atlas mt-3 text-sm leading-relaxed text-fg-dim">
+              {lead && (
+                <p>
+                  <LoreText text={lead} currentSlug={entry.slug} />
+                </p>
+              )}
+              {canonBody && (
+                <p className="mt-2">
+                  <LoreText text={canonBody} currentSlug={entry.slug} />
+                </p>
+              )}
+              {entry.content.interpretations && (
+                <p className="mt-2">
+                  <LoreText text={entry.content.interpretations} currentSlug={entry.slug} />
+                </p>
+              )}
+              {!lead && !canonBody && !entry.content.interpretations && (
+                <p className="text-fg-mute">{t('map.loreEmpty')}</p>
+              )}
+            </div>
+
+            <Link
+              to={`/entry/${entry.slug}`}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-[#c79a3f]/50 bg-[#c79a3f]/10 px-3 py-1.5 text-sm font-semibold text-[#c79a3f] transition hover:bg-[#c79a3f]/20"
+            >
+              {t('map.loreReadFull')}
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
+            </Link>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function MapPage() {
   const { t, i18n } = useTranslation()
   const queryClient = useQueryClient()
@@ -1438,6 +1546,7 @@ export function MapPage() {
   const allSpriteGroupRef = useRef<L.LayerGroup | null>(null)
   const poiGroupRef = useRef<L.LayerGroup | null>(null)
   const houseGroupRef = useRef<L.LayerGroup | null>(null)
+  const loreGroupRef = useRef<L.LayerGroup | null>(null)
   // Highlight ring drawn over the hunting zone the user picked in the Hunt Finder.
   const huntHiRef = useRef<L.LayerGroup | null>(null)
   // A dedicated SVG renderer for that ring, so it draws crisply above the canvas
@@ -1503,6 +1612,8 @@ export function MapPage() {
   const [levelFilter, setLevelFilter] = useState('') // '' = any difficulty
   const [bossOnly, setBossOnly] = useState(false) // show only bosses
   const [showPoi, setShowPoi] = useState(false) // imported minimap markers layer
+  const [showLore, setShowLore] = useState(false) // curated lore / mystery POIs layer
+  const [lorePoi, setLorePoi] = useState<LorePoi | null>(null) // open lore reader
   const [showHouses, setShowHouses] = useState(false) // rentable houses layer
   const [houseStatusFilter, setHouseStatusFilter] = useState<'all' | 'available' | 'rented'>('all') // rent-status filter
   const [houseKind, setHouseKind] = useState<'all' | 'house' | 'guild'>('all') // house vs guildhall filter
@@ -1766,6 +1877,8 @@ export function MapPage() {
   // The list is paginated (server-side, most popular first); this holds the page.
   const [routesOpen, setRoutesOpen] = useState(false)
   const [routesPage, setRoutesPage] = useState(1)
+  const [routesQuery, setRoutesQuery] = useState('')
+  const routesQueryDebounced = useDebouncedValue(routesQuery.trim(), 300)
   // Routes this visitor has "liked". No accounts, so a like is client-side: we
   // remember the ids here (persisted) to show the heart filled and to avoid
   // double-counting; the server just holds the aggregate counter.
@@ -2516,6 +2629,7 @@ export function MapPage() {
     const houseGroup = L.layerGroup().addTo(map)
     const spawnGroup = L.layerGroup().addTo(map)
     const cityGroup = L.layerGroup().addTo(map)
+    const loreGroup = L.layerGroup().addTo(map)
     const markersGroup = L.layerGroup().addTo(map)
     const routeGroup = L.layerGroup().addTo(map)
     const buildGroup = L.layerGroup().addTo(map)
@@ -2536,6 +2650,7 @@ export function MapPage() {
     allSpriteGroupRef.current = allSpriteGroup
     poiGroupRef.current = poiGroup
     houseGroupRef.current = houseGroup
+    loreGroupRef.current = loreGroup
     routeGroupRef.current = routeGroup
     buildGroupRef.current = buildGroup
     // Fresh map, fresh layer groups: the diff caches hold markers bound to the
@@ -2668,6 +2783,7 @@ export function MapPage() {
       allSpriteGroupRef.current = null
       poiGroupRef.current = null
       houseGroupRef.current = null
+      loreGroupRef.current = null
       routeGroupRef.current = null
       buildGroupRef.current = null
     }
@@ -2733,6 +2849,38 @@ export function MapPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [floor, mapReady])
+
+  // Draw the curated lore / mystery POIs when the layer is on. Each pin sits on
+  // its own floor (all surface today) and, when clicked, flies the map there and
+  // opens the in-map reader panel for its lore entry. The open pin is highlighted.
+  useEffect(() => {
+    const grp = loreGroupRef.current
+    if (!grp) return
+    grp.clearLayers()
+    if (!showLore) return
+    for (const poi of LORE_POIS) {
+      if (poi.floor !== floor) continue
+      const active = poi === lorePoi
+      const icon = L.divIcon({
+        className: '',
+        html:
+          `<div class="tm-lore${active ? ' is-active' : ''}">` +
+          `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
+          `<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>` +
+          `</div>`,
+        iconSize: [0, 0],
+      })
+      L.marker(toLatLng(poi.x, poi.y), { icon, interactive: true, keyboard: false, zIndexOffset: 500 })
+        .addTo(grp)
+        .bindTooltip(escapeHtml(poi.title), { direction: 'top', offset: [0, -12] })
+        .on('click', () => {
+          setLorePoi(poi)
+          const map = mapRef.current
+          if (map) map.flyTo(toLatLng(poi.x, poi.y), Math.max(map.getZoom(), 3), { duration: 0.5 })
+        })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [floor, mapReady, showLore, lorePoi])
 
   // Draw the selected creatures' spawn icons. Seven creatures can carry ~700
   // spawn points and Leaflet repositions every DOM marker on each zoom, so only
@@ -3675,18 +3823,24 @@ export function MapPage() {
   // fetched once the gallery is opened; keepPreviousData keeps the current page
   // on screen (no flash to empty) while the next page loads.
   const { data: routesData, isLoading: routesLoading } = useQuery({
-    queryKey: ['community-routes', routesPage],
+    queryKey: ['community-routes', routesPage, routesQueryDebounced],
     enabled: routesOpen,
     staleTime: 60 * 1000,
     placeholderData: keepPreviousData,
     queryFn: async () => {
       const { data } = await api.get<Paginated<CommunityRoute>>('/routes', {
-        params: { page: routesPage },
+        params: { page: routesPage, q: routesQueryDebounced || undefined },
       })
       return data
     },
   })
   const communityRoutes = routesData?.data
+
+  // A new search term resets to the first page (the old page number rarely exists
+  // in the filtered result set).
+  useEffect(() => {
+    setRoutesPage(1)
+  }, [routesQueryDebounced])
 
   // Load a community route onto the map: drop it into the builder (so it renders
   // with pins + legs and can be tweaked/re-published), fly to its start, and bump
@@ -3725,7 +3879,7 @@ export function MapPage() {
     })
     // …and the count in the query cache (the current page's slice).
     const bump = (d: number) =>
-      queryClient.setQueryData<Paginated<CommunityRoute>>(['community-routes', routesPage], (old) =>
+      queryClient.setQueryData<Paginated<CommunityRoute>>(['community-routes', routesPage, routesQueryDebounced], (old) =>
         old
           ? {
               ...old,
@@ -4235,6 +4389,7 @@ export function MapPage() {
               <button
                 onClick={() => {
                   setRoutesPage(1)
+                  setRoutesQuery('')
                   setRoutesOpen((v) => !v)
                 }}
                 title={t('map.routesGallery')}
@@ -4454,6 +4609,36 @@ export function MapPage() {
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M3 10l9-7 9 7M5 9v11h14V9M9 21v-6h6v6" />
                 </svg>
+              </button>
+            </div>
+
+            {/* Lore / mysteries — curated story POIs. Toggling it off also closes
+                any open reader panel so a stray pin's story can't linger. */}
+            <div className="relative flex items-center">
+              <button
+                onClick={() => {
+                  setShowLore((v) => {
+                    if (v) setLorePoi(null)
+                    return !v
+                  })
+                }}
+                title={t('map.loreLayer')}
+                aria-label={t('map.loreLayer')}
+                aria-pressed={showLore}
+                className={`relative ${SLOT} ${showLore ? 'border-[#c79a3f] bg-[#c79a3f]/15 text-[#c79a3f]' : SLOT_OFF}`}
+              >
+                {/* open book — "read the lore" */}
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                  <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+                </svg>
+                {showLore && (
+                  <span
+                    className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[#c79a3f] px-1 text-[10px] font-bold leading-none text-white"
+                  >
+                    {LORE_POIS.length}
+                  </span>
+                )}
               </button>
             </div>
 
@@ -4915,6 +5100,8 @@ export function MapPage() {
           level) drive the /api/hunts ranking; each result is a
           hunting zone you can click to fly to, expanding into its per-creature
           breakdown (what to hit it with, reward, danger). */}
+      {lorePoi && <LorePanel poi={lorePoi} onClose={() => setLorePoi(null)} />}
+
       {huntOpen && (
         <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
           <div className="scroll-atlas pointer-events-auto max-h-[70vh] w-[27rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-3 shadow-2xl backdrop-blur-md">
@@ -5127,6 +5314,22 @@ export function MapPage() {
             </span>
             <span className="text-xs text-fg-mute">{t('map.routesGalleryHint')}</span>
           </div>
+          {/* Search — filters the published set by name or author (server-side, so
+              it searches every page, not just the one on screen). */}
+          <div className="mb-2 flex items-center gap-1.5 rounded-lg border border-line bg-bg/50 px-2 focus-within:border-accent">
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 text-fg-mute" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+            <input
+              type="search"
+              value={routesQuery}
+              onChange={(e) => setRoutesQuery(e.target.value)}
+              placeholder={t('map.routesSearch')}
+              aria-label={t('map.routesSearch')}
+              className="min-w-0 flex-1 border-0 bg-transparent py-1.5 text-sm text-fg outline-none placeholder:text-fg-mute"
+            />
+          </div>
           {routesLoading ? (
             <p className="py-2 text-sm text-fg-mute">{t('map.routesLoading')}</p>
           ) : communityRoutes && communityRoutes.length > 0 ? (
@@ -5184,7 +5387,9 @@ export function MapPage() {
               })}
             </div>
           ) : (
-            <p className="py-2 text-sm text-fg-mute">{t('map.routesEmpty')}</p>
+            <p className="py-2 text-sm text-fg-mute">
+              {routesQueryDebounced ? t('map.routesNoResults') : t('map.routesEmpty')}
+            </p>
           )}
           {/* Pager — the gallery serves one page at a time, popular first. */}
           {routesData && routesData.meta.last_page > 1 && (

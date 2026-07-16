@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\EntryListResource;
 use App\Http\Resources\ItemPickerResource;
 use App\Models\Entry;
+use App\Models\NpcOffer;
 use App\Support\ContentCache;
 use App\Support\GearRules;
 use App\Support\SetStats;
+use App\Support\TravellingNpcs;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -213,6 +215,63 @@ class ItemController extends Controller
             'dropped_by' => $droppers,
             'wiki_url' => $wikiUrl,
         ]]);
+    }
+
+    /**
+     * Where to buy/sell one item: every merchant that trades it, with the real
+     * server prices, its map spawn tiles and — for the travelling traders — the
+     * schedule (Rashid's stop today, Yasir's candidate docks). `buy` is sorted
+     * cheapest-first, `sell` best-paying-first; offers in a token currency sink
+     * to the end of either list so a "1 gold token" price never outranks gold.
+     */
+    public function trade(string $slug): JsonResponse
+    {
+        $item = Entry::query()->ofType('item')->where('slug', $slug)->first();
+        abort_unless($item !== null, 404);
+
+        $offers = NpcOffer::query()
+            ->where('item_entry_id', $item->id)
+            ->with('npc.entry')
+            ->get();
+
+        $buy = [];
+        $sell = [];
+        foreach ($offers as $offer) {
+            $npc = $offer->npc;
+            if ($npc === null) {
+                continue;
+            }
+            $travelling = TravellingNpcs::decorate($npc->name);
+            $entry = $npc->entry;
+
+            $row = [
+                'npc' => $npc->name,
+                // Link through to the lore entry only when it's actually readable.
+                'slug' => $entry !== null && $entry->status->value === 'published' ? $entry->slug : null,
+                'image' => $entry?->primary_image,
+                'city' => $travelling['today']['city'] ?? $npc->city,
+                'currency' => $npc->currency,
+                'coords' => $travelling === null
+                    ? $npc->spawns
+                    : (isset($travelling['today'])
+                        ? [$travelling['today']['coords']]
+                        : array_column($travelling['spots'] ?? [], 'coords')),
+                'travelling' => $travelling,
+            ];
+
+            if ($offer->buy !== null) {
+                $buy[] = $row + ['price' => $offer->buy];
+            }
+            if ($offer->sell !== null) {
+                $sell[] = $row + ['price' => $offer->sell];
+            }
+        }
+
+        $rank = fn (array $r) => $r['currency'] !== null ? 1 : 0; // gold first
+        usort($buy, fn ($a, $b) => [$rank($a), $a['price']] <=> [$rank($b), $b['price']]);
+        usort($sell, fn ($a, $b) => [$rank($a), -$a['price']] <=> [$rank($b), -$b['price']]);
+
+        return response()->json(['data' => ['buy' => $buy, 'sell' => $sell]]);
     }
 
     /**

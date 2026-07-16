@@ -38,6 +38,8 @@ Route::middleware([SetLocale::class, 'throttle:public'])->group(function () {
         Route::get('/items/loadout', [ItemController::class, 'loadout']);
         // Aggregate stats for a worn set (the map's character gear readout).
         Route::get('/items/set-stats', [ItemController::class, 'setStats']);
+        // Where to buy/sell an item: merchants, real prices, map spawns.
+        Route::get('/items/{slug}/trade', [ItemController::class, 'trade']);
         // Hunt Finder: best hunting zones for a level + vocation + solo/team.
         Route::get('/hunts', [HuntController::class, 'index']);
         // Detail must come AFTER the literal item routes or it'd bind them as a slug.

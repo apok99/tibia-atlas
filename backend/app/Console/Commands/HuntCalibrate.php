@@ -229,7 +229,16 @@ class HuntCalibrate extends Command
         return false;
     }
 
-    /** Resuelve un nombre de la guía a una zona nuestra: alias primero, si no match normalizado. */
+    /**
+     * Resuelve un nombre de la guía a una zona nuestra: alias curado, o nombre
+     * idéntico (normalizado). NADA de "uno contiene al otro" — ese fallback
+     * casaba "Edron Forgotten Tomb" con el landmark "Edron" y colapsaba tres
+     * filas distintas de Yalahar sobre una sola zona, inflando la cobertura con
+     * matches gruesos. Si no hay alias ni nombre igual, es que NO sabemos
+     * nombrar esa zona (o la guía es más fina que nuestro clustering, p.ej.
+     * "Ingol -3" vs nuestra "Ingol"), y eso debe contar como no-resuelto, no
+     * como acierto. Los casos legítimos se resuelven agregándolos a aliases.php.
+     */
     private function match(string $guideName, array $zones): ?array
     {
         $key = mb_strtolower($guideName);
@@ -243,21 +252,8 @@ class HuntCalibrate extends Command
 
                 continue;
             }
-            if ($this->loose($zone['name']) === $this->loose($guideName)) {
+            if ($zone['name'] !== null && $this->loose($zone['name']) === $this->loose($guideName)) {
                 return $zone;
-            }
-        }
-
-        // Sin alias: aceptamos que uno contenga al otro ("Warzone 3" vs "Warzone
-        // 3 and Warzone 6"), pero solo con ≥5 caracteres — si no, "Chor" casa
-        // con media Tibia.
-        if ($target === null) {
-            $g = $this->loose($guideName);
-            foreach ($zones as $zone) {
-                $n = $this->loose($zone['name']);
-                if (mb_strlen($g) >= 5 && (str_contains($n, $g) || str_contains($g, $n))) {
-                    return $zone;
-                }
             }
         }
 

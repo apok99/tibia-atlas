@@ -20,18 +20,29 @@ class MapRouteController extends Controller
      * Published community routes, most popular first (by likes, then load count,
      * then newest), for the map's route gallery. Paginated — the gallery is a
      * small popover, so it pulls one page at a time (default 6) rather than the
-     * whole published set. Response shape matches the frontend `Paginated<T>`.
+     * whole published set. An optional `q` filters by route name or author (case-
+     * insensitive substring). Response shape matches the frontend `Paginated<T>`.
      */
     public function index(Request $request): JsonResponse
     {
         $perPage = max(1, min(50, (int) $request->integer('per_page', 6)));
+        $q = trim((string) $request->query('q', ''));
 
         $routes = MapRoute::query()
             ->where('status', 'published')
+            ->when($q !== '', function ($query) use ($q) {
+                // Escape LIKE wildcards so a literal % or _ in the term stays literal.
+                $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q) . '%';
+                $query->where(function ($w) use ($like) {
+                    $w->where('name', 'ilike', $like)
+                        ->orWhere('author', 'ilike', $like);
+                });
+            })
             ->orderByDesc('likes')
             ->orderByDesc('views')
             ->latest()
-            ->paginate($perPage, ['id', 'name', 'description', 'waypoints', 'connect', 'author', 'views', 'likes', 'created_at']);
+            ->paginate($perPage, ['id', 'name', 'description', 'waypoints', 'connect', 'author', 'views', 'likes', 'created_at'])
+            ->withQueryString();
 
         return response()->json([
             'data' => $routes->items(),

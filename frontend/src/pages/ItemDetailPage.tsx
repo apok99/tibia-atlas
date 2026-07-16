@@ -2,17 +2,18 @@ import { useMemo, useState } from 'react'
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { useItemDetail, useItems } from '../hooks/useEntries'
+import { useItemDetail, useItems, useItemTrade } from '../hooks/useEntries'
 import { useCollection } from '../hooks/useCollection'
 import { useDebounce } from '../hooks/useDebounce'
 import { statChips, VocationDots } from '../components/items/itemStats'
 import { ItemDetailSkeleton } from '../components/Skeleton'
 import { Seo, entrySeoTitle } from '../lib/seo'
-import type { Dropper as DropperT, ItemDetail, NpcDeal } from '../types'
+import type { Dropper as DropperT, ItemDetail, NpcDeal, TradeOffer } from '../types'
 
 /** How many NPCs / droppers to show before a "show all (N)" toggle. */
 const NPC_LIMIT = 12
 const DROP_LIMIT = 24
+const TRADE_LIMIT = 6
 
 /**
  * Full-page item detail — the same information the album's cromo used to show
@@ -128,6 +129,9 @@ function ItemColumn({
 }) {
   const { t } = useTranslation()
   const { data, isLoading } = query
+  // Real server trade offers (prices + map spawns); the wiki name list below
+  // stays as the fallback for items the OT shops don't carry.
+  const trade = useItemTrade(query.data?.slug)
 
   if (isLoading || !data) {
     return (
@@ -212,13 +216,22 @@ function ItemColumn({
         </Section>
       )}
 
-      {/* Buy / sell. */}
+      {/* Buy / sell: real server prices with a map link per merchant when we
+          have them; wiki's plain NPC name list as the fallback. */}
       <div className="grid gap-4 sm:grid-cols-2">
-        <Section title={t('items.buyFrom')}>
-          <NpcList deals={data.npc_buy} empty={t('items.noTrade')} />
+        <Section title={t('items.whereToBuy')}>
+          {trade.data?.buy.length ? (
+            <TradeList offers={trade.data.buy} />
+          ) : (
+            <NpcList deals={data.npc_buy} empty={t('items.noTrade')} />
+          )}
         </Section>
-        <Section title={t('items.sellTo')}>
-          <NpcList deals={data.npc_sell} empty={t('items.noTrade')} />
+        <Section title={t('items.whereToSell')}>
+          {trade.data?.sell.length ? (
+            <TradeList offers={trade.data.sell} />
+          ) : (
+            <NpcList deals={data.npc_sell} empty={t('items.noTrade')} />
+          )}
         </Section>
       </div>
 
@@ -398,6 +411,126 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       </h3>
       {children}
     </div>
+  )
+}
+
+/**
+ * Deep link into the map: centered on the merchant with a pin per spawn tile,
+ * and the "Cómo llegar" destination preset (r= with only the end filled — the
+ * map then asks for the start with one click).
+ */
+function tradeMapHref(o: TradeOffer): string | null {
+  const coords = o.coords
+  if (!coords || coords.length === 0) return null
+  const [x, y, z] = coords[0]
+  const name = encodeURIComponent(o.npc)
+  const pins = coords
+    .slice(0, 6)
+    .map((c) => `${c[0]},${c[1]},${c[2]},${name}`)
+    .join(';')
+  return `/map#f=${z}&z=3&x=${x}&y=${y}&m=${pins}&r=;${x},${y},${z},${name}`
+}
+
+/** Second line of a trade row: city, or the travelling trader's whereabouts. */
+function tradeSubtitle(o: TradeOffer, t: TFunction): string | null {
+  if (o.travelling?.kind === 'weekly' && o.travelling.today)
+    return t('items.travellingToday', { city: o.travelling.today.city })
+  if (o.travelling?.kind === 'roaming' && o.travelling.spots)
+    return t('items.travellingRoaming', {
+      cities: o.travelling.spots.map((s) => s.city).join(', '),
+    })
+  return o.city
+}
+
+/** Merchants trading this item, best price first, each with its map link. */
+function TradeList({ offers }: { offers: TradeOffer[] }) {
+  const { t } = useTranslation()
+  const [showAll, setShowAll] = useState(false)
+  const shown = showAll ? offers : offers.slice(0, TRADE_LIMIT)
+  const hidden = offers.length - shown.length
+
+  return (
+    <ul className="space-y-1.5">
+      {shown.map((o, i) => {
+        const href = tradeMapHref(o)
+        const sub = tradeSubtitle(o, t)
+        const name = (
+          <span className="truncate">{o.npc}</span>
+        )
+        return (
+          <li
+            key={`${o.npc}-${i}`}
+            className="flex items-center gap-2 rounded border border-line bg-surface/60 px-2 py-1.5"
+          >
+            <span className="sprite-tile grid h-9 w-9 shrink-0 place-items-center">
+              {o.image ? (
+                <img src={o.image} alt="" loading="lazy" className="max-h-8 max-w-8 object-contain" />
+              ) : (
+                <span className="text-fg-mute">⚖</span>
+              )}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-1.5 text-base font-semibold text-fg">
+                {o.slug ? (
+                  <Link to={`/entry/${o.slug}`} className="truncate transition hover:text-accent-2">
+                    {o.npc}
+                  </Link>
+                ) : (
+                  name
+                )}
+                {i === 0 && offers.length > 1 && (
+                  <span className="shrink-0 rounded bg-accent/15 px-1.5 py-px text-[10px] font-bold uppercase tracking-wider text-accent">
+                    {t('items.bestPrice')}
+                  </span>
+                )}
+              </span>
+              {sub && <span className="block truncate text-sm text-fg-dim">{sub}</span>}
+            </span>
+            <span className="shrink-0 tabular-nums text-base font-semibold text-fg">
+              {o.price.toLocaleString()}{' '}
+              <span className="text-xs font-normal text-fg-dim">{o.currency ?? t('items.gp')}</span>
+            </span>
+            {href && (
+              <Link
+                to={href}
+                title={t('items.viewOnMap')}
+                aria-label={t('items.viewOnMap')}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded border border-line text-fg-mute transition hover:border-accent hover:text-accent"
+              >
+                <MapPinIcon />
+              </Link>
+            )}
+          </li>
+        )
+      })}
+      {hidden > 0 && (
+        <li>
+          <button
+            onClick={() => setShowAll(true)}
+            className="rounded border border-line px-2 py-1 text-sm font-bold text-fg-mute transition hover:text-accent"
+          >
+            +{hidden}
+          </button>
+        </li>
+      )}
+    </ul>
+  )
+}
+
+function MapPinIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0Z" />
+      <circle cx="12" cy="10" r="3" />
+    </svg>
   )
 }
 

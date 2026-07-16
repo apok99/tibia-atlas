@@ -7,6 +7,7 @@ import type {
   Facets,
   ItemDetail,
   ItemFacets,
+  ItemTrade,
   LibraryBook,
   LibraryIndex,
   Loadout,
@@ -251,6 +252,20 @@ export function useItemDetail(slug: string | undefined) {
       const { data } = await api.get<{ data: ItemDetail }>(`/items/${slug}`)
       return data.data
     },
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+/** Where to buy / sell one item: merchants, real prices, map spawns. */
+export function useItemTrade(slug: string | undefined) {
+  return useQuery({
+    queryKey: ['item-trade', slug],
+    enabled: !!slug,
+    queryFn: async () => {
+      const { data } = await api.get<{ data: ItemTrade }>(`/items/${slug}/trade`)
+      return data.data
+    },
+    // Prices only change on OT data updates; Rashid's stop once a day.
     staleTime: 5 * 60 * 1000,
   })
 }
