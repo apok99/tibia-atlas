@@ -3812,6 +3812,14 @@ export function MapPage() {
     applyRouteEnd(pt)
   }
 
+  // Banner chips: fly-and-route to the best-priced merchant of one side of the
+  // trade board (the API lists arrive best-price-first; merchants without map
+  // coords — scripted spawns outside the mapped region — are skipped).
+  function routeToBestOffer(offers: ItemTrade['buy']) {
+    const o = offers.find((x) => x.coords && x.coords.length > 0)
+    if (o) routeToTradeNpc(o.npc, o.coords![0])
+  }
+
   function goTo(l: Landmark) {
     floorRef.current = l.floor
     setFloor(l.floor)
@@ -5989,14 +5997,22 @@ export function MapPage() {
                 </span>
               )}
               {(activeItem.trade?.buy.length ?? 0) > 0 && (
-                <span className="rounded-[2px] border border-[#c79a3f]/50 bg-[#c79a3f]/10 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-[#c79a3f]">
+                <button
+                  onClick={() => routeToBestOffer(activeItem.trade!.buy)}
+                  title={t('map.itemTradeGo')}
+                  className="rounded-[2px] border border-[#c79a3f]/50 bg-[#c79a3f]/10 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-[#c79a3f] transition hover:bg-[#c79a3f]/25"
+                >
                   {t('map.itemSoldBy', { count: activeItem.trade!.buy.length })}
-                </span>
+                </button>
               )}
               {(activeItem.trade?.sell.length ?? 0) > 0 && (
-                <span className="rounded-[2px] border border-[#6faf52]/50 bg-[#6faf52]/10 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-[#6faf52]">
+                <button
+                  onClick={() => routeToBestOffer(activeItem.trade!.sell)}
+                  title={t('map.itemTradeGo')}
+                  className="rounded-[2px] border border-[#6faf52]/50 bg-[#6faf52]/10 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-[#6faf52] transition hover:bg-[#6faf52]/25"
+                >
                   {t('map.itemBoughtBy', { count: activeItem.trade!.sell.length })}
-                </span>
+                </button>
               )}
               <button
                 onClick={clearItem}
