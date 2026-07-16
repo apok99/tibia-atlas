@@ -40,12 +40,16 @@ class BossWatchQuery
             ->where('kd.snapshot_date', $latest)
             ->where('e.status', 'published')
             ->whereRaw("e.meta->>'rank' = 'Boss'")
-            ->groupBy('r.name', 'e.slug', 'e.primary_image')
+            ->groupBy('r.name', 'e.slug', 'e.primary_image', DB::raw("e.meta->'spawn_type'"))
             ->having(DB::raw('COUNT(*)'), $type === 'daily' ? '>=' : '<=', $type === 'daily' ? 10 : $maxWorlds)
             ->select([
                 'r.name as race',
                 'e.slug',
                 'e.primary_image as image',
+                // TibiaWiki spawntype list (e.g. ["Raid"]); a Raid boss appears via a
+                // server-wide raid, not a per-world respawn timer, so the transformer
+                // caps its world-scoped "likely up" confidence.
+                DB::raw("e.meta->'spawn_type' AS spawn_type"),
                 DB::raw('COUNT(*) AS worlds_active'),
                 DB::raw('COUNT(*) FILTER (WHERE kd.day_killed > 0) AS cooldown'),
                 DB::raw('COUNT(*) FILTER (WHERE kd.week_killed > 0) AS week_worlds'),

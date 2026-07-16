@@ -12,6 +12,15 @@ use Illuminate\Support\Collection;
 class BossWatchTransformer
 {
     /**
+     * World-scoped heat ceiling for Raid bosses. They spawn via server-wide raids
+     * CipSoft triggers, not a per-world respawn timer, so "days since last kill"
+     * can never promise one is up — cap below the frontend's "likely up" threshold
+     * (66) so the strongest a raid boss reads is "maybe up", never a flat "alive".
+     */
+    private const RAID_WORLD_HEAT_CAP = 65;
+
+
+    /**
      * @param  Collection<int, \stdClass>  $rows
      * @param  list<string>  $iconic  lowercased iconic boss names (order = fame rank)
      * @param  string|null  $world  when given, heat/status is scoped to this single
@@ -76,6 +85,17 @@ class BossWatchTransformer
             } else {
                 $cycle = max(1.0, min(30.0, 7.0 * $worlds / max(1, (int) $r->week_killed)));
                 $heat = (int) min(100, round(100 * max(0, (int) $days) / $cycle));
+                // Raid bosses (TibiaWiki spawntype "Raid", plus the famous iconic
+                // ones whose spawntype may be untagged) don't follow a per-world
+                // respawn timer — a week without a recorded kill can't mean "up".
+                // Cap their confidence at "maybe" so the strip never fabricates a
+                // flat "likely up" from one stale data point.
+                $spawnTypes = json_decode((string) ($r->spawn_type ?? '[]'), true) ?: [];
+                $isRaid = in_array('Raid', $spawnTypes, true)
+                    || in_array(mb_strtolower($r->race), $iconic, true);
+                if ($isRaid) {
+                    $heat = min($heat, self::RAID_WORLD_HEAT_CAP);
+                }
             }
             $list = [$world];
         }
