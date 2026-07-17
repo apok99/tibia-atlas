@@ -21,6 +21,22 @@ class BossWatchQuery
     }
 
     /**
+     * How many worlds the snapshot covers — the denominator for a boss's respawn
+     * cycle. It must NOT be the boss's own `worlds_active`: killstats only lists a
+     * race in worlds that recorded kills that week, so a rare boss reports from a
+     * handful of worlds and dividing by that inverts the estimate (Orshabaal, the
+     * rarest of all, looked like a 7-day boss). Every boss exists in every world;
+     * the ones missing from its row are worlds where nobody killed it.
+     */
+    public function worldCount(string $latest): int
+    {
+        return (int) DB::table('kill_daily')
+            ->where('snapshot_date', $latest)
+            ->distinct()
+            ->count('world_id');
+    }
+
+    /**
      * @return Collection<int, \stdClass>
      */
     /**

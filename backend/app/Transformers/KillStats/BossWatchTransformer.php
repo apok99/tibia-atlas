@@ -19,15 +19,22 @@ class BossWatchTransformer
      */
     private const RAID_WORLD_HEAT_CAP = 65;
 
+    /**
+     * Longest respawn cycle we will estimate, in days. Orshabaal — killed ~twice a
+     * week across all of Tibia — models out to ~325 days, so the old 30-day ceiling
+     * silently flattened every truly rare boss into "due next week".
+     */
+    private const MAX_CYCLE_DAYS = 365.0;
 
     /**
      * @param  Collection<int, \stdClass>  $rows
      * @param  list<string>  $iconic  lowercased iconic boss names (order = fame rank)
      * @param  string|null  $world  when given, heat/status is scoped to this single
      *                              world (see {@see BossWatchQuery::rows()}).
+     * @param  int  $worldCount  worlds the snapshot covers — the cycle denominator.
      * @return Collection<int, array<string, mixed>>
      */
-    public function collection(Collection $rows, array $iconic, int $limit, string $type = 'raid', ?string $world = null): Collection
+    public function collection(Collection $rows, array $iconic, int $limit, string $type = 'raid', ?string $world = null, int $worldCount = 1): Collection
     {
         $mapped = $rows
             // Proper bosses are proper nouns ("Orshabaal"); killstats names summoned
@@ -37,7 +44,7 @@ class BossWatchTransformer
             // Unique spawntype are genuine one-at-a-time spawns that killstats
             // happens to name in lowercase too ("midnight panthers").
             ->reject(fn ($r) => $r->rank === 'Boss' && mb_strtolower($r->race) === $r->race)
-            ->map(fn ($r) => $this->shape($r, $iconic, $world));
+            ->map(fn ($r) => $this->shape($r, $iconic, $world, $worldCount));
 
         if ($type === 'daily') {
             // Daily bosses: killed (<24h) in most of the worlds they appear in,
@@ -95,7 +102,7 @@ class BossWatchTransformer
      * @param  list<string>  $iconic
      * @return array<string, mixed>
      */
-    private function shape(\stdClass $r, array $iconic, ?string $world = null): array
+    private function shape(\stdClass $r, array $iconic, ?string $world = null, int $worldCount = 1): array
     {
         $worlds = max(1, (int) $r->worlds_active);
         $cooldown = (int) $r->cooldown;          // killed in last 24h
@@ -109,19 +116,27 @@ class BossWatchTransformer
             ? array_filter(explode(',', (string) $r->cooldown_worlds))
             : array_filter(explode(',', (string) $r->open_worlds));
 
-        // Scoped to a single world: heat = respawn progress there. Days since
-        // the last recorded kill on that world, against the boss's estimated
-        // per-world respawn cycle (from its real global kill rate: a boss killed
-        // 15×/week across 22 worlds respawns every ~10 days per world). A rare
-        // boss killed 2 days ago reads ~20 ("just killed"), NOT "likely up";
-        // a daily boss is back to 100 the next day. Never killed there → null:
-        // no anchor, no fabricated probability (the UI says "no data").
+        // Scoped to a single world: heat = respawn progress there. Days since the
+        // last recorded kill on that world, against the boss's estimated per-world
+        // respawn cycle, derived from its real kill rate across ALL of Tibia: a
+        // boss killed 9×/week network-wide, on 93 worlds, comes round every ~72
+        // days on any one of them. A rare boss killed 2 days ago reads ~3 ("just
+        // killed"), NOT "likely up"; a daily boss is back to 100 the next day.
+        // Never killed there → null: no anchor, no fabricated probability (the UI
+        // says "no data").
+        //
+        // The denominator is the WORLD COUNT, never the boss's own worlds_active
+        // ({@see BossWatchQuery::worldCount()}) — that field only counts worlds
+        // that reported a kill, so using it made the estimate scale backwards:
+        // the rarer the boss, the fewer worlds report it, the shorter its cycle
+        // came out. Ferumbras read 7 days (really ~72) and Orshabaal 7 (really
+        // ~325), so every rare boss pinned to heat 100 the week after it died.
         if ($world !== null) {
             $days = $r->world_days_since ?? null;
             if ($days === null) {
                 $heat = null;
             } else {
-                $cycle = max(1.0, min(30.0, 7.0 * $worlds / max(1, (int) $r->week_killed)));
+                $cycle = max(1.0, min(self::MAX_CYCLE_DAYS, 7.0 * max(1, $worldCount) / max(1, (int) $r->week_killed)));
                 $heat = (int) min(100, round(100 * max(0, (int) $days) / $cycle));
                 // Raid bosses (TibiaWiki spawntype "Raid", plus the famous iconic
                 // ones whose spawntype may be untagged) don't follow a per-world

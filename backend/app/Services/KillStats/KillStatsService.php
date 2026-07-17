@@ -182,7 +182,14 @@ class KillStatsService
                 'latest' => $latest,
                 'type' => $type,
                 'world' => $world,
-                'data' => $this->bossWatchTransformer->collection($rows, config('killstats.iconic_raid_bosses'), $limit, $type, $world),
+                'data' => $this->bossWatchTransformer->collection(
+                    $rows,
+                    config('killstats.iconic_raid_bosses'),
+                    $limit,
+                    $type,
+                    $world,
+                    $latest ? $this->bossWatch->worldCount($latest) : 1,
+                ),
             ];
         });
     }
