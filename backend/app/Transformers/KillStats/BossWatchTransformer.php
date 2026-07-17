@@ -30,9 +30,13 @@ class BossWatchTransformer
     public function collection(Collection $rows, array $iconic, int $limit, string $type = 'raid', ?string $world = null): Collection
     {
         $mapped = $rows
-            // Raid bosses are proper nouns ("Orshabaal"); killstats names common
-            // summoned adds in lowercase plural ("glooth bombs") — drop those.
-            ->filter(fn ($r) => mb_strtolower($r->race) !== $r->race)
+            // Proper bosses are proper nouns ("Orshabaal"); killstats names summoned
+            // adds in lowercase plural ("glooth bombs", "dark souls"), and a batch of
+            // those carry a wrong `isboss` flag on the wiki — drop them. The
+            // heuristic applies ONLY to the isboss path: entries admitted by their
+            // Unique spawntype are genuine one-at-a-time spawns that killstats
+            // happens to name in lowercase too ("midnight panthers").
+            ->reject(fn ($r) => $r->rank === 'Boss' && mb_strtolower($r->race) === $r->race)
             ->map(fn ($r) => $this->shape($r, $iconic, $world));
 
         if ($type === 'daily') {

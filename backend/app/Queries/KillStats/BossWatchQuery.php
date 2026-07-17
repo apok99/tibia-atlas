@@ -2,6 +2,7 @@
 
 namespace App\Queries\KillStats;
 
+use App\Support\BossRule;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -39,8 +40,8 @@ class BossWatchQuery
             ->join('tibia_worlds as w', 'w.id', '=', 'kd.world_id')
             ->where('kd.snapshot_date', $latest)
             ->where('e.status', 'published')
-            ->whereRaw("e.meta->>'rank' = 'Boss'")
-            ->groupBy('r.name', 'e.slug', 'e.primary_image', DB::raw("e.meta->'spawn_type'"))
+            ->whereRaw(BossRule::sql('e'))
+            ->groupBy('r.name', 'e.slug', 'e.primary_image', DB::raw("e.meta->'spawn_type'"), DB::raw("e.meta->>'rank'"))
             ->having(DB::raw('COUNT(*)'), $type === 'daily' ? '>=' : '<=', $type === 'daily' ? 10 : $maxWorlds)
             ->select([
                 'r.name as race',
@@ -50,6 +51,9 @@ class BossWatchQuery
                 // server-wide raid, not a per-world respawn timer, so the transformer
                 // caps its world-scoped "likely up" confidence.
                 DB::raw("e.meta->'spawn_type' AS spawn_type"),
+                // TibiaWiki's isboss flag. The transformer needs it to tell a
+                // mis-flagged summoned add from a genuine unique rare spawn.
+                DB::raw("e.meta->>'rank' AS rank"),
                 DB::raw('COUNT(*) AS worlds_active'),
                 DB::raw('COUNT(*) FILTER (WHERE kd.day_killed > 0) AS cooldown'),
                 DB::raw('COUNT(*) FILTER (WHERE kd.week_killed > 0) AS week_worlds'),

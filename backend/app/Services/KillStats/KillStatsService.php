@@ -10,6 +10,7 @@ use App\Queries\KillStats\KillOverviewQuery;
 use App\Queries\KillStats\KillStatsMetaQuery;
 use App\Queries\KillStats\RaceRankingQuery;
 use App\Queries\KillStats\RaceSeriesQuery;
+use App\Support\BossRule;
 use App\Support\KillStatsCache;
 use App\Transformers\KillStats\BossRespawnTransformer;
 use App\Transformers\KillStats\BossWatchTransformer;
@@ -205,7 +206,7 @@ class KillStatsService
             return [
                 'linked' => true,
                 'race' => $race->name,
-                'is_boss' => $race->rank === 'Boss',
+                'is_boss' => BossRule::matches($race->rank, $race->spawn_type),
                 'latest_date' => $latestDate,
                 'summary' => $shaped['summary'],
                 'worlds' => $shaped['worlds'],

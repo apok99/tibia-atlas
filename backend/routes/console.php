@@ -58,10 +58,10 @@ Schedule::command('tibia:build-world-news')
 // House rent status for the map's "Casas" layer. TibiaData houses have no coords
 // (pins come from the baked houses.json); this only refreshes the changing bit —
 // rented / on-auction / free per world, across ALL regular worlds (~90 worlds ×
-// 20 house-towns ≈ a 10-15 min run). Auctions turn over on a ~day cycle, so a
-// twice-daily snapshot is plenty.
+// 20 house-towns ≈ a 10-15 min run). Hourly keeps auction bids and the news
+// ticker fresh; withoutOverlapping stops runs from stacking if one drags.
 Schedule::command('tibia:etl-houses')
-    ->twiceDaily(7, 19)
+    ->hourly()
     ->withoutOverlapping();
 
 // The raw view log only feeds the trailing-window "trending" calc (72h) and the
