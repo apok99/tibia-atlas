@@ -731,12 +731,14 @@ class TibiaWikiImporter
         // How a creature enters the world (TibiaWiki `spawntype`). MULTI-VALUED — a
         // boss can be "Raid, Unique, Unblockable" at once (comma-/slash-separated).
         // Split, normalise casing, keep only known categories (drops "--"/markup).
-        // Persisted for bosses (any spawntype) AND rare-spawn creatures that appear
-        // via a raid (spawntype contains 'Raid', e.g. Midnight Panther) — the latter
-        // are boss-like and surface in the map Boss Watch even without an `isboss`
-        // flag. NOT stored for ordinary creatures: 'Unblockable'/'Triggered' are
-        // common combat/spawn properties on normal monsters (e.g. a squirrel is
-        // "Regular, Unblockable"), so only 'Raid' reliably marks a boss-tier spawn.
+        // Persisted for bosses (any spawntype) AND for rare 'Unique' spawns — only
+        // one of those exists at a time (Midnight Panther, Tremor Worm), so they
+        // belong in the Boss Watch despite carrying no `isboss` flag; {@see BossRule}
+        // admits them on exactly that key, and dropping the field here would evict
+        // them. 'Raid' is kept for the Boss Watch's tabs and its raid heat cap, but
+        // it does NOT make a boss — rabbits and bears join raids too. Ordinary
+        // creatures store nothing: 'Unblockable'/'Triggered' are plain combat
+        // properties on normal monsters (a squirrel is "Regular, Unblockable").
         $spawn = trim($this->cleanWikitext($p['spawntype'] ?? ''));
         $types = [];
         foreach (preg_split('/[,\/]+/', $spawn) as $tok) {
@@ -746,7 +748,7 @@ class TibiaWikiImporter
             }
         }
         $types = array_values(array_unique($types));
-        if ($types !== [] && ($isBoss || in_array('Raid', $types, true))) {
+        if ($types !== [] && ($isBoss || array_intersect(['Raid', 'Unique'], $types))) {
             $meta['spawn_type'] = $types;
         }
 
