@@ -54,6 +54,40 @@ class BossWatchTransformer
     }
 
     /**
+     * Does this boss enter the world through a raid rather than a per-world
+     * respawn timer? True for TibiaWiki spawntype "Raid" and for the iconic world
+     * bosses (whose spawntype may not be backfilled yet).
+     *
+     * `spawn_type` arrives as raw JSON and comes in two shapes: the normalised
+     * list (["Raid","Unique"]) and a legacy plain string ("Raid, Unique") still
+     * present on most entries — decode both, since a string would otherwise blow
+     * up in_array().
+     *
+     * @param  list<string>  $iconic
+     */
+    private function isRaidBoss(\stdClass $r, array $iconic): bool
+    {
+        if (in_array(mb_strtolower($r->race), $iconic, true)) {
+            return true;
+        }
+
+        $decoded = json_decode((string) ($r->spawn_type ?? ''), true);
+        $types = match (true) {
+            is_array($decoded) => $decoded,
+            is_string($decoded) => preg_split('/[,\/]/', $decoded) ?: [],
+            default => [],
+        };
+
+        foreach ($types as $type) {
+            if (strcasecmp(trim((string) $type), 'Raid') === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * @param  list<string>  $iconic
      * @return array<string, mixed>
      */
@@ -90,10 +124,7 @@ class BossWatchTransformer
                 // respawn timer — a week without a recorded kill can't mean "up".
                 // Cap their confidence at "maybe" so the strip never fabricates a
                 // flat "likely up" from one stale data point.
-                $spawnTypes = json_decode((string) ($r->spawn_type ?? '[]'), true) ?: [];
-                $isRaid = in_array('Raid', $spawnTypes, true)
-                    || in_array(mb_strtolower($r->race), $iconic, true);
-                if ($isRaid) {
+                if ($this->isRaidBoss($r, $iconic)) {
                     $heat = min($heat, self::RAID_WORLD_HEAT_CAP);
                 }
             }
