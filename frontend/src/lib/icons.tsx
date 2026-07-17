@@ -41,6 +41,8 @@ export const ICON_INNER: Record<string, string> = {
   // Route-report control: flag it, confirm sent
   flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V4s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
+  // Trade chips: "route me to this merchant"
+  pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
 }
 
 export type IconName = keyof typeof ICON_INNER

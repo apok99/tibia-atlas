@@ -3814,10 +3814,18 @@ export function MapPage() {
 
   // Banner chips: fly-and-route to the best-priced merchant of one side of the
   // trade board (the API lists arrive best-price-first; merchants without map
-  // coords — scripted spawns outside the mapped region — are skipped).
+  // coords — scripted spawns outside the mapped region — are skipped). Going
+  // shopping means the dropper overlays are noise now, so they get cleared —
+  // the trade pins and the route are what's left on screen.
   function routeToBestOffer(offers: ItemTrade['buy']) {
     const o = offers.find((x) => x.coords && x.coords.length > 0)
-    if (o) routeToTradeNpc(o.npc, o.coords![0])
+    if (!o) return
+    const item = activeItem
+    if (item && item.plotted.length) {
+      for (const s of item.plotted) removeCreature(s)
+      setActiveItem({ ...item, plotted: [] })
+    }
+    routeToTradeNpc(o.npc, o.coords![0])
   }
 
   function goTo(l: Landmark) {
@@ -5989,9 +5997,9 @@ export function MapPage() {
               <span className="text-fg-dim">
                 {activeItem.total === 0
                   ? t('map.itemNoDroppers')
-                  : t('map.itemDropsFrom', { count: activeItem.plotted.length })}
+                  : t('map.itemDropsFrom', { count: activeItem.total })}
               </span>
-              {activeItem.total > activeItem.plotted.length && (
+              {activeItem.plotted.length > 0 && activeItem.total > activeItem.plotted.length && (
                 <span className="rounded-[2px] border border-line bg-bg-2 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-fg-mute">
                   +{activeItem.total - activeItem.plotted.length} {t('map.itemMore')}
                 </span>
@@ -5999,19 +6007,21 @@ export function MapPage() {
               {(activeItem.trade?.buy.length ?? 0) > 0 && (
                 <button
                   onClick={() => routeToBestOffer(activeItem.trade!.buy)}
-                  title={t('map.itemTradeGo')}
-                  className="rounded-[2px] border border-[#c79a3f]/50 bg-[#c79a3f]/10 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-[#c79a3f] transition hover:bg-[#c79a3f]/25"
+                  title={t('map.itemBuyChipHint')}
+                  className="flex items-center gap-1.5 rounded-lg border border-[#c79a3f]/70 bg-[#c79a3f]/15 px-2.5 py-1.5 text-xs font-bold uppercase tracking-wider text-[#c79a3f] transition hover:border-[#c79a3f] hover:bg-[#c79a3f]/30"
                 >
-                  {t('map.itemSoldBy', { count: activeItem.trade!.buy.length })}
+                  <Icon name="pin" size={14} />
+                  {t('map.itemBuyChip', { count: activeItem.trade!.buy.length })}
                 </button>
               )}
               {(activeItem.trade?.sell.length ?? 0) > 0 && (
                 <button
                   onClick={() => routeToBestOffer(activeItem.trade!.sell)}
-                  title={t('map.itemTradeGo')}
-                  className="rounded-[2px] border border-[#6faf52]/50 bg-[#6faf52]/10 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-[#6faf52] transition hover:bg-[#6faf52]/25"
+                  title={t('map.itemSellChipHint')}
+                  className="flex items-center gap-1.5 rounded-lg border border-[#6faf52]/70 bg-[#6faf52]/15 px-2.5 py-1.5 text-xs font-bold uppercase tracking-wider text-[#6faf52] transition hover:border-[#6faf52] hover:bg-[#6faf52]/30"
                 >
-                  {t('map.itemBoughtBy', { count: activeItem.trade!.sell.length })}
+                  <Icon name="pin" size={14} />
+                  {t('map.itemSellChip', { count: activeItem.trade!.sell.length })}
                 </button>
               )}
               <button
