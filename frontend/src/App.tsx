@@ -1,8 +1,6 @@
 import { lazy } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Layout } from './components/Layout'
-// Home page is disabled — the interactive map is now the site's landing page.
-// import { HomePage } from './pages/HomePage'
 
 // Every non-home page is code-split: heavy libraries (recharts, leaflet,
 // globe.gl/three) only download when a route that uses them is visited.
@@ -16,6 +14,7 @@ const ItemDetailPage = lazy(() => import('./pages/ItemDetailPage').then((m) => (
 const WordlePage = lazy(() => import('./pages/WordlePage').then((m) => ({ default: m.WordlePage })))
 const AltarPage = lazy(() => import('./pages/AltarPage').then((m) => ({ default: m.AltarPage })))
 const GeoPage = lazy(() => import('./pages/GeoPage').then((m) => ({ default: m.GeoPage })))
+const RashidPage = lazy(() => import('./pages/RashidPage').then((m) => ({ default: m.RashidPage })))
 const AboutPage = lazy(() => import('./pages/AboutPage').then((m) => ({ default: m.AboutPage })))
 
 export default function App() {
@@ -36,8 +35,11 @@ export default function App() {
           <Route path="wordle" element={<WordlePage />} />
           <Route path="altar" element={<AltarPage />} />
           <Route path="geo" element={<GeoPage />} />
+          <Route path="rashid" element={<RashidPage />} />
           <Route path="entry/:slug" element={<EntryPage />} />
-          <Route path="map" element={<MapPage />} />
+          {/* The map lives at "/" — redirect the old /map URL so only one
+              canonical home exists for users, crawlers and shared links. */}
+          <Route path="map" element={<Navigate to="/" replace />} />
           <Route path="killstats" element={<KillStatsPage />} />
           <Route path="soundtrack" element={<SoundtrackPage />} />
           <Route path="about" element={<AboutPage />} />

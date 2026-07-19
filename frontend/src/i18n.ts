@@ -75,6 +75,7 @@ const resources = {
         wordle: 'Bestiordle',
         altar: 'Altar',
         geo: 'Cartographer',
+        rashid: 'Rashid today',
       },
       geo: {
         brand: 'The Cartographer',
@@ -886,6 +887,7 @@ const resources = {
         wordle: 'Bestiordle',
         altar: 'Altar',
         geo: 'Cartógrafo',
+        rashid: 'Rashid hoy',
       },
       geo: {
         brand: 'El Cartógrafo',
@@ -1631,13 +1633,23 @@ const resources = {
   },
 }
 
+// An explicit ?lang= in the URL wins over the saved preference — it's what the
+// hreflang alternates advertised to search engines point at, so the EN variant
+// URL must actually render in English.
+const urlLang = new URLSearchParams(window.location.search).get('lang')
+
 i18n.use(initReactI18next).init({
   resources,
-  lng: localStorage.getItem(STORAGE_KEY) || 'es',
+  lng: (urlLang === 'es' || urlLang === 'en' ? urlLang : null) || localStorage.getItem(STORAGE_KEY) || 'es',
   fallbackLng: 'en',
   interpolation: { escapeValue: false },
 })
 
-i18n.on('languageChanged', (lng) => localStorage.setItem(STORAGE_KEY, lng))
+i18n.on('languageChanged', (lng) => {
+  localStorage.setItem(STORAGE_KEY, lng)
+  // Keep <html lang> honest for crawlers and screen readers.
+  document.documentElement.lang = lng
+})
+document.documentElement.lang = i18n.language || 'es'
 
 export default i18n

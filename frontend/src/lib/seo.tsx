@@ -49,10 +49,16 @@ export function Seo({ title, description, path, image, type = 'website', noindex
 
   const fullTitle = title ? `${title} · ${SITE.name}` : `${SITE.name} — ${defaultTagline(lang)}`
   const desc = description || defaultDescription(lang)
-  // Canonical is the clean, language-agnostic URL; hreflang points at the
-  // ?lang= variants so each language is independently indexable.
+  // The clean URL is the Spanish (default) variant; ?lang=en is the English
+  // one. Each variant must be SELF-canonical or Google treats the EN URL as a
+  // duplicate of the ES page and never indexes it — so the canonical follows
+  // the ?lang= actually present in the address bar, while hreflang always
+  // describes the full es/en cluster. Mirrored in crawler.blade.php.
   const canonicalPath = path ?? currentPath()
-  const canonical = abs(canonicalPath)
+  const esUrl = abs(canonicalPath)
+  const enUrl = withLang(esUrl, 'en')
+  const urlLang = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('lang')
+  const canonical = urlLang === 'en' ? enUrl : esUrl
   const ogImg = image ? abs(image) : SITE.ogImage
   const blocks = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : []
 
@@ -63,10 +69,10 @@ export function Seo({ title, description, path, image, type = 'website', noindex
       <link rel="canonical" href={canonical} />
       {noindex && <meta name="robots" content="noindex, follow" />}
 
-      {/* Bilingual alternates — one URL per language plus an x-default. */}
-      <link rel="alternate" hrefLang="es" href={withLang(canonical, 'es')} />
-      <link rel="alternate" hrefLang="en" href={withLang(canonical, 'en')} />
-      <link rel="alternate" hrefLang="x-default" href={canonical} />
+      {/* Bilingual alternates — the clean URL is Spanish, ?lang=en is English. */}
+      <link rel="alternate" hrefLang="es" href={esUrl} />
+      <link rel="alternate" hrefLang="en" href={enUrl} />
+      <link rel="alternate" hrefLang="x-default" href={esUrl} />
 
       {/* Open Graph */}
       <meta property="og:site_name" content={SITE.name} />
@@ -117,9 +123,10 @@ function defaultTagline(lang: string): string {
 }
 
 function defaultDescription(lang: string): string {
+  // Mirrored in PrerenderController::staticMeta ('') — edit both together.
   return lang === 'es'
-    ? 'La guía de Tibia en español: mapa interactivo con dónde aparece cada criatura piso por piso, rutas entre ciudades, bestiario, loot, precios de items y el lore de Tibia. Con wordle diario.'
-    : 'The interactive map of Tibia: find where every creature spawns floor by floor, chart routes between cities and explore the world. Plus a daily wordle, a bestiary and Tibia lore in Spanish and English.'
+    ? 'La guía de Tibia en español: mapa interactivo con dónde aparece cada criatura piso por piso, rutas entre ciudades, casas, bestiario, más de 4.000 items con precios y dónde venderlos, boss tracker y el lore de Tibia. Con juegos diarios.'
+    : "The Tibia guide: an interactive map with every creature's spawns floor by floor, routes between cities, houses, a bestiary, 4,000+ items with prices and where to sell them, a live boss tracker and Tibia lore. Plus daily games."
 }
 
 // ── Type-aware, keyword-first SEO copy ────────────────────────────────────────
@@ -136,7 +143,7 @@ const TYPE_TITLE_SUFFIX: Record<string, { es: string; en: string }> = {
   organization: { es: 'la organización en el lore de Tibia', en: 'the organization in Tibia lore' },
   quest: { es: 'guía de la misión de Tibia', en: 'Tibia quest guide' },
   event: { es: 'en la historia de Tibia', en: "in Tibia's history" },
-  item: { es: 'stats, precio y quién lo suelta', en: 'stats, price and droppers' },
+  item: { es: 'precio, quién lo suelta y dónde venderlo', en: 'price, droppers and where to sell it' },
   concept: { es: 'en el lore de Tibia', en: 'in Tibia lore' },
 }
 
@@ -192,6 +199,7 @@ export function websiteJsonLd(): JsonLd {
     description: 'La guía de Tibia en español: mapa interactivo, bestiario, loot, items y lore.',
     url: SITE.url,
     inLanguage: ['es', 'en'],
+    about: { '@id': `${SITE.url}/#tibia` },
     potentialAction: {
       '@type': 'SearchAction',
       target: { '@type': 'EntryPoint', urlTemplate: `${SITE.url}/browse?q={search_term_string}` },
@@ -205,9 +213,44 @@ export function organizationJsonLd(): JsonLd {
   return {
     '@context': 'https://schema.org',
     '@type': 'Organization',
+    '@id': `${SITE.url}/#org`,
     name: SITE.name,
     url: SITE.url,
     logo: SITE.ogImage,
+  }
+}
+
+/**
+ * The game itself, as a knowledge-graph anchor. Ties every page to the Tibia
+ * (CipSoft, 1997) entity so engines never confuse the site with the bone or
+ * the flute. Full node on the home page; articles reference it via `about`.
+ */
+export function tibiaGameJsonLd(): JsonLd {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'VideoGame',
+    '@id': `${SITE.url}/#tibia`,
+    name: 'Tibia',
+    url: 'https://www.tibia.com',
+    sameAs: ['https://en.wikipedia.org/wiki/Tibia_(video_game)', 'https://www.wikidata.org/wiki/Q616401'],
+    author: { '@type': 'Organization', name: 'CipSoft GmbH', url: 'https://www.cipsoft.com' },
+    publisher: { '@type': 'Organization', name: 'CipSoft GmbH' },
+    genre: 'MMORPG',
+    gamePlatform: ['PC'],
+    playMode: 'MultiPlayer',
+    datePublished: '1997-01-07',
+    operatingSystem: ['Windows', 'Linux', 'macOS'],
+    applicationCategory: 'Game',
+  }
+}
+
+/** Compact `about` reference to the Tibia VideoGame entity, for article nodes. */
+export function tibiaGameRef(): JsonLd {
+  return {
+    '@type': 'VideoGame',
+    name: 'Tibia',
+    url: 'https://www.tibia.com',
+    sameAs: ['https://en.wikipedia.org/wiki/Tibia_(video_game)', 'https://www.wikidata.org/wiki/Q616401'],
   }
 }
 
@@ -247,6 +290,22 @@ export function articleJsonLd(opts: {
     dateModified: opts.dateModified || opts.datePublished || undefined,
     author: { '@type': 'Organization', name: SITE.name },
     publisher: organizationJsonLd(),
+    about: tibiaGameRef(),
+  }
+}
+
+/** ItemList of the entries visible on a listing page (positions + URLs). */
+export function itemListJsonLd(items: { name: string; path: string }[]): JsonLd {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    numberOfItems: items.length,
+    itemListElement: items.map((it, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: it.name,
+      url: abs(it.path),
+    })),
   }
 }
 

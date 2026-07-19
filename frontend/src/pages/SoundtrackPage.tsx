@@ -3,12 +3,22 @@ import { usePlayer } from '../context/PlayerContext'
 import { Seo } from '../lib/seo'
 
 export function SoundtrackPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const esLang = (i18n.language || 'es').slice(0, 2) === 'es'
   const { tracks, current, isPlaying, playTrack, togglePlay } = usePlayer()
 
   return (
     <div className="space-y-8">
-      <Seo title={t('nav.soundtrack')} path="/soundtrack" />
+      {/* Mirrored in PrerenderController::staticMeta (soundtrack). */}
+      <Seo
+        title={esLang ? 'La música de Tibia' : 'The Music of Tibia'}
+        description={
+          esLang
+            ? 'La banda sonora de Tibia para escuchar mientras exploras el mapa.'
+            : 'The Tibia soundtrack to listen to while you explore the map.'
+        }
+        path="/soundtrack"
+      />
       {/* Header */}
       <section className="panel overflow-hidden">
         <div className="flex flex-col gap-5 p-6 sm:flex-row sm:items-end sm:p-8">

@@ -1,6 +1,20 @@
 @import 'tailwindcss';
 
 /*
+  Self-hosted fonts (@fontsource) — registers the same family names the old
+  Google Fonts stylesheet did ('Cinzel', 'EB Garamond') without the
+  render-blocking third-party request.
+*/
+@import '@fontsource/cinzel/500.css';
+@import '@fontsource/cinzel/600.css';
+@import '@fontsource/cinzel/700.css';
+@import '@fontsource/eb-garamond/400.css';
+@import '@fontsource/eb-garamond/500.css';
+@import '@fontsource/eb-garamond/600.css';
+@import '@fontsource/eb-garamond/400-italic.css';
+@import '@fontsource/eb-garamond/500-italic.css';
+
+/*
   Tibia Atlas — a hand-drawn cartographer's atlas of Tibia. Aged parchment,
   sepia ink, wax-seal red, and serif type (Cinzel display / EB Garamond body).
   Deliberately NOT the generic dark-card AI look: this should feel like opening

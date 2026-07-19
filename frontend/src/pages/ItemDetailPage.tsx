@@ -7,7 +7,7 @@ import { useCollection } from '../hooks/useCollection'
 import { useDebounce } from '../hooks/useDebounce'
 import { statChips, VocationDots } from '../components/items/itemStats'
 import { ItemDetailSkeleton } from '../components/Skeleton'
-import { Seo, entrySeoTitle } from '../lib/seo'
+import { Seo, articleJsonLd, breadcrumbJsonLd, entrySeoTitle } from '../lib/seo'
 import type { Dropper as DropperT, ItemDetail, NpcDeal } from '../types'
 
 /** How many NPCs / droppers to show before a "show all (N)" toggle. */
@@ -60,7 +60,31 @@ export function ItemDetailPage() {
 
   return (
     <div>
-      <Seo title={seoTitle} description={seoDesc} path={`/items/${slug}`} image={a.data?.image ?? undefined} type="article" />
+      <Seo
+        title={seoTitle}
+        description={seoDesc}
+        path={`/items/${slug}`}
+        image={a.data?.image ?? undefined}
+        type="article"
+        jsonLd={
+          name
+            ? [
+                articleJsonLd({
+                  headline: name,
+                  description: seoDesc,
+                  path: `/items/${slug}`,
+                  image: a.data?.image,
+                  lang: es ? 'es' : 'en',
+                }),
+                breadcrumbJsonLd([
+                  { name: 'Tibia Atlas', path: '/' },
+                  { name: es ? 'Objetos' : 'Items', path: '/items' },
+                  { name, path: `/items/${slug}` },
+                ]),
+              ]
+            : undefined
+        }
+      />
 
       {/* Top bar: back to album + compare controls. */}
       <div className="mb-5 flex flex-wrap items-center gap-3">

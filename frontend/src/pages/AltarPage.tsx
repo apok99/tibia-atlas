@@ -27,7 +27,8 @@ const MOTES = Array.from({ length: 16 }, () => ({
 }))
 
 export function AltarPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const esLang = (i18n.language || 'es').slice(0, 2) === 'es'
   const today = useAltarToday()
   const data = today.data
 
@@ -158,7 +159,16 @@ export function AltarPage() {
 
   return (
     <div className="mx-auto flex max-w-md flex-col items-center">
-      <Seo title={t('altar.brand')} description={t('altar.subtitle')} path="/altar" />
+      {/* Mirrored in PrerenderController::staticMeta (altar). */}
+      <Seo
+        title={esLang ? 'Altar del Bestiario — adivina la criatura por su silueta' : 'Bestiary Altar — guess the creature by its silhouette'}
+        description={
+          esLang
+            ? 'Juego diario de siluetas de Tibia: una criatura velada en sombra y un solo intento al día para nombrarla.'
+            : 'A daily Tibia silhouette game: one creature veiled in shadow, one guess a day to name it.'
+        }
+        path="/altar"
+      />
 
       <header className="mb-5 text-center">
         <p className="text-[0.65rem] font-bold uppercase tracking-[0.25em] text-accent">{t('altar.kicker')}</p>

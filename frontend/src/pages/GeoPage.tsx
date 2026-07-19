@@ -106,7 +106,8 @@ function pinIcon(label: string, kind: 'correct' | 'guess'): L.DivIcon {
 }
 
 export function GeoPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const esLang = (i18n.language || 'es').slice(0, 2) === 'es'
   const date = useMemo(() => serverSaveDateKey(), [])
   const target = useMemo(() => zoneForDate(date), [date])
   const storageKey = `geo:v1:${date}`
@@ -312,7 +313,16 @@ export function GeoPage() {
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col items-center">
-      <Seo title={t('geo.brand')} description={t('geo.subtitle')} path="/geo" />
+      {/* Titles target "mapa de tibia" + daily-game searches; mirrored in PrerenderController::staticMeta (geo). */}
+      <Seo
+        title={esLang ? 'El Cartógrafo — adivina la zona del mapa de Tibia' : 'The Cartographer — guess the Tibia map zone'}
+        description={
+          esLang
+            ? 'Juego diario del mapa de Tibia: observa un recorte del mapa y adivina a qué zona del mundo pertenece. Un reto nuevo cada día.'
+            : 'A daily Tibia map game: study a slice of the map and guess which zone of the world it belongs to. A new challenge every day.'
+        }
+        path="/geo"
+      />
 
       <header className="mb-5 text-center">
         <p className="text-[0.65rem] font-bold uppercase tracking-[0.25em] text-accent">{t('geo.kicker')}</p>
@@ -325,8 +335,9 @@ export function GeoPage() {
         </div>
       </header>
 
-      {/* The spotlight map */}
-      <div className="relative w-full overflow-hidden rounded-2xl border border-line bg-black shadow-lg">
+      {/* The spotlight map. `isolate` keeps Leaflet's internal z-indexes (200–700)
+          from escaping and painting over the sticky z-30 site header on scroll. */}
+      <div className="relative isolate w-full overflow-hidden rounded-2xl border border-line bg-black shadow-lg">
         {/* Inline bg (not a class) so it beats Leaflet's default grey — empty
             ocean then reads as water, matching the main map. */}
         <div ref={containerRef} className="h-[58vh] min-h-[360px] w-full" style={{ background: '#336699' }} />

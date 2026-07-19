@@ -11,8 +11,14 @@ Route::get('/sitemap.xml', [SitemapController::class, 'index']);
 Route::get('/sitemap-{section}.xml', [SitemapController::class, 'section'])
     ->where('section', 'pages|lore|items');
 
-// Full Markdown index for AI assistants (curated /llms.txt is a static file).
+// Full Markdown index for AI assistants (curated /llms.txt is a static file),
+// plus one clean Markdown document per article for direct AI ingestion.
 Route::get('/llms-full.txt', [LlmsController::class, 'full']);
+Route::get('/entry/{slug}.md', [LlmsController::class, 'entry'])
+    ->where('slug', '[a-z0-9-]+');
+
+// Atom feed of the latest published/updated articles (freshness signal).
+Route::get('/feed.xml', [SitemapController::class, 'feed']);
 
 /*
 |--------------------------------------------------------------------------
@@ -24,5 +30,5 @@ Route::get('/llms-full.txt', [LlmsController::class, 'full']);
 | The regex keeps the API, Telescope, sitemaps, assets and health check out.
 */
 Route::get('/{path?}', [PrerenderController::class, 'render'])
-    ->where('path', '^(?!api|telescope|vendor|storage|sitemap|llms|up|assets|build).*$')
+    ->where('path', '^(?!api|telescope|vendor|storage|sitemap|llms|feed|robots|favicon|logo|apple-touch|up|assets|build).*$')
     ->middleware(SetLocale::class);

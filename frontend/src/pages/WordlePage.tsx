@@ -55,7 +55,8 @@ function diffClass(d: string): string {
 }
 
 export function WordlePage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const esLang = (i18n.language || 'es').slice(0, 2) === 'es'
   const today = useWordleToday()
   const data = today.data
 
@@ -200,7 +201,16 @@ export function WordlePage() {
 
   return (
     <div className="mx-auto flex max-w-md flex-col items-center">
-      <Seo title={t('wordle.brand')} description={t('wordle.subtitle')} path="/wordle" />
+      {/* Titles target "tibia wordle" searches; mirrored in PrerenderController::staticMeta (wordle). */}
+      <Seo
+        title={esLang ? 'Bestiordle — el wordle de criaturas de Tibia' : 'Bestiordle — the Tibia creature wordle'}
+        description={
+          esLang
+            ? 'El wordle de Tibia: adivina la criatura del día por sus pistas. Un juego diario gratuito para jugadores de Tibia.'
+            : 'The Tibia wordle: guess the creature of the day from its clues. A free daily game for Tibia players.'
+        }
+        path="/wordle"
+      />
       <header className="mb-6 text-center">
         <p className="text-[0.65rem] font-bold uppercase tracking-[0.25em] text-accent">
           {t('wordle.kicker')}

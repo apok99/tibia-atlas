@@ -35,8 +35,10 @@ const footerCols: { heading: string; links: NavItem[] }[] = [
   {
     heading: 'nav.explore',
     links: [
-      { to: '/map', key: 'nav.map' },
+      // The map lives at "/" — linking /map would bounce through a redirect.
+      { to: '/', key: 'nav.map' },
       { to: '/browse/creature', key: 'nav.bestiary' },
+      { to: '/rashid', key: 'nav.rashid' },
     ],
   },
   {
@@ -50,6 +52,15 @@ const footerCols: { heading: string; links: NavItem[] }[] = [
       { to: '/soundtrack', key: 'nav.soundtrack' },
     ],
   },
+]
+
+// Every site section, for the crawlable sr-only nav on immersive pages (the
+// visible footer is hidden there, which would otherwise leave the home page —
+// the site's strongest URL — with almost no internal links in the DOM).
+const crawlNav: NavItem[] = [
+  ...allNav,
+  { to: '/rashid', key: 'nav.rashid' },
+  { to: '/about', key: 'footer.about' },
 ]
 
 /** Small ink compass-rose — the brand mark. */
@@ -202,6 +213,21 @@ export function Layout() {
       <PlayerBar />
 
       <CookieBanner />
+
+      {/* Immersive pages hide the visual footer; keep the links in the DOM
+          (screen-reader-only) so crawlers and assistive tech can still reach
+          every section from the home page. */}
+      {immersive && (
+        <nav className="sr-only" aria-label="Site sections">
+          <ul>
+            {crawlNav.map((item) => (
+              <li key={item.to}>
+                <Link to={item.to}>{t(item.key)}</Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
 
       {!immersive && (
       <footer className="mt-16 border-t border-line-2 bg-bg-2/30">

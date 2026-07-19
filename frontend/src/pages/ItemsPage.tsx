@@ -8,7 +8,8 @@ import { Seo, collectionJsonLd } from '../lib/seo'
 type Tab = 'album' | 'config'
 
 export function ItemsPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const esLang = (i18n.language || 'es').slice(0, 2) === 'es'
   const [params, setParams] = useSearchParams()
   const tab: Tab = params.get('tab') === 'config' ? 'config' : 'album'
 
@@ -23,11 +24,23 @@ export function ItemsPage() {
 
   return (
     <div>
+      {/* Keyword-first title (the on-page h1 keeps the album brand); mirrored
+          in PrerenderController::staticMeta (items). */}
       <Seo
-        title={t('items.title')}
-        description={t('items.intro')}
+        title={esLang ? 'Items de Tibia: precios, stats y dónde comprarlos' : 'Tibia items: prices, stats and where to buy them'}
+        description={
+          esLang
+            ? 'Más de 4.000 items de Tibia con estadísticas, precio de mercado, qué criaturas los sueltan y qué NPC los compran o venden. Con configurador de equipo.'
+            : '4,000+ Tibia items with stats, market price, which creatures drop them and which NPCs buy or sell them. With a loadout configurator.'
+        }
         path="/items"
-        jsonLd={collectionJsonLd({ name: t('items.title'), description: t('items.intro'), path: '/items' })}
+        jsonLd={collectionJsonLd({
+          name: esLang ? 'Items de Tibia' : 'Tibia items',
+          description: esLang
+            ? 'Más de 4.000 items de Tibia con estadísticas, precio y comercio con NPC.'
+            : '4,000+ Tibia items with stats, prices and NPC trade data.',
+          path: '/items',
+        })}
       />
       <header className="mb-6">
         <p className="text-xs font-bold uppercase tracking-widest text-accent">

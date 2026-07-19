@@ -5,6 +5,8 @@ User-agent: *
 Allow: /
 Disallow: /admin
 Disallow: /login
+# The JSON API is for the app, not for indexing — save everyone the crawl.
+Disallow: /api/
 
 # AI assistants & answer engines — explicitly welcome to read & cite the atlas.
 User-agent: GPTBot

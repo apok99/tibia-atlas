@@ -13,7 +13,7 @@ import type { EntryType } from '../types'
 export function BrowsePage() {
   const { type } = useParams<{ type: EntryType }>()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [q, setQ] = useState(searchParams.get('q') ?? '')
   // The input updates instantly; the actual query waits until typing settles,
   // so we don't fire an ilike scan over the whole archive on every keystroke.
@@ -86,6 +86,11 @@ export function BrowsePage() {
     <div>
       <Seo
         title={heading}
+        description={
+          (i18n.language || 'es').startsWith('es')
+            ? `${heading} de Tibia: artículos documentados y con fuentes en Tibia Atlas.`
+            : `${heading} of Tibia: documented, sourced articles on Tibia Atlas.`
+        }
         path={browsePath}
         noindex={!!debouncedQ}
         jsonLd={collectionJsonLd({ name: heading, description: heading, path: browsePath })}

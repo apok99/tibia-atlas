@@ -322,7 +322,8 @@ function KillWall({
 }
 
 export function KillStatsPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const esLang = (i18n.language || 'es').slice(0, 2) === 'es'
   const { data: worlds } = useKillWorlds()
 
   const [world, setWorld] = useState('all')
@@ -367,7 +368,19 @@ export function KillStatsPage() {
 
   return (
     <>
-      <Seo title={t('nav.killstats')} path="/killstats" />
+      {/* Keyword-first copy mirrored in PrerenderController::staticMeta (killstats). */}
+      <Seo
+        title={esLang ? 'Boss tracker y estadísticas de muertes de Tibia' : 'Tibia boss tracker and kill statistics'}
+        description={
+          esLang
+            ? 'Rastrea los bosses de Tibia: qué bosses han muerto en cada mundo, cuáles podrían estar disponibles y las estadísticas de muertes en directo.'
+            : 'Track Tibia bosses: which bosses died on each world, which may be up right now, and live kill statistics across worlds.'
+        }
+        path="/killstats"
+      />
+      <h1 className="sr-only">
+        {esLang ? 'Boss tracker y estadísticas de muertes de Tibia' : 'Tibia boss tracker and kill statistics'}
+      </h1>
       {/* Full-bleed: break out of the layout's max-w container for a widescreen wall. */}
       <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen overflow-x-hidden px-3 sm:px-5">
         {/* Slim top bar (title/subtitle removed per request) */}

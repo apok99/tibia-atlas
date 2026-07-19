@@ -6,15 +6,22 @@ import { EntryPageSkeleton } from '../components/Skeleton'
 import { RecommendedReading } from '../components/RecommendedReading'
 import { TypeIcon } from '../components/TypeIcon'
 import { LoreText } from '../components/LoreText'
-import { CreatureKillStats } from '../components/CreatureKillStats'
 import { CreatureLoot } from '../components/CreatureLoot'
 import { DamageAffinity } from '../components/DamageAffinity'
 import { CreatureAbilities } from '../components/CreatureAbilities'
-import { BossRespawn } from '../components/BossRespawn'
 import { Lightbox } from '../components/Lightbox'
 import { Seo, articleJsonLd, breadcrumbJsonLd, entrySeoTitle, entrySeoDescription } from '../lib/seo'
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import type { EntryListItem } from '../types'
+
+// Chart panels pull in recharts (~heavy); lazy-load them so the entry page's
+// critical chunk stays free of it.
+const CreatureKillStats = lazy(() =>
+  import('../components/CreatureKillStats').then((m) => ({ default: m.CreatureKillStats })),
+)
+const BossRespawn = lazy(() =>
+  import('../components/BossRespawn').then((m) => ({ default: m.BossRespawn })),
+)
 
 export function EntryPage() {
   const { slug } = useParams<{ slug: string }>()
@@ -103,6 +110,8 @@ export function EntryPage() {
               <img
                 src={entry.primary_image}
                 alt={entry.name ?? ''}
+                width={128}
+                height={128}
                 className="sprite max-h-32 max-w-32 object-contain drop-shadow-[0_6px_14px_rgba(0,0,0,0.8)]"
               />
             ) : (
@@ -203,10 +212,14 @@ export function EntryPage() {
           {entry.type === 'creature' && <CreatureLoot items={entry.loot} />}
 
           {entry.type === 'creature' && entry.slug && (
-            <CreatureKillStats slug={entry.slug} />
+            <Suspense fallback={null}>
+              <CreatureKillStats slug={entry.slug} />
+            </Suspense>
           )}
           {entry.type === 'creature' && entry.slug && entry.meta?.rank === 'Boss' && (
-            <BossRespawn slug={entry.slug} />
+            <Suspense fallback={null}>
+              <BossRespawn slug={entry.slug} />
+            </Suspense>
           )}
 
           {artwork && (

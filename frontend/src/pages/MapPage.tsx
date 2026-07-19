@@ -6,7 +6,8 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { api } from '../lib/api'
 import { planRoute, type RoutePlan, type RouteLeg } from '../lib/routing'
-import { Seo } from '../lib/seo'
+import { RASHID_ROTATION, rashidEffectiveDay } from '../lib/rashid'
+import { Seo, organizationJsonLd, tibiaGameJsonLd, websiteJsonLd } from '../lib/seo'
 import { Icon, iconMarkup } from '../lib/icons'
 import {
   type Watch,
@@ -1195,7 +1196,7 @@ function FloorStepper({
 }
 
 export function MapPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
   // The immersive canvas root + the top-left control column, so the boss-watch
   // sidebar can start right below the column (avoids overlapping the search /
@@ -2206,6 +2207,34 @@ export function MapPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [markers, floor, mapReady])
 
+  // Rashid, the travelling merchant — one special marker at today's city
+  // (server-save aware, from the shared lib/rashid rotation). His exact spot
+  // can be one floor up (a tavern), so the pin also shows while browsing the
+  // surface floor so it's discoverable; the popup names the exact place.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    const stop = RASHID_ROTATION[rashidEffectiveDay()]
+    if (Math.abs(floor - stop.z) > 1) return
+    const es = (i18n.language || 'es').slice(0, 2) === 'es'
+    const icon = L.divIcon({
+      className: '',
+      html: `<div class="tm-marker"><div class="tm-pin"></div><div class="tm-label">Rashid</div></div>`,
+      iconSize: [0, 0],
+    })
+    const marker = L.marker(toLatLng(stop.x, stop.y), { icon }).addTo(map)
+    marker.bindPopup(
+      `<div><div style="font-weight:700">${es ? 'Rashid está aquí hoy' : 'Rashid is here today'}</div>` +
+        `<div style="font-size:12px;margin-top:2px">${escapeHtml(stop.city)}, ${escapeHtml(stop.spot[es ? 'es' : 'en'])}</div>` +
+        `<div style="opacity:.55;font-size:11px;margin-top:2px">${stop.x}, ${stop.y}, z${stop.z}</div>` +
+        `<a href="/rashid" style="display:inline-block;margin-top:4px;font-size:12px;font-weight:700">${es ? 'Ver la rotación semanal →' : 'See the weekly rotation →'}</a></div>`,
+    )
+    return () => {
+      marker.remove()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [floor, mapReady, i18n.language])
+
   // Draw the city/zone name labels. Each landmark belongs to one floor (all the
   // surface ones live on floor 7), so a label only shows on its own floor.
   // Clicking a label flies to that city.
@@ -3036,7 +3065,10 @@ export function MapPage() {
 
   return (
     <div ref={rootRef} className="fixed inset-x-0 bottom-0 top-[var(--header-h,57px)] z-20 overflow-hidden bg-[#336699]">
-      <Seo title={t('map.title')} description={t('map.intro')} path="/map" />
+      {/* The map IS the home page: canonical "/", default home title/description
+          (the tuned "guía de Tibia en español" copy) and the site-wide
+          WebSite + Organization JSON-LD that used to live on HomePage. */}
+      <Seo path="/" jsonLd={[websiteJsonLd(), organizationJsonLd(), tibiaGameJsonLd()]} />
       <h1 className="sr-only">{t('map.title')}</h1>
 
       {/* The atlas fills the entire immersive canvas; every control floats over it. */}
