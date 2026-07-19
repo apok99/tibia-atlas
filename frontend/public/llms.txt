@@ -1,23 +1,28 @@
 # Tibia Atlas — la guía de Tibia en español
 
-> Guía y atlas de Tibia (el MMORPG de CipSoft) en español e inglés. Su núcleo es un mapa interactivo con dónde aparece cada criatura piso por piso y rutas entre ciudades, además de un bestiario, el catálogo completo de items (stats, precio y qué criatura los suelta), un wordle diario y el lore documentado de Tibia. El contenido separa el canon de la interpretación y cita cada fuente con disciplina editorial. Proyecto de fans; el lore se documenta, nunca se inventa. No afiliado a CipSoft.
+> Guía y atlas de Tibia (el MMORPG de CipSoft) en español e inglés. Su núcleo es un mapa interactivo con dónde aparece cada criatura piso por piso, rutas entre ciudades ("cómo llegar"), casas con su estado de alquiler y un buscador de zonas de caza por nivel y vocación. Además: bestiario completo, catálogo de items (stats, precio, qué criatura los suelta y qué NPC los compra o vende), boss tracker con estadísticas de muertes en directo, juegos diarios y el lore documentado de Tibia. El contenido separa el canon de la interpretación y cita cada fuente con disciplina editorial. Proyecto de fans; el lore se documenta, nunca se inventa. No afiliado a CipSoft.
 >
-> Bilingual (Spanish & English) atlas of Tibia. Interactive world map with every creature's spawns floor by floor, routes between cities, a bestiary, the full item catalogue (stats, price, droppers), a daily wordle and documented Tibia lore.
+> Bilingual (Spanish & English) atlas of Tibia. Interactive world map with every creature's spawns floor by floor, routes between cities, houses with live rent status, a hunt finder by level and vocation, a full bestiary, the item catalogue (stats, prices, droppers, NPC traders), a live boss tracker, daily games and documented Tibia lore.
 
-Each article is structured as: Overview, Canon (only what official sources support), Interpretations, Theories, Related Entities and Sources. Content is available in Spanish (`?lang=es`, default) and English (`?lang=en`).
+Cada artículo sigue la estructura: Overview, Canon (solo lo que apoyan las fuentes oficiales), Interpretations, Theories, Related Entities y Sources. Contenido en español (`?lang=es`, por defecto) e inglés (`?lang=en`).
 
-## Explore
+## Explorar
 
-- [Bestiary (creatures)](https://tibiaatlas.com/browse/creature): every documented Tibia creature with stats and lore
-- [Characters](https://tibiaatlas.com/browse/character): notable NPCs and figures of Tibian history
-- [Cities](https://tibiaatlas.com/browse/city): the cities of Tibia
-- [Organizations](https://tibiaatlas.com/browse/organization): factions, guilds and orders
-- [Quests](https://tibiaatlas.com/quests): quests grouped by recommended level
-- [Items](https://tibiaatlas.com/items): the full item catalogue with stats
-- [Map](https://tibiaatlas.com/map): interactive map with creature spawn points
-- [Library](https://tibiaatlas.com/history): every readable in-game book, transcribed
+- [Mapa interactivo (portada)](https://tibiaatlas.com/): spawns de criaturas piso a piso, rutas entre ciudades, casas y zonas de caza
+- [Bestiario (criaturas)](https://tibiaatlas.com/browse/creature): todas las criaturas de Tibia con stats, dónde aparecen y su lore
+- [Items](https://tibiaatlas.com/items): el catálogo de objetos con stats, precio, quién los suelta y qué NPC los compra o vende
+- [Boss tracker](https://tibiaatlas.com/killstats): qué bosses han muerto en cada mundo y cuáles podrían estar disponibles
+- [Misiones](https://tibiaatlas.com/browse/quest): misiones de Tibia documentadas
+- [Organizaciones](https://tibiaatlas.com/browse/organization): facciones, gremios y órdenes del lore
+- [Lugares](https://tibiaatlas.com/browse/location): lugares del mundo de Tibia
+- [Eventos históricos](https://tibiaatlas.com/browse/event): la historia del mundo de Tibia
+- [Música](https://tibiaatlas.com/soundtrack): la banda sonora de Tibia
+- [¿Dónde está Rashid hoy?](https://tibiaatlas.com/rashid): la ciudad del mercader viajero cada día
+- [Bestiordle](https://tibiaatlas.com/wordle), [El Cartógrafo](https://tibiaatlas.com/geo) y [Altar del Bestiario](https://tibiaatlas.com/altar): juegos diarios
 
-## Full index
+## Índice completo
 
-- [Complete Markdown index of every article](https://tibiaatlas.com/llms-full.txt)
-- [XML sitemap](https://tibiaatlas.com/sitemap.xml)
+- [Índice Markdown de todos los artículos, con datos clave](https://tibiaatlas.com/llms-full.txt)
+- Cualquier artículo como Markdown limpio: `https://tibiaatlas.com/entry/{slug}.md` (`?lang=en` para inglés)
+- [Sitemap XML](https://tibiaatlas.com/sitemap.xml)
+- [Feed Atom de artículos nuevos](https://tibiaatlas.com/feed.xml)
