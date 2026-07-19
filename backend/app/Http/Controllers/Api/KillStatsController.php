@@ -100,15 +100,18 @@ class KillStatsController extends Controller
      * RAID-boss roster for the "Raid Boss Watch" module, with a spawn
      * "temperature" (heat 0-100 = probability it is up / about to spawn).
      *
-     * Query: limit (1-40, default 24), type=raid|daily, world=all|<Name>.
-     * A specific world scopes each boss's heat/status to that world.
+     * Query: limit (1-200, default 24), type=raid|daily, world=all|<Name>.
+     * A specific world scopes each boss's heat/status to that world. The cap
+     * covers the whole tracked raid roster (~164): the map's boss rail needs it
+     * complete — a cut used to spill tracked bosses (e.g. Gaz'haragoth) into the
+     * "no recent data" glossary bucket even though we had kills for them.
      */
     public function bosses(Request $request): JsonResponse
     {
         $world = trim((string) $request->string('world', 'all'));
 
         return response()->json($this->stats->bosses(
-            limit: $this->clamp($request, 'limit', 24, 1, 40),
+            limit: $this->clamp($request, 'limit', 24, 1, 200),
             type: (string) $request->string('type', 'raid') === 'daily' ? 'daily' : 'raid',
             world: ($world === '' || $world === 'all') ? null : $world,
         ));

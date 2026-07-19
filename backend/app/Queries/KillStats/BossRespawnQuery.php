@@ -12,13 +12,18 @@ use Illuminate\Support\Facades\DB;
  */
 class BossRespawnQuery
 {
-    /** The race linked to a lore entry, with its boss rank. */
+    /** The race linked to a lore entry, with the fields {@see BossRule} needs. */
     public function raceForSlug(string $slug): ?\stdClass
     {
         return DB::table('tibia_races as r')
             ->join('entries as e', 'e.id', '=', 'r.entry_id')
             ->where('e.slug', $slug)
-            ->select('r.id', 'r.name', DB::raw("(e.meta->>'rank') AS rank"))
+            ->select(
+                'r.id',
+                'r.name',
+                DB::raw("(e.meta->>'rank') AS rank"),
+                DB::raw("(e.meta->>'spawn_type') AS spawn_type"),
+            )
             ->first();
     }
 

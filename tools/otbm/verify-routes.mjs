@@ -19,7 +19,7 @@ for (let z = 0; z < 16; z++) {
 }
 const links = JSON.parse(fs.readFileSync(path.join(root, 'frontend/public/floor-links.json')))
 
-const PORTS = [['AbDendriel', 32665, 31652], ['Ankrahmun', 33146, 32816], ['Carlin', 32343, 31792], ['Cormaya', 33307, 31999], ['Darashia', 33213, 32453], ['Edron', 33211, 31830], ['Farmine', 33030, 31500], ['Krailos', 33580, 31584], ['LibertyBay', 32309, 32794], ['Oramond', 33607, 31955], ['PortHope', 32629, 32769], ['Rookgaard', 32097, 32219], ['Roshamuul', 33524, 32477], ['Svargrond', 32278, 31146], ['Thais', 32365, 32224], ['Venore', 32947, 32081], ['Yalahar', 32805, 31234]]
+const PORTS = [['AbDendriel', 32665, 31652], ['Ankrahmun', 33146, 32816], ['Carlin', 32343, 31792], ['Cormaya', 33307, 31999], ['Darashia', 33213, 32453], ['Edron', 33211, 31830], ['Farmine', 33030, 31500], ['Krailos', 33580, 31584], ['LibertyBay', 32309, 32794], ['Oramond', 33607, 31955], ['PortHope', 32629, 32769], ['Rookgaard', 32097, 32219], ['Roshamuul', 33524, 32477], ['Svargrond', 32278, 31146], ['Thais', 32365, 32224], ['Venore', 32963, 32087], ['Yalahar', 32805, 31234]] // Venore = open plaza (32947,32081 is a sealed courtyard pocket; keep in sync with routing.ts)
 
 function snap(z, x, y, R = 25) {
   if (z < 0 || z > 15 || !walk[z] || !inB(x, y)) return null
@@ -70,7 +70,7 @@ function flood(sx, sy, sz, { boats = true, undirected = false, biKinds = null } 
 const CASES = [
   ['Thais→Cyclopolis', 32365, 32224, 7, 33251, 31698, 7],
   ['Thais→Carlin', 32365, 32224, 7, 32343, 31792, 7],
-  ['Thais→Venore', 32365, 32224, 7, 32947, 32081, 7],
+  ['Thais→Venore', 32365, 32224, 7, 32963, 32087, 7],
   ['Thais→Edron', 32365, 32224, 7, 33211, 31830, 7],
   ['Carlin→AbDendriel', 32343, 31792, 7, 32665, 31652, 7],
   ['Yalahar→GrimReaper', 32805, 31234, 7, 32784, 31025, 8],

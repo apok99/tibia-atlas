@@ -15,7 +15,7 @@ export const SLOT_ORDER: EquipSlot[] = [
 ]
 
 /** Short chip labels for the wiki skill-bonus names. */
-const SKILL_LABELS: Record<string, string> = {
+export const SKILL_LABELS: Record<string, string> = {
   'magic level': 'ML',
   'distance fighting': 'Dist',
   'sword fighting': 'Sword',
@@ -26,7 +26,7 @@ const SKILL_LABELS: Record<string, string> = {
   speed: 'Speed',
 }
 
-const signed = (n: number) => (n > 0 ? `+${n}` : String(n))
+export const signed = (n: number) => (n > 0 ? `+${n}` : String(n))
 
 /** The handful of numeric stat chips worth showing for an item, slot-aware. */
 export function statChips(item: ItemStats | null | undefined, t: TFunction): { label: string; value: string }[] {

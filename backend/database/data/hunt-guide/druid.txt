@@ -1,0 +1,161 @@
+1000|Forsaken Crypt|-|-|Forked Thorns + Forked Glacier
+800|True Asuras|-|-|Forked Thorns + Forked Glacier
+800|Podzilla Quaras|-|-|Forked Thorns + Stoneshower
+800|Bloodfire Gorge|-|-|Forked Thorns + Forked Glacier
+800|Ingol -3|-|-|Forked Glacier + Avalanche
+600|Feru Juggernauts|-|-|Forked Glacier + Thunderstorm
+600|Feru Mazoran|-|-|Forked Glacier + Avalanche
+600|Feru Undead Dragons|-|-|Forked Glacier + Thunderstorm
+600|Warzone 9|-|-|Forked Thorns + Forked Glacier
+600|Warzone 8|-|-|Forked Thorns + Forked Glacier
+600|Warzone 7|-|-|Forked Thorns + Forked Glacier
+600|Ingol -2|-|-|Forked Thorns + Forked Glacier
+600|Ingol -1|-|-|Forked Thorns + Forked Glacier
+600|Ingol Surface|-|-|Forked Thorns + Forked Glacier
+600|Bulltaur Lair|-|-|Forked Thorns + Forked Glacier
+600|Azzilon Catacombs|-|-|Forked Thorns + Forked Glacier
+600|Norcferatu Dungeons East|-|-|Forked Thorns + Forked Glacier
+600|Norcferatu Dungeons West|-|-|Forked Thorns + Forked Glacier
+500|Norcferatu Fortress|-|-|Forked Thorns + Forked Glacier
+500|Nimmersatt's Boss Floor (-6)|-|-|Forked Thorns + Forked Glacier
+500|Nimmersatt's Bottom Floor (-7)|-|-|Forked Thorns + Forked Glacier
+500|Usurpers|-|-|Forked Thorns + Forked Glacier
+500|Issavi Ogre Mountain|-|-|Strong Ice Wave + Forked Glacier
+500|Issavi Goannas|-|-|Forked Thorns + Forked Glacier
+500|Floating Savants MoTA|-|-|Forked Thorns + Forked Glacier
+500|Deep Desert|-|-|Forked Thorns + Forked Glacier
+500|Azzilon Castle|-|-|Forked Thorns + Forked Glacier
+500|Bashmu|-|-|Forked Thorns + Forked Glacier
+500|Carnisylvans|-|-|Forked Thorns + Forked Glacier
+500|Girtablilu|-|-|Forked Thorns + Forked Glacier
+500|Warzone 3|-|-|Forked Glacier + Thunderstorm
+500|Issavi Puzzle|-|-|Forked Thorns + Forked Glacier
+500|Issavi Sewers|-|-|Forked Thorns + Forked Glacier
+500|Upper Rosh|-|-|Forked Glacier + Thunderstorm
+500|Warzone 2|-|-|Forked Glacier + Avalanche
+500|Issavi Sphinx & Crypt Wardens|-|-|Forked Thorns + Forked Glacier
+400|Warzone 1|-|-|Forked Glacier + GFB
+400|Otherworld|-|-|Forked Thorns + Stoneshower
+400|Buried Cathedral -8|-|-|Forked Thorns + GFB
+400|Deathlings|-|-|Forked Thorns + Stoneshower
+400|Falcons|-|-|Forked Thorns + Forked Glacier
+400|Oramond Catacombs|-|-|Forked Glacier + GFB
+400|Cobras|-|-|Forked Glacier + Avalanche
+300|Crypt Warriors|-|-|Forked Thorns + Forked Glacier
+300|Marapur Turtles|-|-|Forked Thorns + Stoneshower
+300|Marapur Nagas|-|-|Forked Thorns + Forked Glacier
+300|Iksupan Occupied Sanctuary|-|-|Forked Thorns + Forked Glacier
+300|Iksupan Last Stand|-|-|Forked Thorns + Forked Glacier
+300|Werecrocodiles -1|-|-|Forked Thorns + Forked Glacier
+300|Weretigers -2|-|-|Forked Thorns + Stoneshower
+300|Weretigers -1|-|-|Forked Thorns + Stoneshower
+300|Warzone 6|-|-|Forked Thorns + Forked Glacier
+300|Warzone 5|-|-|Forked Thorns + Forked Glacier
+300|Warzone 4|-|-|Forked Glacier + GFB
+300|Ripper Spectres|-|-|Strong Ice Wave + Forked Glacier
+300|Oramond Fury|-|-|Strong Ice Wave + Forked Glacier
+300|Summer Court|-|-|Forked Thorns + Forked Glacier
+300|Winter Court|-|-|Forked Thorns + GFB
+300|Werelions|-|-|Strong Ice Wave + Forked Glacier
+300|Gazer Spectre|-|-|Forked Thorns + Forked Glacier
+300|Oramond Wildlife Raid|-|-|Forked Glacier + GFB
+300|Burster Spectres|-|-|Forked Thorns + GFB
+300|Candia Nibblemaws|-|-|Forked Thorns + Forked Glacier
+300|Asura Mirror|-|-|Forked Glacier + Thunderstorm
+300|Asura Palace|-|-|Forked Glacier + Thunderstorm
+300|Werehyaenas South|-|-|Strong Ice Wave + Forked Glacier
+250|Draken Walls|-|-|Strong Ice Wave + Forked Glacier
+250|Lower Spike|-|-|Strong Ice Wave + Forked Glacier
+250|Carnivora's Rocks|-|-|Forked Thorns + Forked Glacier
+250|Book World: Chapter IV|-|-|Forked Thorns + Forked Glacier
+250|Book World: Chapter III|-|-|Forked Thorns + Forked Glacier
+250|Dessert Dungeon|-|-|Forked Thorns + Forked Glacier
+250|Yalahar Grim Reapers|-|-|Thunderstorm
+200|Book World: Chapter II|-|-|Forked Thorns + Forked Glacier
+200|Diremaw Task Area|-|-|Forked Thorns + Forked Glacier
+200|Seacrest Serpents|-|-|Forked Thorns + Thunderstorm
+200|Crumbling Caverns|-|-|Forked Thorns + Forked Glacier
+200|Hive Stage 3|-|-|Strong Ice Wave + Forked Glacier
+200|Werehyaenas North|-|-|Strong Ice Wave + Forked Glacier
+150|Pirats|-|-|Forked Thorns + Forked Glacier
+150|Mini Rosha|-|-|Strong Ice Wave + Forked Glacier
+150|Dark Faun Cave Feyrist|-|-|Forked Glacier + Thunderstorm
+150|Oramond Minotaur South Plains|-|-|Forked Glacier + Avalanche
+150|Deeplings Library|-|-|Forked Thorns + Thunderstorm
+150|Oramond West (No Quara Raid)|-|-|Strong Ice Wave + Forked Glacier
+150|Otherworld (Edron)|-|-|Forked Thorns + Forked Glacier
+150|Oramond West (Quara Raid)|2.0kk|-100k|Thunderstorm
+130|Okolnir|-|-|Forked Thorns + Stoneshower
+130|Otherworld (Kazo)|-|-|Forked Thorns + Stoneshower
+130|Barkless|-|-|Forked Thorns + Forked Glacier
+130|Glooth Bandits|-|-|Strong Ice Wave + Forked Glacier
+130|Behemoths Cyclopolis|-|-|Strong Ice Wave + Forked Glacier
+130|Behemoths Forbidden Lands|-|-|Strong Ice Wave + Forked Glacier
+130|Elder Wyrms Drefia|-|-|Strong Ice Wave + Forked Glacier
+100|Edron Old Fortress -2 (Hero)|-|-|Forked Thorns + Forked Glacier
+100|Edron Old Fortress -3 (Hero)|-|-|Forked Thorns + Forked Glacier
+100|Carlin Cults|-|-|Forked Thorns + Forked Glacier
+100|Brimstone Bugs WOTE|-|-|Forked Glacier + GFB
+100|Orc Cults|-|-|Forked Thorns + Forked Glacier
+100|Misguided|-|-|Strong Ice Wave + Forked Glacier
+100|Lizard Chosens|-|-|Strong Ice Wave + Forked Glacier
+100|Lizard City|-|-|Strong Ice Wave + Forked Glacier
+100|Holy Portal|-|-|Forked Thorns + Forked Glacier
+100|Iksupan|-|-|Forked Thorns + Forked Glacier
+100|Exotic Cave|-|-|Forked Glacier + GFB
+100|Edron Were South|-|-|Forked Glacier + GFB
+100|Krailos Bug Cave|-|-|Strong Ice Wave + Forked Glacier
+100|Putrid Mummy|-|-|Strong Ice Wave + Forked Glacier
+100|Dragon Lords POI|-|-|Strong Ice Wave + Forked Glacier
+100|Edron Vampire Crypt|-|-|Strong Ice Wave + Forked Glacier
+100|Dragon Lords Fenrock|-|-|Strong Ice Wave + Forked Glacier
+100|Old Masonry (Death portal)|-|-|Strong Ice Wave + Forked Glacier
+100|Calassa|-|-|Forked Thorns + Stoneshower
+100|Grimvale -4|-|-|Strong Ice Wave + Forked Glacier
+100|Quaras Liberty Bay|-|-|Forked Thorns + Stoneshower
+100|Sunken Quarter|-|-|Forked Thorns + Stoneshower
+100|Ravenous Lava Lurkers|-|-|Forked Thorns + Forked Glacier
+100|Hive Surface|-|-|Strong Ice Wave + Forked Glacier
+100|Giant Spiders Port Hope|-|-|Strong Ice Wave + Forked Glacier
+100|Feyrist Surface|-|-|Strong Ice Wave + Forked Glacier
+100|Muggy Plains|-|-|Strong Ice Wave + Forked Glacier
+100|Souleater Mountain|1.0kk|100k|GFB
+80|Shaburak Demons|-|-|Forked Thorns + Stoneshower
+80|Issavi Surafce (SD)|830k|-200k|SD
+70|Krailos Ogres Surface|530k|300k|Thunderstorm
+50|Liberty Bay Wyrms|-|-|Strong Ice Wave + SD
+50|Middle Spike|-|-|Strong Ice Wave + GFB
+50|Haunted Treelings Vengoth|-|-|Strong Ice Wave + Avalanche
+50|Lion's Rock|-|-|Strong Ice Wave + Avalanche
+50|Peninsula Tomb|-|-|Strong Ice Wave + Avalanche
+50|Darashia Dragon Lords|-|-|Strong Ice Wave + SD
+50|Mother of Scarabs Lair|-|-|Strong Ice Wave + GFB
+50|Yalahar Cults|290k|400k|Thunderstorm
+50|Water Elementals Port Hope|400k|-50k|Thunderstorm
+50|Nibelor Crystal Spiders|450k|-10k|Thunderstorm
+30|Laguna Islands|200k|400k|GFB
+30|Apes Banuta|210k|250k|Avalanche
+30|Dryad Gardens|220k|-|GFB
+30|Mummy/Bonebeasts MOSL -3|240k|-|Avalanche
+30|Stonerefiners (AOE)|250k|-|Avalanche
+30|Coryms Port Hope (AOE)|260k|-|GFB
+30|Chor|290k|-20k|GFB
+28|Gargoyle Cave Meriana|220k|-|Thunderstorm, GFB
+28|Upper Spike|320k|-|Thunderstorm, GFB, Avalanche
+20|Mutated Humans Yala|120k|-5k|Single Target Strike Spells
+15|Elves Yalahar|80k|150k|Single Target Strike Spells
+13|Swamp Trolls Port Hope/Venore|30k|50k|Single Target Strike Spells
+13|Tarantulas Port Hope|60k|-10k|Single Target Strike Spells
+13|Cyclops Mistrock|75k|15k|Single Target Strike Spells
+12|Targuna Infernoids|90k|35k|Single Target Strike Spells
+10|Targuna Pirates|70k|50k|Single Target Strike Spells
+8|Crocodiles Port Hope|40k|-4k|Single Target Strike Spells
+8|Rotworms Liberty Bay/Darashia|40k|0k|Single Target Strike Spells
+8|Amazon Camp|45k|125k|Single Target Strike Spells
+8|Cormaya Dwarf Mines|55k|-5k|Single Target Strike Spells
+8|Targuna Lizards|55k|50k|Single Target Strike Spells
+8|Terramites Darashia|60k|120k|Single Target Strike Spells
+8|Edron Forgotten Tomb|75k|50k|Single Target Strike Spells
+8|Minotaurs Darashia (Stealth Ring)|95k|-10k|Single Target Strike Spells
+8|Coryms Port Hope (Stealth Ring)|100k|0k|Single Target Strike Spells
+8|Stonerefiners (Stealth Ring)|135k|40k|Single Target Strike Spells

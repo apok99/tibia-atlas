@@ -667,11 +667,14 @@ class ItemImporter
             'offhand' => (int) ($meta['defense'] ?? $meta['armor'] ?? 0),
             // Bows/crossbows (two-handed distance) carry no attack stat — the
             // damage is the ammo's — so rank them by tier (level requirement).
-            // Melee, wands/rods and one-handed throwing weapons rank by attack.
+            // Melee, wands/rods and one-handed throwing weapons rank by attack
+            // PLUS elemental attack — on modern weapons the element is the bulk
+            // of the hit (Soulshredder: attack 10 + ice 47), same treatment as
+            // GearRules::score().
             'weapon' => (str_contains($cat, 'distance') && $twoHanded)
                 ? (int) ($meta['level'] ?? 0)
-                : (int) ($meta['attack'] ?? $meta['damage_max'] ?? 0),
-            'ammo' => (int) ($meta['attack'] ?? 0),
+                : (int) ($meta['attack'] ?? $meta['damage_max'] ?? 0) + (int) ($meta['element_attack'] ?? 0),
+            'ammo' => (int) ($meta['attack'] ?? 0) + (int) ($meta['element_attack'] ?? 0),
             // Amulets/rings vary too much to rank by one stat; the required level
             // is the best available proxy for "tier".
             'neck', 'finger' => (int) ($meta['level'] ?? 0),

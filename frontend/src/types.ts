@@ -205,6 +205,41 @@ export interface NpcDeal {
   price?: number
 }
 
+/** A stop on a travelling merchant's circuit. */
+export interface TradeStop {
+  city: string
+  coords: [number, number, number]
+}
+
+/**
+ * One merchant's offer for an item, from the real server shop data: price,
+ * map spawn tiles, and the travel info for the two roaming traders (Rashid's
+ * weekly circuit, Yasir's random docks).
+ */
+export interface TradeOffer {
+  npc: string
+  /** Lore-entry slug when the NPC has a published page. */
+  slug: string | null
+  image: string | null
+  city: string | null
+  /** Non-gold currency item name (e.g. "gold token"); null = plain gold. */
+  currency: string | null
+  coords: [number, number, number][] | null
+  travelling: {
+    kind: 'weekly' | 'roaming'
+    today?: TradeStop
+    schedule?: { day: number; city: string }[]
+    spots?: TradeStop[]
+  } | null
+  price: number
+}
+
+/** Where to buy / sell one item ("buy" = you pay, "sell" = the NPC pays you). */
+export interface ItemTrade {
+  buy: TradeOffer[]
+  sell: TradeOffer[]
+}
+
 /** A creature that drops an item, resolved to its lore entry when it exists. */
 export interface Dropper {
   name: string

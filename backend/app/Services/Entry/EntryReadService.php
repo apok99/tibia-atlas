@@ -241,9 +241,10 @@ class EntryReadService
         $locale = app()->getLocale();
 
         return Cache::remember(
-            // v3: payload gained a `boss` flag (for the map's Boss Watch search).
-            // v2 added `image`. The suffix retires stale cached copies on deploy.
-            ContentCache::key("glossary:v3:{$locale}"),
+            // v4: bosses gained a `spawn_type` (for the Boss Watch category tabs).
+            // v3 added the `boss` flag, v2 the `image`. The suffix retires stale
+            // cached copies on deploy.
+            ContentCache::key("glossary:v4:{$locale}"),
             3600,
             fn () => $this->glossaryTransformer->items($this->glossary->publishedNames(), $locale),
         );

@@ -19,15 +19,30 @@ class GlossaryTransformer
     public function items(Collection $entries, string $locale): array
     {
         return $entries
-            ->map(fn (Entry $e) => [
-                'slug' => $e->slug,
-                'type' => $e->type->value,
-                'name' => $e->translation($locale)?->name,
-                'image' => $e->primary_image,
-                // Only tag bosses (keeps the payload lean for the ~thousands of
-                // non-boss entries the auto-linker doesn't care about).
-                ...((int) $e->is_boss === 1 ? ['boss' => true] : []),
-            ])
+            ->map(function (Entry $e) use ($locale) {
+                $isBoss = (int) $e->is_boss === 1;
+                // spawn_type comes back as raw JSON text ("[\"Raid\"]"); decode it
+                // to a list. Tolerate a legacy plain string ("Raid, Unique") too.
+                $spawn = null;
+                if ($isBoss && filled($e->spawn_type)) {
+                    $decoded = json_decode((string) $e->spawn_type, true);
+                    $spawn = is_array($decoded)
+                        ? array_values(array_filter($decoded))
+                        : array_values(array_filter(array_map('trim', explode(',', (string) $decoded))));
+                }
+
+                return [
+                    'slug' => $e->slug,
+                    'type' => $e->type->value,
+                    'name' => $e->translation($locale)?->name,
+                    'image' => $e->primary_image,
+                    // Only tag bosses (keeps the payload lean for the ~thousands of
+                    // non-boss entries the auto-linker doesn't care about).
+                    ...($isBoss ? ['boss' => true] : []),
+                    // Its spawntypes — drives the Boss Watch's category tabs.
+                    ...($spawn ? ['spawn_type' => $spawn] : []),
+                ];
+            })
             ->filter(fn ($i) => filled($i['name']))
             ->sortByDesc(fn ($i) => mb_strlen($i['name']))
             ->values()

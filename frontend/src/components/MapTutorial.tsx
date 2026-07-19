@@ -34,12 +34,18 @@ const STEPS: Step[] = [
   { key: 'spawns', icon: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z' },
   // skull — bosses
   { key: 'boss', icon: 'M9 12h.01M15 12h.01M8 20v2h8v-2M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20' },
+  // house — houses layer
+  { key: 'houses', icon: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 22V12h6v10' },
   // sliders — filters
   { key: 'filters', icon: 'M4 6h16M7 12h10M10 18h4' },
   // navigation arrow — directions
   { key: 'directions', icon: 'M3 11 22 2l-9 19-2-8z' },
   // shared route — create & share
   { key: 'routes', icon: 'M6 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM18 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM8 17.5 16 6.5' },
+  // rss — live world news ticker
+  { key: 'news', icon: 'M4 11a9 9 0 0 1 9 9M4 4a16 16 0 0 1 16 16M5 18a1 1 0 1 0 0 2 1 1 0 0 0 0-2' },
+  // user — your character overlay
+  { key: 'character', icon: 'M20 21a8 8 0 0 0-16 0M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z' },
 ]
 
 /** Guided onboarding for the map: a step-by-step tour of search, spawns, bosses,

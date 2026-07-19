@@ -2,12 +2,15 @@
 
 use App\Http\Controllers\Api\AltarController;
 use App\Http\Controllers\Api\BookController;
+use App\Http\Controllers\Api\CharacterController;
 use App\Http\Controllers\Api\EntryController;
 use App\Http\Controllers\Api\EventController;
 use App\Http\Controllers\Api\HouseController;
+use App\Http\Controllers\Api\HuntController;
 use App\Http\Controllers\Api\ItemController;
 use App\Http\Controllers\Api\KillStatsController;
 use App\Http\Controllers\Api\MapRouteController;
+use App\Http\Controllers\Api\RouteReportController;
 use App\Http\Controllers\Api\WordleController;
 use App\Http\Middleware\SetLocale;
 use Illuminate\Support\Facades\Route;
@@ -33,6 +36,12 @@ Route::middleware([SetLocale::class, 'throttle:public'])->group(function () {
         Route::get('/items', [ItemController::class, 'index']);
         Route::get('/items/facets', [ItemController::class, 'facets']);
         Route::get('/items/loadout', [ItemController::class, 'loadout']);
+        // Aggregate stats for a worn set (the map's character gear readout).
+        Route::get('/items/set-stats', [ItemController::class, 'setStats']);
+        // Where to buy/sell an item: merchants, real prices, map spawns.
+        Route::get('/items/{slug}/trade', [ItemController::class, 'trade']);
+        // Hunt Finder: best hunting zones for a level + vocation + solo/team.
+        Route::get('/hunts', [HuntController::class, 'index']);
         // Detail must come AFTER the literal item routes or it'd bind them as a slug.
         Route::get('/items/{slug}', [ItemController::class, 'show']);
     });
@@ -58,6 +67,17 @@ Route::middleware([SetLocale::class, 'throttle:public'])->group(function () {
         ->middleware('throttle:interact');
     // Bump a route's load counter (feeds the "popular" ranking).
     Route::post('/routes/{route}/view', [MapRouteController::class, 'view'])
+        ->middleware('throttle:interact');
+    // Like / unlike a route (anonymous; the client tracks its own likes). Likes
+    // are the gallery's primary popularity signal.
+    Route::post('/routes/{route}/like', [MapRouteController::class, 'like'])
+        ->middleware('throttle:interact');
+    Route::post('/routes/{route}/unlike', [MapRouteController::class, 'unlike'])
+        ->middleware('throttle:interact');
+
+    // Route-bug reports: a visitor flags a "Cómo llegar" route that looks wrong.
+    // Write-only from the public (IP-throttled); read back via artisan to fix.
+    Route::post('/route-reports', [RouteReportController::class, 'store'])
         ->middleware('throttle:interact');
 
     // Random/trending must stay fresh; show carries the view-count side effect.
@@ -114,6 +134,17 @@ Route::prefix('houses')->middleware(['throttle:public', 'cache.headers:public;ma
 */
 Route::get('/events', [EventController::class, 'index'])
     ->middleware(['throttle:public', 'cache.headers:public;max_age=60;s_maxage=180']);
+
+/*
+|--------------------------------------------------------------------------
+| Character lookup (TibiaData proxy) — feeds the map's "your character"
+| overlay. Cached briefly; the upstream is the slow part. `{name}` allows
+| spaces/apostrophes, so it is a catch-all bound param.
+|--------------------------------------------------------------------------
+*/
+Route::get('/character/{name}', [CharacterController::class, 'show'])
+    ->where('name', '.*')
+    ->middleware(['throttle:public', 'cache.headers:public;max_age=120;s_maxage=300']);
 
 /*
 |--------------------------------------------------------------------------

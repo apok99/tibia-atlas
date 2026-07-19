@@ -2,6 +2,7 @@
 
 namespace App\Queries\KillStats;
 
+use App\Support\BossRule;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -17,6 +18,22 @@ class BossWatchQuery
     public function latestDate(): ?string
     {
         return DB::table('kill_daily')->max('snapshot_date');
+    }
+
+    /**
+     * How many worlds the snapshot covers — the denominator for a boss's respawn
+     * cycle. It must NOT be the boss's own `worlds_active`: killstats only lists a
+     * race in worlds that recorded kills that week, so a rare boss reports from a
+     * handful of worlds and dividing by that inverts the estimate (Orshabaal, the
+     * rarest of all, looked like a 7-day boss). Every boss exists in every world;
+     * the ones missing from its row are worlds where nobody killed it.
+     */
+    public function worldCount(string $latest): int
+    {
+        return (int) DB::table('kill_daily')
+            ->where('snapshot_date', $latest)
+            ->distinct()
+            ->count('world_id');
     }
 
     /**
@@ -39,13 +56,20 @@ class BossWatchQuery
             ->join('tibia_worlds as w', 'w.id', '=', 'kd.world_id')
             ->where('kd.snapshot_date', $latest)
             ->where('e.status', 'published')
-            ->whereRaw("e.meta->>'rank' = 'Boss'")
-            ->groupBy('r.name', 'e.slug', 'e.primary_image')
+            ->whereRaw(BossRule::sql('e'))
+            ->groupBy('r.name', 'e.slug', 'e.primary_image', DB::raw("e.meta->'spawn_type'"), DB::raw("e.meta->>'rank'"))
             ->having(DB::raw('COUNT(*)'), $type === 'daily' ? '>=' : '<=', $type === 'daily' ? 10 : $maxWorlds)
             ->select([
                 'r.name as race',
                 'e.slug',
                 'e.primary_image as image',
+                // TibiaWiki spawntype list (e.g. ["Raid"]); a Raid boss appears via a
+                // server-wide raid, not a per-world respawn timer, so the transformer
+                // caps its world-scoped "likely up" confidence.
+                DB::raw("e.meta->'spawn_type' AS spawn_type"),
+                // TibiaWiki's isboss flag. The transformer needs it to tell a
+                // mis-flagged summoned add from a genuine unique rare spawn.
+                DB::raw("e.meta->>'rank' AS rank"),
                 DB::raw('COUNT(*) AS worlds_active'),
                 DB::raw('COUNT(*) FILTER (WHERE kd.day_killed > 0) AS cooldown'),
                 DB::raw('COUNT(*) FILTER (WHERE kd.week_killed > 0) AS week_worlds'),
@@ -58,13 +82,20 @@ class BossWatchQuery
             ]);
 
         // Per-world scope: whether this boss was killed today on the chosen world
-        // (so it's on cooldown there) and whether it appears there at all. The
-        // roster qualification above stays cross-world so the rare-boss set is
+        // (so it's on cooldown there) and how many days ago its LAST kill there
+        // was (null = never recorded — no anchor to reason from). The roster
+        // qualification above stays cross-world so the rare-boss set is
         // unchanged — only the heat/status is re-derived per world.
         if ($world !== null) {
             $query
                 ->selectRaw('BOOL_OR(w.name = ? AND kd.day_killed > 0) AS world_killed_today', [$world])
-                ->selectRaw('BOOL_OR(w.name = ?) AS world_present', [$world]);
+                ->selectRaw('BOOL_OR(w.name = ?) AS world_present', [$world])
+                ->selectRaw(
+                    '(?::date - (SELECT MAX(kd2.snapshot_date) FROM kill_daily kd2'
+                    .' JOIN tibia_worlds w2 ON w2.id = kd2.world_id'
+                    .' WHERE kd2.race_id = MIN(kd.race_id) AND w2.name = ? AND kd2.day_killed > 0)) AS world_days_since',
+                    [$latest, $world]
+                );
         }
 
         return $query->get();

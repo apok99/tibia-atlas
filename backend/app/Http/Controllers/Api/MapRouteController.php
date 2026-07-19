@@ -17,19 +17,42 @@ use Illuminate\Http\Request;
 class MapRouteController extends Controller
 {
     /**
-     * Published community routes, most popular first (by load count, then
-     * newest), for the map's route gallery.
+     * Published community routes, most popular first (by likes, then load count,
+     * then newest), for the map's route gallery. Paginated — the gallery is a
+     * small popover, so it pulls one page at a time (default 6) rather than the
+     * whole published set. An optional `q` filters by route name or author (case-
+     * insensitive substring). Response shape matches the frontend `Paginated<T>`.
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
+        $perPage = max(1, min(50, (int) $request->integer('per_page', 6)));
+        $q = trim((string) $request->query('q', ''));
+
         $routes = MapRoute::query()
             ->where('status', 'published')
+            ->when($q !== '', function ($query) use ($q) {
+                // Escape LIKE wildcards so a literal % or _ in the term stays literal.
+                $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q) . '%';
+                $query->where(function ($w) use ($like) {
+                    $w->where('name', 'ilike', $like)
+                        ->orWhere('author', 'ilike', $like);
+                });
+            })
+            ->orderByDesc('likes')
             ->orderByDesc('views')
             ->latest()
-            ->limit(200)
-            ->get(['id', 'name', 'description', 'waypoints', 'connect', 'author', 'views', 'created_at']);
+            ->paginate($perPage, ['id', 'name', 'description', 'waypoints', 'connect', 'author', 'views', 'likes', 'created_at'])
+            ->withQueryString();
 
-        return response()->json(['data' => $routes]);
+        return response()->json([
+            'data' => $routes->items(),
+            'meta' => [
+                'current_page' => $routes->currentPage(),
+                'last_page' => $routes->lastPage(),
+                'total' => $routes->total(),
+                'per_page' => $routes->perPage(),
+            ],
+        ]);
     }
 
     /** Bump a published route's load counter (drives the "popular" ranking). */
@@ -40,6 +63,30 @@ class MapRouteController extends Controller
         }
 
         return response()->json(['views' => $route->views]);
+    }
+
+    /**
+     * Like a published route. Anonymous — the frontend tracks which routes a
+     * visitor has liked (localStorage) so it won't double-count; this just bumps
+     * the counter, the primary popularity signal for the gallery.
+     */
+    public function like(MapRoute $route): JsonResponse
+    {
+        if ($route->status === 'published') {
+            $route->increment('likes');
+        }
+
+        return response()->json(['likes' => $route->likes]);
+    }
+
+    /** Undo a like (visitor un-hearted a route). Never drops below zero. */
+    public function unlike(MapRoute $route): JsonResponse
+    {
+        if ($route->status === 'published' && $route->likes > 0) {
+            $route->decrement('likes');
+        }
+
+        return response()->json(['likes' => $route->likes]);
     }
 
     /**

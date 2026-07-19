@@ -8,8 +8,7 @@ import { TypeIcon } from '../components/TypeIcon'
 import { LoreText } from '../components/LoreText'
 import { CreatureKillStats } from '../components/CreatureKillStats'
 import { CreatureLoot } from '../components/CreatureLoot'
-import { DamageAffinity } from '../components/DamageAffinity'
-import { CreatureAbilities } from '../components/CreatureAbilities'
+import { CreatureCombat } from '../components/CreatureCombat'
 import { BossRespawn } from '../components/BossRespawn'
 import { Lightbox } from '../components/Lightbox'
 import { Seo, articleJsonLd, breadcrumbJsonLd, entrySeoTitle, entrySeoDescription } from '../lib/seo'
@@ -40,7 +39,7 @@ export function EntryPage() {
   const others = related.filter((r) => r.type !== 'creature' && r.type !== 'character')
 
   // Internal bookkeeping fields that must never appear in the stat block.
-  // immune_to / weak_to get their own visual DamageAffinity panel below.
+  // immune_to / weak_to get their own visual Combat panel below.
   const hiddenMeta = ['imported_from', 'wiki_pageid', 'auto_stub', 'artwork', 'origin_image', 'note', 'character_kind', 'location', 'importance_rank', 'immune_to', 'weak_to']
   const metaEntries = Object.entries(entry.meta ?? {}).filter(
     ([k, v]) => !hiddenMeta.includes(k) && v !== null && v !== '' && typeof v !== 'object',
@@ -196,9 +195,7 @@ export function EntryPage() {
             </div>
           )}
 
-          {entry.type === 'creature' && <CreatureAbilities meta={entry.meta} />}
-
-          {entry.type === 'creature' && <DamageAffinity meta={entry.meta} />}
+          {entry.type === 'creature' && <CreatureCombat meta={entry.meta} />}
 
           {entry.type === 'creature' && <CreatureLoot items={entry.loot} />}
 

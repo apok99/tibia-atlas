@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { api } from '../lib/api'
+import { compact } from '../lib/format'
 import { planRoute, type RoutePlan, type RouteLeg } from '../lib/routing'
 import { Seo } from '../lib/seo'
 import { Icon, iconMarkup } from '../lib/icons'
@@ -27,12 +28,28 @@ import {
   requestNotifyPermission,
   osNotify,
 } from '../lib/houseWatch'
+import {
+  type CharProfile,
+  type Character,
+  type GearPiece,
+  type GearSlot,
+  GEAR_SLOTS,
+  fetchCharacter,
+  gearIds,
+  loadCharProfile,
+  saveCharProfile,
+} from '../lib/charProfile'
+import { useItems, useSetStats, useEntry } from '../hooks/useEntries'
+import { LoreText } from '../components/LoreText'
+import { LORE_POIS, type LorePoi } from '../lib/lorePois'
+import { SKILL_LABELS, signed } from '../components/items/itemStats'
 import { useGlossary } from '../hooks/useGlossary'
 import { useBosses, useKillWorlds, type BossRow } from '../hooks/useKillStats'
+import { useHunts, type HuntZone } from '../hooks/useHunts'
 import { TypeIcon } from '../components/TypeIcon'
 import { Skeleton } from '../components/Skeleton'
 import { MapTutorial, mapTourSeen } from '../components/MapTutorial'
-import type { Dropper, Entry, EntryListItem, ItemDetail, Spawn } from '../types'
+import type { Dropper, Entry, EntryListItem, ItemDetail, ItemTrade, Paginated, Spawn } from '../types'
 import {
   TILE,
   X_MIN,
@@ -65,6 +82,13 @@ const HEAT_STYLE = {
   warm: { cls: 'text-gold', glyph: '🌡', label: 'map.bossWarm' },
   cold: { cls: 'text-interp', glyph: '❄', label: 'map.bossCold' },
 } as const
+
+// Boss Watch category tabs, keyed by TibiaWiki spawntype. 'all' keeps the classic
+// hottest-first mixed roster; the rest slice the roster to one spawntype so a
+// player can browse e.g. every raid boss or every lever ("Triggered") boss. Order
+// = how a hunter thinks about them (raids first, curiosities last).
+type BossType = 'all' | 'Raid' | 'Unique' | 'Triggered' | 'Regular' | 'Event' | 'Unblockable'
+const BOSS_TYPES: BossType[] = ['all', 'Raid', 'Unique', 'Triggered', 'Regular', 'Event', 'Unblockable']
 
 type Marker = { id: string; x: number; y: number; floor: number; label: string }
 type Cluster = { x: number; y: number; z: number; count: number; score: number }
@@ -114,26 +138,42 @@ type House = {
   live?: { status: 'rented' | 'auctioned' | 'free'; owner?: string | null; bid?: number } | null
 }
 
-// A live "what's happening on your world" event from GET /api/events, produced
-// by the house-status ETL diff. Generic shape so more producers can feed the
-// ticker later; today `type` is always one of the house_* transitions.
+// A live "what's happening on your world" event from GET /api/events. Two
+// producers feed it: the house-status ETL diff (house_* transitions) and the
+// daily kill-stats digest (digest_* — most-hunted creature, top bosses, total
+// kills "yesterday"). Generic shape so more producers can be added later.
 type WorldEvent = {
   id: number
   type: string
   ref_id: number | null
   title: string | null
   town: string | null
-  meta: { from?: string; to?: string; bid?: number } | null
+  meta: {
+    from?: string
+    to?: string
+    bid?: number
+    count?: number // digest_*: how many were killed
+    slug?: string // digest creature/boss: lore slug, for click-to-plot
+    image?: string | null // digest creature/boss: sprite
+  } | null
   occurred_at: string
 }
 
-// Icon + accent colour per event type, so the ticker reads at a glance:
-// red = a house was taken (new tenant), green = one just freed up, gold = auction.
+// Line-icon (name in ICON_INNER) + accent colour per event type, so the ticker
+// reads at a glance and stays on the atlas theme (no emoji).
 const EVENT_STYLE: Record<string, { icon: string; color: string }> = {
-  house_rented: { icon: '🏠', color: 'var(--color-accent)' },
-  house_freed: { icon: '🔑', color: '#2f9e5a' },
-  house_auctioned: { icon: '🔨', color: '#e0a531' },
+  // Houses: red = taken (new tenant), green = freed up, gold = auction.
+  house_rented: { icon: 'home', color: 'var(--color-accent)' },
+  house_freed: { icon: 'key', color: '#2f9e5a' },
+  house_auctioned: { icon: 'gavel', color: '#e0a531' },
+  // Daily digest: sword = total slain, paw = most-hunted creature, skull = boss.
+  digest_total: { icon: 'sword', color: 'var(--color-accent-2)' },
+  digest_top_creature: { icon: 'paw', color: '#6cc551' },
+  digest_boss: { icon: 'skull', color: 'var(--color-accent)' },
 }
+
+// Whether an event is a daily-digest headline (vs a real-time house change).
+const isDigest = (type: string) => type.startsWith('digest_')
 
 // "hace 3 h" / "3h ago" — coarse relative time; events land ~twice a day so
 // minute precision would be noise.
@@ -144,73 +184,134 @@ function eventAgo(iso: string, t: (k: string, o?: Record<string, unknown>) => st
   return t('map.evtAgoDay', { n: Math.round(s / 86400) })
 }
 
-// Full-width "breaking news" marquee of live world events (houses changing
-// hands, etc.) pinned to the top of the map. The list is duplicated so the CSS
-// translate loop is seamless; hovering pauses it (.ks-ticker CSS) so an item
-// can be clicked to fly to that house.
-function EventsTicker({
+// Short label for an event, by type.
+function eventLabel(ev: WorldEvent, t: (k: string, o?: Record<string, unknown>) => string): string {
+  switch (ev.type) {
+    case 'house_freed':
+      return t('map.evtFreed')
+    case 'house_auctioned':
+      return t('map.evtAuction')
+    case 'digest_total':
+      return t('map.evtTotalKills')
+    case 'digest_top_creature':
+      return t('map.evtTopCreature')
+    case 'digest_boss':
+      return t('map.evtBoss')
+    default:
+      return t('map.evtNewOwner')
+  }
+}
+
+// Live "world news" rail docked to the RIGHT edge. Collapsed by default to a
+// small 📰 button (with an unread-style count badge) so it never covers the map;
+// clicking slides it open (same maxWidth animation as the Boss Watch rail) into a
+// scrollable vertical list. It's an absolute overlay, so opening it doesn't shift
+// any other control. Each row: sprite/icon + label + title + kills/relative-time;
+// clicking plots the creature (digest) or flies to the house (house event).
+function NewsRail({
   events,
+  open,
+  onToggle,
   t,
   onPick,
-  onClose,
 }: {
   events: WorldEvent[]
+  open: boolean
+  onToggle: () => void
   t: (k: string, o?: Record<string, unknown>) => string
   onPick: (ev: WorldEvent) => void
-  onClose: () => void
 }) {
   if (!events.length) return null
-  // Duplicate a short list so the marquee still fills the width and loops.
-  const loop = events.length < 8 ? [...events, ...events] : [...events]
-  const label = (ev: WorldEvent) =>
-    ev.type === 'house_freed'
-      ? t('map.evtFreed')
-      : ev.type === 'house_auctioned'
-        ? t('map.evtAuction')
-        : t('map.evtNewOwner')
   return (
-    <div className="ks-ticker w-full">
-      <span className="ks-ticker-tag">{t('map.eventsLive')}</span>
-      <div className="ks-ticker-mask">
-        <div className="ks-ticker-track">
-          {loop.map((ev, i) => {
+    <aside
+      className="scroll-atlas absolute right-2 top-3 z-[1101] flex max-h-[calc(50vh-3rem)] flex-col gap-0.5 overflow-y-auto overflow-x-hidden rounded-2xl border-2 border-line bg-bg-2/95 p-2 shadow-lg backdrop-blur-md transition-[max-width] duration-300 ease-in-out sm:right-3"
+      style={{ maxWidth: open ? 'min(21rem, calc(100vw - 1rem))' : '2.9rem' }}
+    >
+      <div className={`flex items-center gap-1.5 ${open ? 'px-0.5 pb-1' : 'justify-center'}`}>
+        {open && (
+          <span className="flex min-w-0 flex-1 items-center gap-1.5 text-accent">
+            <Icon name="newspaper" size={14} className="shrink-0" />
+            <span className="truncate text-[10px] font-bold uppercase tracking-widest">{t('map.newsTitle')}</span>
+            <span className="ks-ticker-tag shrink-0" style={{ padding: '2px 6px', fontSize: 9, borderRadius: 9999 }}>
+              {t('map.eventsLive')}
+            </span>
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={onToggle}
+          title={open ? t('map.modeHide') : t('map.newsTitle')}
+          aria-label={open ? t('map.modeHide') : t('map.newsTitle')}
+          aria-expanded={open}
+          className="relative grid h-7 w-7 shrink-0 place-items-center rounded text-fg-mute transition hover:bg-line/40 hover:text-fg"
+        >
+          {open ? (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          ) : (
+            <>
+              <Icon name="newspaper" size={17} className="text-accent" />
+              <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none text-white">
+                {events.length}
+              </span>
+            </>
+          )}
+        </button>
+      </div>
+      {open && (
+        <div className="flex flex-col gap-0.5">
+          {events.map((ev) => {
             const st = EVENT_STYLE[ev.type] ?? EVENT_STYLE.house_rented
+            const digest = isDigest(ev.type)
+            const can = digest ? !!ev.meta?.slug : !!ev.ref_id
             return (
               <button
+                key={ev.id}
                 type="button"
-                key={`${ev.id}-${i}`}
                 onClick={() => onPick(ev)}
-                className="ks-ticker-item"
-                style={{ background: 'none', border: 0, cursor: ev.ref_id ? 'pointer' : 'default' }}
+                className="flex w-full items-center gap-2 rounded-lg px-1 py-1 text-left transition hover:bg-line/40"
+                style={{ cursor: can ? 'pointer' : 'default' }}
                 title={ev.title ?? ''}
               >
-                <span className="ks-ticker-skull" style={{ color: st.color }}>{st.icon}</span>
-                <span className="ks-ticker-count" style={{ color: st.color }}>{label(ev)}</span>
-                <span className="ks-ticker-name" style={{ textTransform: 'none' }}>
-                  {ev.title ?? '—'}
-                  {ev.town ? ` · ${ev.town}` : ''}
+                {digest && ev.meta?.image ? (
+                  <img src={ev.meta.image} alt="" loading="lazy" className="h-6 w-6 shrink-0 object-contain [image-rendering:pixelated]" />
+                ) : (
+                  <span className="grid h-6 w-6 shrink-0 place-items-center" style={{ color: st.color }}>
+                    <Icon name={st.icon} size={17} />
+                  </span>
+                )}
+                <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                  <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: st.color }}>
+                    {eventLabel(ev, t)}
+                  </span>
+                  {ev.title && (
+                    <span className="truncate text-xs font-semibold text-fg-dim">
+                      {ev.title}
+                      {ev.town ? ` · ${ev.town}` : ''}
+                    </span>
+                  )}
                 </span>
-                <span className="ks-ticker-name" style={{ opacity: 0.55, fontWeight: 600 }}>
-                  {eventAgo(ev.occurred_at, t)}
+                <span
+                  className="shrink-0 text-[11px] font-bold tabular-nums"
+                  style={{ color: digest ? 'var(--color-accent-2)' : 'var(--color-fg-mute)' }}
+                >
+                  {digest
+                    ? typeof ev.meta?.count === 'number'
+                      ? compact(ev.meta.count)
+                      : ''
+                    : eventAgo(ev.occurred_at, t)}
                 </span>
               </button>
             )
           })}
         </div>
-      </div>
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label={t('map.close')}
-        style={{ flexShrink: 0, padding: '0 0.75rem', color: 'var(--color-fg-mute)', background: 'none', border: 0, cursor: 'pointer', fontSize: 13, fontWeight: 700 }}
-      >
-        ✕
-      </button>
-    </div>
+      )}
+    </aside>
   )
 }
 
-// A published community route from GET /api/routes (ranked by load count).
+// A published community route from GET /api/routes (ranked by likes, then loads).
 type CommunityRoute = {
   id: number
   name: string
@@ -219,6 +320,7 @@ type CommunityRoute = {
   connect: 'auto' | 'straight'
   author: string | null
   views: number
+  likes: number
   created_at: string
 }
 
@@ -256,6 +358,63 @@ function poiStyle(desc: string): { color: string; icon: string } {
 
 // Official Tibia Bestiary difficulty levels, easiest → hardest.
 const DIFFICULTIES = ['Harmless', 'Trivial', 'Easy', 'Medium', 'Hard', 'Challenging']
+
+// Core element accent colours (mirrors CreatureCombat's palette) for the Hunt
+// Finder's "hit with" / "resists" chips, so the two panels read as one system.
+const HUNT_ELEMENT_COLOR: Record<string, string> = {
+  physical: '#8a8578', fire: '#c0592f', energy: '#7d5aa8', ice: '#4f8fb0',
+  earth: '#5f8a3e', holy: '#c69a3a', death: '#6d5a86',
+}
+
+// Normalise a TibiaData vocation label ("Elite Knight", "Royal Paladin") to a
+// base vocation slug the Hunt Finder API expects, or '' if unrecognised.
+function baseVocation(v: string): string {
+  const s = v.toLowerCase()
+  return (['knight', 'paladin', 'sorcerer', 'druid', 'monk'] as const).find((b) => s.includes(b)) ?? ''
+}
+
+// Compact one-line stat hint for a gear-picker row: the numbers that tell two
+// candidates apart at a glance (armor / attack / defense, then resists).
+function gearHint(it: EntryListItem): string {
+  const s = it.item
+  if (!s) return ''
+  const parts: string[] = []
+  if (s.armor) parts.push(`Arm ${s.armor}`)
+  const atk = (s.attack ?? 0) + (s.element_attack ?? 0)
+  if (atk) parts.push(`Atk ${atk}${s.element_attack_type ? ` ${s.element_attack_type}` : ''}`)
+  if (s.defense) parts.push(`Def ${s.defense}`)
+  const res = Object.entries(s.resists ?? {}).filter(([, p]) => p !== 0)
+  if (res.length) parts.push(res.map(([el, p]) => `${el} ${p > 0 ? '+' : ''}${p}%`).join(' '))
+  return parts.slice(0, 3).join(' · ')
+}
+
+// One labelled horizontal bar of the set-stats readout (resists, skills).
+// `pct` is the fill 0-100 (pre-scaled by the caller); a minimum sliver keeps
+// tiny values visible. Negative stats arrive with a red `color`.
+function StatBar({ label, value, pct, color }: { label: string; value: string; pct: number; color: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-24 shrink-0 truncate text-xs font-semibold text-fg-dim">{label}</span>
+      <span className="relative h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-line/50">
+        <span
+          className="absolute inset-y-0 left-0 rounded-full"
+          style={{ width: `${Math.min(100, Math.max(5, pct))}%`, background: color }}
+        />
+      </span>
+      <span className="w-12 shrink-0 text-right text-xs font-bold" style={{ color }}>
+        {value}
+      </span>
+    </div>
+  )
+}
+
+// A zone/creature danger number (fraction of your effective HP a big hit takes)
+// bucketed into a safe/risky/deadly label + colour for the panel.
+function dangerBand(d: number): { key: 'huntDangerLow' | 'huntDangerMed' | 'huntDangerHigh'; color: string } {
+  if (d < 0.35) return { key: 'huntDangerLow', color: '#2f9e5a' }
+  if (d < 0.7) return { key: 'huntDangerMed', color: '#d08a1e' }
+  return { key: 'huntDangerHigh', color: '#c0392b' }
+}
 
 // Half-size (game tiles) of the square kept around a landmark for the "zone"
 // filter — roughly a city plus its immediate hunting outskirts.
@@ -799,6 +958,61 @@ function parseHash(): {
   return { x: num('x'), y: num('y'), z: num('z'), floor: num('f'), markers, creatures, routeStart, routeEnd, build }
 }
 
+// --- item trade pins -----------------------------------------------------------
+// A merchant on the trade layer, with both sides of the deal merged: buyPrice =
+// what YOU pay to buy from the NPC, sellPrice = what the NPC pays you.
+type TradePin = {
+  npc: string
+  city: string | null
+  currency: string | null
+  buyPrice: number | null
+  sellPrice: number | null
+  coords: [number, number, number][]
+}
+
+// Marker budget (markers, not merchants) — a mass-market item like mana potion
+// has 31 sellers; both API lists arrive best-price-first so the cut keeps winners.
+const TRADE_PIN_CAP = 60
+
+function mergeTradePins(trade: ItemTrade): TradePin[] {
+  const byNpc = new Map<string, TradePin>()
+  const add = (offers: ItemTrade['buy'], side: 'buy' | 'sell') => {
+    for (const o of offers) {
+      if (!o.coords || o.coords.length === 0) continue
+      let pin = byNpc.get(o.npc)
+      if (!pin) {
+        pin = {
+          npc: o.npc,
+          city: o.city,
+          currency: o.currency,
+          buyPrice: null,
+          sellPrice: null,
+          coords: o.coords,
+        }
+        byNpc.set(o.npc, pin)
+      }
+      if (side === 'buy') pin.buyPrice = o.price
+      else pin.sellPrice = o.price
+    }
+  }
+  add(trade.buy, 'buy')
+  add(trade.sell, 'sell')
+
+  const pins: TradePin[] = []
+  let markers = 0
+  for (const pin of byNpc.values()) {
+    markers += pin.coords.length
+    if (markers > TRADE_PIN_CAP) break
+    pins.push(pin)
+  }
+  return pins
+}
+
+// lucide "shopping bag", inlined like the other divIcon glyphs.
+const TRADE_PIN_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>'
+
 // --- immersive map "hotbar" styling -------------------------------------------
 // A compact row of square icon slots: the search field stays the hero, and every
 // secondary action collapses into a tooltip-labelled icon. PILL is the slotted
@@ -809,6 +1023,75 @@ const SLOT = 'grid h-11 w-11 place-items-center rounded-lg border transition'
 const SLOT_OFF =
   'border-line-2 bg-bg-2 text-fg hover:border-accent hover:bg-surface hover:text-accent'
 const SLOT_ON = 'border-accent bg-accent text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]'
+
+// A collapsible cluster of hotbar slots that belong to the same family (routes,
+// markers…). It mirrors the Houses layer's "sprout up" pattern: a single primary
+// slot in the bar; when opened, its sibling actions grow straight UP from it,
+// joined by a little trunk, so they read clearly as "these belong together". The
+// primary slot lights up (and shows a count badge) whenever any child is engaged,
+// so nothing is hidden — you can always tell a group is active at a glance.
+// Self-contained open state; clicking outside closes it.
+function HotbarGroup({
+  icon,
+  label,
+  accent = 'var(--color-accent)',
+  active = false,
+  badge,
+  children,
+}: {
+  icon: ReactNode
+  label: string
+  // Trunk colour + primary tint when engaged (defaults to the accent).
+  accent?: string
+  // Whether any child action is currently on (lights the primary slot).
+  active?: boolean
+  badge?: number
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+  return (
+    <div ref={ref} className="relative flex items-center">
+      {open && (
+        <div className="absolute bottom-full left-1/2 mb-2 flex -translate-x-1/2 flex-col-reverse items-center gap-1.5">
+          {/* trunk connecting the branch down to the primary slot */}
+          <span
+            aria-hidden
+            className="pointer-events-none absolute left-1/2 top-1 -bottom-2.5 -z-10 w-0.5 -translate-x-1/2 rounded"
+            style={{ background: accent, opacity: 0.45 }}
+          />
+          {children}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title={label}
+        aria-label={label}
+        aria-expanded={open}
+        className={`relative ${SLOT} ${active || open ? SLOT_ON : SLOT_OFF}`}
+      >
+        {icon}
+        {badge != null && badge > 0 && (
+          <span
+            className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-bold leading-none text-white"
+            style={{ background: accent }}
+          >
+            {badge}
+          </span>
+        )}
+      </button>
+    </div>
+  )
+}
 
 // Quick-launch "mini windows" floated on the map: shortcuts to the site's games
 // and stats. Titles/taglines reuse the existing nav + section-kicker i18n keys.
@@ -1194,8 +1477,128 @@ function FloorStepper({
   )
 }
 
-export function MapPage() {
+// The in-map lore reader: fetches a published entry and renders its story
+// (overview → canon → interpretations) with the same auto-linking as the full
+// article page, plus a link out to that page. Floats bottom-centre like the
+// hunt/house panels so it never covers the map controls.
+function LorePanel({ poi, onClose }: { poi: LorePoi; onClose: () => void }) {
   const { t } = useTranslation()
+  const { data: entry, isLoading, isError } = useEntry(poi.slug)
+  // Lead paragraph = overview, falling back to canon (mirrors EntryPage). When
+  // the overview supplies the lead, canon becomes the body so it isn't repeated.
+  const lead = entry?.content.overview || entry?.content.canon || null
+  const canonBody = entry?.content.overview ? entry.content.canon : null
+  // Entry-less mystery spot: show its factual caption instead of fetched lore.
+  const blurbOnly = !poi.slug
+
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
+      <div className="scroll-atlas pointer-events-auto max-h-[70vh] w-[30rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-4 shadow-2xl backdrop-blur-md">
+        <div className="mb-2 flex items-center gap-1.5 text-[#c79a3f]">
+          <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+          </svg>
+          <span className="text-[10px] font-bold uppercase tracking-widest">{t('map.loreTitle')}</span>
+          <button
+            onClick={onClose}
+            aria-label={t('common.close')}
+            className="ml-auto grid h-6 w-6 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:border-[#c79a3f] hover:text-[#c79a3f]"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {blurbOnly && (
+          <>
+            <h3 className="font-serif text-lg font-bold leading-tight text-fg">{poi.title}</h3>
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-fg-mute">
+              {t('map.loreMystery')}
+            </span>
+            <p className="prose-atlas mt-3 text-sm leading-relaxed text-fg-dim">{poi.blurb}</p>
+          </>
+        )}
+
+        {!blurbOnly && isLoading && <Skeleton className="h-24 w-full" />}
+        {!blurbOnly && isError && <p className="text-sm text-fg-mute">{t('common.error')}</p>}
+
+        {!blurbOnly && entry && (
+          <>
+            <div className="flex items-start gap-3">
+              {entry.primary_image && (
+                <img
+                  src={entry.primary_image}
+                  alt=""
+                  className="h-14 w-14 shrink-0 rounded-lg border border-line-2 object-contain p-1"
+                />
+              )}
+              <div className="min-w-0">
+                <h3 className="font-serif text-lg font-bold leading-tight text-fg">
+                  {entry.name ?? poi.title}
+                </h3>
+                {entry.type_label && (
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-fg-mute">
+                    {entry.type_label}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="prose-atlas mt-3 text-sm leading-relaxed text-fg-dim">
+              {lead && (
+                <p>
+                  <LoreText text={lead} currentSlug={entry.slug} />
+                </p>
+              )}
+              {canonBody && (
+                <p className="mt-2">
+                  <LoreText text={canonBody} currentSlug={entry.slug} />
+                </p>
+              )}
+              {entry.content.interpretations && (
+                <p className="mt-2">
+                  <LoreText text={entry.content.interpretations} currentSlug={entry.slug} />
+                </p>
+              )}
+              {!lead && !canonBody && !entry.content.interpretations && (
+                <p className="text-fg-mute">{t('map.loreEmpty')}</p>
+              )}
+            </div>
+
+            <Link
+              to={`/entry/${entry.slug}`}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-[#c79a3f]/50 bg-[#c79a3f]/10 px-3 py-1.5 text-sm font-semibold text-[#c79a3f] transition hover:bg-[#c79a3f]/20"
+            >
+              {t('map.loreReadFull')}
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
+            </Link>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Breakpoint feed for the creature-bar page size (3 cards wide, 1 on phones).
+// useSyncExternalStore re-reads the snapshot on every render, so a missed
+// media-query event can never leave a stale page size behind.
+const WIDE_MQ = '(min-width: 640px)'
+function subscribeWideMq(cb: () => void) {
+  const mq = window.matchMedia(WIDE_MQ)
+  mq.addEventListener('change', cb)
+  return () => mq.removeEventListener('change', cb)
+}
+function isWideMq() {
+  return window.matchMedia(WIDE_MQ).matches
+}
+
+export function MapPage() {
+  const { t, i18n } = useTranslation()
+  const queryClient = useQueryClient()
   const containerRef = useRef<HTMLDivElement>(null)
   // The immersive canvas root + the top-left control column, so the boss-watch
   // sidebar can start right below the column (avoids overlapping the search /
@@ -1211,6 +1614,13 @@ export function MapPage() {
   const allSpriteGroupRef = useRef<L.LayerGroup | null>(null)
   const poiGroupRef = useRef<L.LayerGroup | null>(null)
   const houseGroupRef = useRef<L.LayerGroup | null>(null)
+  const loreGroupRef = useRef<L.LayerGroup | null>(null)
+  const tradeGroupRef = useRef<L.LayerGroup | null>(null)
+  // Highlight ring drawn over the hunting zone the user picked in the Hunt Finder.
+  const huntHiRef = useRef<L.LayerGroup | null>(null)
+  // A dedicated SVG renderer for that ring, so it draws crisply above the canvas
+  // spawn-dot layer (the map's default renderer is canvas).
+  const huntSvgRef = useRef<L.SVG | null>(null)
   // Current-floor "all creatures" data kept for click-to-identify and the
   // viewport sprite renderer.
   const allPointsRef = useRef<{
@@ -1251,6 +1661,15 @@ export function MapPage() {
 
   // Creature spawn overlay.
   const [creatures, setCreatures] = useState<ActiveCreature[]>([])
+  // The active-creature bar pages 3 cards at a time (1 on small screens) so an
+  // item batch ("Lo dejan caer N criaturas") never buries the map in cards.
+  const [creaturePage, setCreaturePage] = useState(0)
+  const creaturePageSize = useSyncExternalStore(subscribeWideMq, isWideMq) ? 3 : 1
+  const creaturePageCount = Math.max(1, Math.ceil(creatures.length / creaturePageSize))
+  const creaturePageSafe = Math.min(creaturePage, creaturePageCount - 1)
+  useEffect(() => {
+    setCreaturePage((p) => Math.min(p, creaturePageCount - 1))
+  }, [creaturePageCount])
   const [query, setQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   // What the search box looks up: a creature (plot its spawns) or an item (plot
@@ -1263,6 +1682,7 @@ export function MapPage() {
     image: string | null
     plotted: string[] // dropper slugs plotted as creatures
     total: number // droppers with a slug (may exceed plotted if capped)
+    trade: ItemTrade | null // merchants that buy/sell it (trade pins layer)
   } | null>(null)
   const [itemBusy, setItemBusy] = useState(false)
   const [showAll, setShowAll] = useState(true)
@@ -1271,16 +1691,20 @@ export function MapPage() {
   const [levelFilter, setLevelFilter] = useState('') // '' = any difficulty
   const [bossOnly, setBossOnly] = useState(false) // show only bosses
   const [showPoi, setShowPoi] = useState(false) // imported minimap markers layer
+  const [showLore, setShowLore] = useState(false) // curated lore / mystery POIs layer
+  const [lorePoi, setLorePoi] = useState<LorePoi | null>(null) // open lore reader
   const [showHouses, setShowHouses] = useState(false) // rentable houses layer
   const [houseStatusFilter, setHouseStatusFilter] = useState<'all' | 'available' | 'rented'>('all') // rent-status filter
-  const [houseKind, setHouseKind] = useState<'all' | 'house' | 'guild'>('all') // guildhall filter
+  const [houseKind, setHouseKind] = useState<'all' | 'house' | 'guild'>('all') // house vs guildhall filter
   const [panelPos, setPanelPos] = useState<{ x: number; y: number } | null>(null) // draggable window position
   const [houseSearch, setHouseSearch] = useState('') // house-list name filter
+  const [houseTownFilter, setHouseTownFilter] = useState('') // house-list city filter
+  const [alertsOpen, setAlertsOpen] = useState(false) // "my alerts" watchlist — collapsed submenu by default
   const [housePanelOpen, setHousePanelOpen] = useState(false) // "available houses" + alerts panel
   const [watches, setWatches] = useState<Watch[]>(() => loadWatches()) // client-side alert list
   const [notifPerm, setNotifPerm] = useState<NotificationPermission>(() => notifyPermission())
   const [freedToast, setFreedToast] = useState<string | null>(null) // "a house opened up" banner
-  const [eventsDismissed, setEventsDismissed] = useState(false) // news-ticker dismissed this session
+  const [newsOpen, setNewsOpen] = useState(false) // right-edge world-news rail (collapsed by default)
   const [freedIds, setFreedIds] = useState<Set<number>>(() => new Set()) // ids just freed this session
   const [townSel, setTownSel] = useState('') // town picked in the "watch a whole town" control
   // The selected Tibia world — a GLOBAL map concern: it drives the Boss Watch's
@@ -1301,10 +1725,169 @@ export function MapPage() {
       /* private mode / storage disabled — non-fatal */
     }
   }, [world])
+  // "Your character" overlay: the saved profile (localStorage), the settings
+  // panel open state, and the name being typed. The live character data is
+  // fetched by react-query below, keyed on the saved name.
+  const [charProfile, setCharProfile] = useState<CharProfile | null>(() => loadCharProfile())
+  const [charOpen, setCharOpen] = useState(false)
+  const [charDraft, setCharDraft] = useState(() => loadCharProfile()?.name ?? '')
+  const charQuery = useQuery({
+    queryKey: ['character', charProfile?.name ?? ''],
+    queryFn: () => fetchCharacter(charProfile!.name),
+    enabled: !!charProfile?.name,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  })
+  const character: Character | null = charQuery.data ?? null
+  const saveChar = () => {
+    const name = charDraft.trim()
+    if (!name) return
+    const p = { name }
+    saveCharProfile(p)
+    setCharProfile(p)
+  }
+  const clearChar = () => {
+    saveCharProfile(null)
+    setCharProfile(null)
+    setCharDraft('')
+    setGearSlot(null)
+    setGearQuery('')
+  }
+
+  // "Your equipment": the gear editor's open slot picker + its search text.
+  // The picked set itself lives on the profile (localStorage) so it survives
+  // reloads and feeds both the stats readout and the Hunt Finder.
+  const [gearSlot, setGearSlot] = useState<GearSlot | null>(null)
+  const [gearQuery, setGearQuery] = useState('')
+  const setGearPiece = (slot: GearSlot, piece: GearPiece | null) => {
+    setCharProfile((prev) => {
+      if (!prev) return prev
+      const gear = { ...(prev.gear ?? {}) }
+      if (piece) gear[slot] = piece
+      else delete gear[slot]
+      const next: CharProfile = Object.keys(gear).length ? { name: prev.name, gear } : { name: prev.name }
+      saveCharProfile(next)
+      return next
+    })
+    setGearSlot(null)
+    setGearQuery('')
+  }
+  const clearGear = () => {
+    setCharProfile((prev) => {
+      if (!prev) return prev
+      const next: CharProfile = { name: prev.name }
+      saveCharProfile(next)
+      return next
+    })
+    setGearSlot(null)
+    setGearQuery('')
+  }
+  // Sorted ids of the worn pieces — the `gear` the hunts + set-stats APIs take.
+  const gearIdList = useMemo(() => gearIds(charProfile), [charProfile])
+
+  // Draggable char card: null = docked (centered above the hotbar); a point
+  // once the user grabs the header. Pointer capture keeps the drag alive when
+  // the cursor outruns the handle; position clamps to the viewport.
+  const [charPos, setCharPos] = useState<{ x: number; y: number } | null>(null)
+  const charCardRef = useRef<HTMLDivElement | null>(null)
+  const charDragOff = useRef<{ dx: number; dy: number } | null>(null)
+  const startCharDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const card = charCardRef.current
+    if (!card) return
+    const rect = card.getBoundingClientRect()
+    charDragOff.current = { dx: e.clientX - rect.left, dy: e.clientY - rect.top }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  const moveCharDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const off = charDragOff.current
+    const card = charCardRef.current
+    if (!off || !card) return
+    const x = Math.min(Math.max(8, e.clientX - off.dx), window.innerWidth - card.offsetWidth - 8)
+    const y = Math.min(Math.max(8, e.clientY - off.dy), window.innerHeight - 56)
+    setCharPos({ x, y })
+  }
+  const endCharDrag = () => {
+    charDragOff.current = null
+  }
+
+  // --- Hunt Finder -----------------------------------------------------------
+  // Panel ranking the best hunting zones for a level + vocation (solo hunts).
+  // Level/vocation auto-fill from the saved character (below) but stay editable.
+  const [huntOpen, setHuntOpen] = useState(false)
+  const [huntLevel, setHuntLevel] = useState('')
+  const [huntVoc, setHuntVoc] = useState('')
+  const [huntZoneId, setHuntZoneId] = useState<number | null>(null)
+  const [huntAuto, setHuntAuto] = useState(false)
+  // Seed level + vocation from the looked-up character the first time it lands,
+  // without clobbering anything the user has typed themselves.
+  useEffect(() => {
+    if (!character) return
+    const base = character.vocation ? baseVocation(character.vocation) : ''
+    setHuntLevel((prev) => (prev === '' && character.level != null ? String(character.level) : prev))
+    setHuntVoc((prev) => (prev === '' && base ? base : prev))
+    if (base && character.level != null) setHuntAuto(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [character?.name, character?.level, character?.vocation])
+
+  // Effective inputs: what you typed overrides, otherwise fall back to your saved
+  // character — so with a character set the planner just works without re-asking
+  // for level/vocation (you already told us who you are via the character gear).
+  const charVoc = character?.vocation ? baseVocation(character.vocation) : ''
+  // Gear picker: catalogue items for the open slot (vocation-filtered when the
+  // character's vocation is known — items usable by all always pass).
+  // Debounced like the map's own search: one request per pause, not per
+  // keystroke (typing "Souls" used to queue five 120-item round trips).
+  const gearSearch = useDebouncedValue(gearQuery.trim(), 250)
+  // Below 2 chars a search is all noise (every "s" item), so browse instead.
+  const gearTerm = gearSearch.length >= 2 ? gearSearch : ''
+  const gearItemsQuery = useItems(
+    {
+      slot: gearSlot ?? undefined,
+      equippable: '1',
+      q: gearTerm || undefined,
+      // Strongest first, SERVER-side: sorting client-side over an id-paged
+      // window silently hid every modern high-id piece (the Soulshredder bug).
+      sort: 'power',
+      per_page: 120,
+      // The picker only needs name/image/stats — skip the listing payload the
+      // album needs (overview, view counts, quest facets): ~half the bytes.
+      light: '1',
+      // Vocation narrows the BROWSE list only. A typed search drops it: if you
+      // name the item, it's yours — a wrong/failed vocation lookup must never
+      // turn a real weapon into "no results".
+      ...(charVoc && !gearTerm ? { vocation: charVoc } : {}),
+    },
+    // Wait for the character lookup to settle: firing while it loads asks
+    // twice (once vocation-less, once with it) for the same browse list.
+    charOpen && gearSlot !== null && !charQuery.isLoading,
+  )
+  const gearChoices = gearItemsQuery.data?.data ?? []
+  // The list lags the input by the debounce; say so instead of showing the
+  // previous term's hits as if they were results for what you just typed.
+  const gearSearching = gearItemsQuery.isFetching || gearSearch !== gearQuery.trim()
+  // Derived stats of the worn set — same math the Hunt Finder scores with.
+  const setStatsQuery = useSetStats(gearIdList, charVoc)
+  const setStats = setStatsQuery.data ?? null
+  // Scale for the skill-bonus bars: relative to the biggest bonus worn, with a
+  // floor of 8 so a lone +2 doesn't paint a full bar.
+  const skillMax = setStats
+    ? Math.max(8, ...Object.values(setStats.bonuses).map((v) => Math.abs(v)))
+    : 8
+  const huntLevelNum =
+    huntLevel.trim() !== '' ? Math.max(1, parseInt(huntLevel, 10) || 0) : (character?.level ?? null)
+  const effVoc = huntVoc.trim() !== '' ? huntVoc : charVoc
+  const huntQuery = useHunts(huntLevelNum, effVoc, 'solo', huntOpen, gearIdList)
+  const hunt = huntQuery.data ?? null
+  // Localised element label, falling back to the prettified key (drown, life drain).
+  const elLabel = (el: string) => t(`elements.${el}`, { defaultValue: el.replace(/_/g, ' ') })
+  // Picking a different vocation/level/mode invalidates the selected zone.
+  const resetHuntSel = () => setHuntZoneId(null)
+
   const [showFilters, setShowFilters] = useState(false) // collapsible refine panel
   const [showTour, setShowTour] = useState(false) // guided how-to overlay
   const [bossRailOpen, setBossRailOpen] = useState(false) // world-boss watch sidebar (starts minimized so it doesn't cover the map)
   const [bossQuery, setBossQuery] = useState('') // free-text filter for the boss watch rail
+  const [bossType, setBossType] = useState<BossType>('all') // spawntype tab (Raid/Unique/…)
   // Bosses the player has pinned to "follow" — kept at the top of the rail and
   // never dropped by the hottest-16 cut. Persisted so a watch survives reloads.
   const [pinnedBosses, setPinnedBosses] = useState<Set<string>>(() => {
@@ -1344,6 +1927,11 @@ export function MapPage() {
   const [routePlan, setRoutePlan] = useState<RoutePlan | null>(null)
   const [routeBusy, setRouteBusy] = useState(false)
   const [routeMsg, setRouteMsg] = useState<string | null>(null)
+  // "Reportar" flow for a wrong route: idle → editing (note box open) → sending →
+  // done/error. The submitted report (endpoints + itinerary + note) lands in the
+  // DB for a later routing fix pass (read via `php artisan tibia:route-reports`).
+  const [reportState, setReportState] = useState<'idle' | 'editing' | 'sending' | 'done' | 'error'>('idle')
+  const [reportNote, setReportNote] = useState('')
   const routeGroupRef = useRef<L.LayerGroup | null>(null)
   const routeModeRef = useRef(routeMode)
   const routeStartRef = useRef(routeStart)
@@ -1364,8 +1952,30 @@ export function MapPage() {
   const [buildPlan, setBuildPlan] = useState<RoutePlan | null>(null)
   const [buildBusy, setBuildBusy] = useState(false)
   const [publishState, setPublishState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle')
-  // Community route gallery: published routes others submitted, ranked by loads.
+  // Community route gallery: published routes others submitted, ranked by likes.
+  // The list is paginated (server-side, most popular first); this holds the page.
   const [routesOpen, setRoutesOpen] = useState(false)
+  const [routesPage, setRoutesPage] = useState(1)
+  const [routesQuery, setRoutesQuery] = useState('')
+  const routesQueryDebounced = useDebouncedValue(routesQuery.trim(), 300)
+  // Routes this visitor has "liked". No accounts, so a like is client-side: we
+  // remember the ids here (persisted) to show the heart filled and to avoid
+  // double-counting; the server just holds the aggregate counter.
+  const [likedRoutes, setLikedRoutes] = useState<Set<number>>(() => {
+    try {
+      const raw = localStorage.getItem('tibiaAtlas.likedRoutes')
+      return new Set(raw ? (JSON.parse(raw) as number[]) : [])
+    } catch {
+      return new Set()
+    }
+  })
+  useEffect(() => {
+    try {
+      localStorage.setItem('tibiaAtlas.likedRoutes', JSON.stringify([...likedRoutes]))
+    } catch {
+      /* private mode / storage disabled — non-fatal */
+    }
+  }, [likedRoutes])
   const buildGroupRef = useRef<L.LayerGroup | null>(null)
   const buildModeRef = useRef(buildMode)
   const buildPointsRef = useRef(buildPoints)
@@ -1491,10 +2101,26 @@ export function MapPage() {
     L.popup({ offset: [0, -8] }).setLatLng(ll).setContent(buildHousePopupEl(hl)).openOn(map)
   }
 
-  // Clicking a house event in the news ticker flies to that house (turning the
-  // layer on so its pin is visible). Resolved by the real house id against the
-  // static houses.json; a house not in our baked set is simply a no-op.
+  // Centre the map on a hunting zone (switching floor if needed) and mark it as
+  // the selected zone, so the highlight ring effect draws over it.
+  function flyToZone(zone: HuntZone) {
+    // Select first so the card expands + the highlight arms even if the map
+    // isn't ready yet; then fly to it when the map is available.
+    setHuntZoneId(zone.id)
+    const map = mapRef.current
+    if (!map) return
+    if (zone.z !== floorRef.current) setFloor(zone.z)
+    map.flyTo(toLatLng(zone.x, zone.y), Math.max(map.getZoom(), 4), { duration: 0.6 })
+  }
+
+  // Clicking a news-ticker item: a daily-digest creature/boss plots its spawns
+  // (reusing the creature search machinery); a house event flies to that house
+  // (turning the layer on so its pin shows). Both are no-ops when unresolvable.
   function onPickEvent(ev: WorldEvent) {
+    if (ev.type.startsWith('digest_')) {
+      if (ev.meta?.slug) void addCreature(ev.meta.slug)
+      return
+    }
     if (!ev.ref_id) return
     const h = houseByIdRef.current.get(ev.ref_id)
     if (!h) return
@@ -1596,6 +2222,61 @@ export function MapPage() {
     setRouteEnd(null)
     setRoutePlan(null)
     setRouteMsg(null)
+    setReportState('idle')
+    setReportNote('')
+  }
+
+  // Close the directions bar entirely: wipe the route and leave route mode.
+  function closeRoute() {
+    resetRoute()
+    setRouteMode(false)
+  }
+
+  // Report the current route as wrong. Sends the two endpoints, an optional note
+  // ("what looks off"), a trimmed snapshot of the computed itinerary and the map
+  // URL hash (so the exact route replays) to the DB for a later routing fix.
+  async function submitRouteReport() {
+    const s = routeStartRef.current
+    const e = routeEndRef.current
+    if (!s || !e || reportState === 'sending') return
+    setReportState('sending')
+    try {
+      // Trim walk legs to their endpoints so the payload stays small; boat/stairs
+      // legs are already compact. Keeps the itinerary shape for triage.
+      const plan = routePlan
+        ? {
+            totalTiles: routePlan.totalTiles,
+            partial: routePlan.partial,
+            legs: routePlan.legs.map((leg) =>
+              leg.kind === 'walk'
+                ? {
+                    kind: 'walk',
+                    floor: leg.floor,
+                    tiles: leg.tiles,
+                    path: leg.path.length > 2 ? [leg.path[0], leg.path[leg.path.length - 1]] : leg.path,
+                  }
+                : leg,
+            ),
+          }
+        : null
+      await api.post('/route-reports', {
+        from: [Math.round(s.x), Math.round(s.y), s.floor],
+        to: [Math.round(e.x), Math.round(e.y), e.floor],
+        from_label: s.label ?? null,
+        to_label: e.label ?? null,
+        note: reportNote.trim() || null,
+        plan,
+        total_tiles: routePlan?.totalTiles ?? null,
+        partial: !!routePlan?.partial,
+        hash: window.location.hash.replace(/^#/, '') || null,
+        view_floor: floorRef.current,
+        lang: i18n.language?.slice(0, 2) ?? null,
+      })
+      setReportState('done')
+      setReportNote('')
+    } catch {
+      setReportState('error')
+    }
   }
 
   // --- manual route builder actions ---
@@ -1975,12 +2656,29 @@ export function MapPage() {
         const gy = coords.y * TILE
         img.alt = ''
         img.style.imageRendering = 'pixelated'
+        // leaflet.css sets mix-blend-mode:plus-lighter on tiles (Chromium
+        // hairline workaround). Combined with our 1px tile overlap (see
+        // _initTile) the overlapping strip ADDS both tiles' colours — a
+        // bright white/cyan grid. Our tiles are opaque; blend normally.
+        img.style.mixBlendMode = 'normal'
         const f = (this as L.GridLayer).options as { floor: number }
         img.onerror = () => {
           img.style.visibility = 'hidden'
         }
         img.src = `/minimap/Minimap_Color_${gx}_${gy}_${f.floor}.png`
         return img
+      },
+      // Kill the tile-seam grid: the tile pane sits at a sub-pixel offset, so
+      // with image-rendering:pixelated a 1px gap opens at every tile boundary
+      // and the #336699 container background shows through as a blue grid.
+      // Drawing each tile 1px larger makes neighbours overlap instead of
+      // leaving a gap. Must live in _initTile — Leaflet overrides any size set
+      // in createTile.
+      _initTile(tile: HTMLElement) {
+        ;(L.GridLayer.prototype as unknown as { _initTile(t: HTMLElement): void })._initTile.call(this, tile)
+        const size = (this as L.GridLayer).getTileSize()
+        tile.style.width = `${size.x + 1}px`
+        tile.style.height = `${size.y + 1}px`
       },
     })
 
@@ -2010,6 +2708,8 @@ export function MapPage() {
     const houseGroup = L.layerGroup().addTo(map)
     const spawnGroup = L.layerGroup().addTo(map)
     const cityGroup = L.layerGroup().addTo(map)
+    const loreGroup = L.layerGroup().addTo(map)
+    const tradeGroup = L.layerGroup().addTo(map)
     const markersGroup = L.layerGroup().addTo(map)
     const routeGroup = L.layerGroup().addTo(map)
     const buildGroup = L.layerGroup().addTo(map)
@@ -2030,6 +2730,8 @@ export function MapPage() {
     allSpriteGroupRef.current = allSpriteGroup
     poiGroupRef.current = poiGroup
     houseGroupRef.current = houseGroup
+    loreGroupRef.current = loreGroup
+    tradeGroupRef.current = tradeGroup
     routeGroupRef.current = routeGroup
     buildGroupRef.current = buildGroup
     // Fresh map, fresh layer groups: the diff caches hold markers bound to the
@@ -2162,6 +2864,8 @@ export function MapPage() {
       allSpriteGroupRef.current = null
       poiGroupRef.current = null
       houseGroupRef.current = null
+      loreGroupRef.current = null
+      tradeGroupRef.current = null
       routeGroupRef.current = null
       buildGroupRef.current = null
     }
@@ -2228,6 +2932,72 @@ export function MapPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [floor, mapReady])
 
+  // Draw the curated lore / mystery POIs when the layer is on. Each pin sits on
+  // its own floor (all surface today) and, when clicked, flies the map there and
+  // opens the in-map reader panel for its lore entry. The open pin is highlighted.
+  useEffect(() => {
+    const grp = loreGroupRef.current
+    if (!grp) return
+    grp.clearLayers()
+    if (!showLore) return
+    for (const poi of LORE_POIS) {
+      if (poi.floor !== floor) continue
+      const active = poi === lorePoi
+      const icon = L.divIcon({
+        className: '',
+        html:
+          `<div class="tm-lore${active ? ' is-active' : ''}">` +
+          `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
+          `<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>` +
+          `</div>`,
+        iconSize: [0, 0],
+      })
+      L.marker(toLatLng(poi.x, poi.y), { icon, interactive: true, keyboard: false, zIndexOffset: 500 })
+        .addTo(grp)
+        .bindTooltip(escapeHtml(poi.title), { direction: 'top', offset: [0, -12] })
+        .on('click', () => {
+          setLorePoi(poi)
+          const map = mapRef.current
+          if (map) map.flyTo(toLatLng(poi.x, poi.y), Math.max(map.getZoom(), 3), { duration: 0.5 })
+        })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [floor, mapReady, showLore, lorePoi])
+
+  // Trade pins for the searched item: one pin per merchant spawn — gold when
+  // the NPC sells it, green when it pays you for it, split when both. Pins on
+  // other floors render dimmed; clicking one flies there (switching floor) and
+  // presets the "Cómo llegar" destination on that merchant.
+  useEffect(() => {
+    const grp = tradeGroupRef.current
+    if (!grp) return
+    grp.clearLayers()
+    const trade = activeItem?.trade
+    if (!trade) return
+    for (const p of mergeTradePins(trade)) {
+      const kind =
+        p.buyPrice != null && p.sellPrice != null ? 'is-both' : p.buyPrice != null ? 'is-buy' : 'is-sell'
+      const gp = (n: number) => `${n.toLocaleString()} ${escapeHtml(p.currency ?? 'gp')}`
+      const lines = [`<b>${escapeHtml(p.npc)}</b>${p.city ? ` · ${escapeHtml(p.city)}` : ''}`]
+      if (p.buyPrice != null) lines.push(`${t('map.tradeSellsFor')} ${gp(p.buyPrice)}`)
+      if (p.sellPrice != null) lines.push(`${t('map.tradePaysYou')} ${gp(p.sellPrice)}`)
+      const tip = lines.join('<br>')
+      for (const c of p.coords) {
+        const off = c[2] !== floor
+        const icon = L.divIcon({
+          className: '',
+          html: `<div class="tm-trade ${kind}${off ? ' is-off' : ''}">${TRADE_PIN_SVG}</div>`,
+          iconSize: [0, 0],
+        })
+        L.marker(toLatLng(c[0], c[1]), { icon, interactive: true, keyboard: false, zIndexOffset: 600 })
+          .addTo(grp)
+          .bindTooltip(tip, { direction: 'top', offset: [0, -12] })
+          .on('click', () => routeToTradeNpc(p.npc, c))
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeItem, floor, mapReady])
+
   // Draw the selected creatures' spawn icons. Seven creatures can carry ~700
   // spawn points and Leaflet repositions every DOM marker on each zoom, so only
   // spawns in (or near) the viewport get a DOM node; keys are world coordinates
@@ -2286,6 +3056,35 @@ export function MapPage() {
     writeHash()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [creatures, floor, mapReady])
+
+  // Highlight ring over the hunting zone picked in the Hunt Finder — shown only
+  // while its floor is selected (the ring is lazily created on first use).
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    let grp = huntHiRef.current
+    if (!grp) {
+      grp = L.layerGroup().addTo(map)
+      huntHiRef.current = grp
+    }
+    grp.clearLayers()
+    const zone = hunt?.zones.find((z) => z.id === huntZoneId)
+    if (zone && zone.z === floor) {
+      if (!huntSvgRef.current) huntSvgRef.current = L.svg().addTo(map)
+      grp.addLayer(
+        L.circleMarker(toLatLng(zone.x, zone.y), {
+          radius: 28,
+          color: '#f4e7c6',
+          weight: 3,
+          opacity: 0.95,
+          fillColor: '#d23d2f',
+          fillOpacity: 0.14,
+          renderer: huntSvgRef.current,
+        }),
+      )
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [huntZoneId, hunt, floor, mapReady])
 
   // Draw the computed route + start/destination pins. The route belongs to the
   // start point's floor, so it only shows while that floor is selected.
@@ -2604,12 +3403,13 @@ export function MapPage() {
       if (!s) continue
       if (houseStatusFilter === 'available' && !(s === 'free' || s === 'auctioned')) continue
       if (houseStatusFilter === 'rented' && s !== 'rented') continue
+      if (houseTownFilter && (h.town ?? '') !== houseTownFilter) continue
       if (q && !h.name.toLowerCase().includes(q) && !(h.town ?? '').toLowerCase().includes(q)) continue
       out.push({ h, status: s, bid: live[h.id]?.bid })
     }
     out.sort((a, b) => (a.h.town ?? '').localeCompare(b.h.town ?? '') || a.h.rent - b.h.rent)
     return out
-  }, [houseStatus, housesData, houseKind, houseStatusFilter, houseSearch])
+  }, [houseStatus, housesData, houseKind, houseStatusFilter, houseSearch, houseTownFilter])
 
   // Count of currently-available houses (kind-filtered) — drives the green badge
   // on the panel toggle, independent of the status filter.
@@ -2627,6 +3427,67 @@ export function MapPage() {
     return n
   }, [houseStatus, housesData, houseKind])
 
+  // Per-status counts (kind-filtered) for the status-filter segmented control —
+  // lets each button show how many houses it would surface at a glance.
+  const statusCounts = useMemo(() => {
+    const live = houseStatus?.houses
+    const all = housesData?.houses
+    if (!live || !all) return { all: 0, available: 0, rented: 0 }
+    let total = 0
+    let available = 0
+    let rented = 0
+    for (const h of all) {
+      if (houseKind === 'guild' && !h.guild) continue
+      if (houseKind === 'house' && h.guild) continue
+      const s = live[h.id]?.status
+      if (!s) continue
+      total++
+      if (s === 'free' || s === 'auctioned') available++
+      else if (s === 'rented') rented++
+    }
+    return { all: total, available, rented }
+  }, [houseStatus, housesData, houseKind])
+
+  // Per-kind counts (status-filtered) for the house-vs-guildhall segmented
+  // control — mirrors statusCounts so each button shows its live tally.
+  const kindCounts = useMemo(() => {
+    const live = houseStatus?.houses
+    const all = housesData?.houses
+    if (!all) return { all: 0, house: 0, guild: 0 }
+    let total = 0
+    let house = 0
+    let guild = 0
+    for (const h of all) {
+      const s = live?.[h.id]?.status
+      if (houseStatusFilter === 'available' && !(s === 'free' || s === 'auctioned')) continue
+      if (houseStatusFilter === 'rented' && s !== 'rented') continue
+      total++
+      if (h.guild) guild++
+      else house++
+    }
+    return { all: total, house, guild }
+  }, [houseStatus, housesData, houseStatusFilter])
+
+  // Total monthly rent (gold) paid across every currently-rented house on this
+  // world — the "how much gold does this server pay for housing" figure. Only
+  // rented houses count (free/auctioned pay nothing); respects the kind filter.
+  const worldRentTotal = useMemo(() => {
+    const live = houseStatus?.houses
+    const all = housesData?.houses
+    if (!live || !all) return { gold: 0, count: 0 }
+    let gold = 0
+    let count = 0
+    for (const h of all) {
+      if (houseKind === 'guild' && !h.guild) continue
+      if (houseKind === 'house' && h.guild) continue
+      if (live[h.id]?.status === 'rented') {
+        gold += h.rent
+        count++
+      }
+    }
+    return { gold, count }
+  }, [houseStatus, housesData, houseKind])
+
   // Distinct towns that have houses, for the "watch a whole town" picker.
   const houseTowns = useMemo(() => {
     const s = new Set<string>()
@@ -2642,6 +3503,11 @@ export function MapPage() {
       ),
     [watches, world],
   )
+  // Active alerts for this world (watched houses + whole-town/world watches) —
+  // shown as a badge on the collapsed "my alerts" submenu.
+  const watchCount =
+    watchedHouses.length +
+    watches.filter((w) => (w.kind === 'town' || w.kind === 'world') && w.world === world).length
 
   // Auto-dismiss the "a house opened up" toast after a while.
   useEffect(() => {
@@ -2828,7 +3694,12 @@ export function MapPage() {
     setSearchOpen(false)
     setItemBusy(true)
     try {
-      const { data } = await api.get<{ data: ItemDetail }>(`/items/${slug}`)
+      // Trade offers ride along with the detail: the same search also answers
+      // "¿dónde lo compro/vendo?" with merchant pins. Non-fatal if it fails.
+      const [{ data }, tradeRes] = await Promise.all([
+        api.get<{ data: ItemDetail }>(`/items/${slug}`),
+        api.get<{ data: ItemTrade }>(`/items/${slug}/trade`).catch(() => null),
+      ])
       const it = data.data
       const droppers = it.dropped_by.filter((d): d is Dropper & { slug: string } => !!d.slug)
       const plotted = droppers.slice(0, PALETTE.length)
@@ -2838,6 +3709,7 @@ export function MapPage() {
         image: it.image,
         plotted: plotted.map((d) => d.slug),
         total: droppers.length,
+        trade: tradeRes?.data.data ?? null,
       })
       // Jump to the first dropper's densest spawn, then plot the rest quietly.
       if (plotted.length) {
@@ -2905,13 +3777,55 @@ export function MapPage() {
     if (map) map.setView(toLatLng(pt.x, pt.y), Math.max(map.getZoom(), 3))
   }
 
+  // Default the route origin to the nearest city when none is picked yet, so
+  // the route computes immediately instead of waiting for the player to choose
+  // a starting city. Nearest is by horizontal distance — cities are surface
+  // entry points, so floor is irrelevant for the pick.
+  function ensureRouteStartNear(pt: RoutePoint) {
+    if (routeStartRef.current) return
+    const near = LANDMARKS.reduce<Landmark | null>((best, l) => {
+      const d = (l.x - pt.x) ** 2 + (l.y - pt.y) ** 2
+      return !best || d < (best.x - pt.x) ** 2 + (best.y - pt.y) ** 2 ? l : best
+    }, null)
+    if (near) {
+      const start: RoutePoint = { x: near.x, y: near.y, floor: near.floor, label: near.name }
+      routeStartRef.current = start
+      setRouteStart(start)
+    }
+  }
+
   // "Cómo llegar" from a plotted creature's active spawn cluster.
   function routeToSpawn(slug: string) {
     const cr = creaturesRef.current.find((c) => c.slug === slug)
     const pt = cr && routeEndForCreature(cr)
     if (!pt) return
     setRouteMode(true)
+    ensureRouteStartNear(pt)
     applyRouteEnd(pt)
+  }
+
+  // "Cómo llegar" to a merchant pin from the item trade layer.
+  function routeToTradeNpc(name: string, c: [number, number, number]) {
+    const pt: RoutePoint = { x: c[0], y: c[1], floor: c[2], label: name }
+    setRouteMode(true)
+    ensureRouteStartNear(pt)
+    applyRouteEnd(pt)
+  }
+
+  // Banner chips: fly-and-route to the best-priced merchant of one side of the
+  // trade board (the API lists arrive best-price-first; merchants without map
+  // coords — scripted spawns outside the mapped region — are skipped). Going
+  // shopping means the dropper overlays are noise now, so they get cleared —
+  // the trade pins and the route are what's left on screen.
+  function routeToBestOffer(offers: ItemTrade['buy']) {
+    const o = offers.find((x) => x.coords && x.coords.length > 0)
+    if (!o) return
+    const item = activeItem
+    if (item && item.plotted.length) {
+      for (const s of item.plotted) removeCreature(s)
+      setActiveItem({ ...item, plotted: [] })
+    }
+    routeToTradeNpc(o.npc, o.coords![0])
   }
 
   function goTo(l: Landmark) {
@@ -2935,13 +3849,31 @@ export function MapPage() {
   const spawnsOnFloor = (cr: ActiveCreature) => cr.spawns.filter((s) => s.z === floor).length
   const activeFilterCount = [catFilter, zoneFilter, levelFilter].filter(Boolean).length
 
+  // The layer trees (markers, houses) sprout up out of the hotbar into the band
+  // straight above it, and they're absolutely positioned — nothing in the bar's
+  // flow knows they're there. The legend line rides above the bar, so it has to
+  // leave that band clear itself or it lands on top of the trees and eats their
+  // clicks. Height of the tallest open tree, in rem so it tracks the slots when
+  // the root font-size scales: N slots (h-11) + the gaps between them (gap-1.5),
+  // plus a little air. The tree's own stem (mb-2) is paid for by the bar's gap-2.
+  const treeSlots = Math.max(
+    showPoi ? 1 + (markers.length > 0 ? 1 : 0) : 0,
+    showHouses ? 2 : 0,
+  )
+  const treeClearance = treeSlots
+    ? `calc(${treeSlots} * 2.75rem + ${treeSlots - 1} * 0.375rem + 0.25rem)`
+    : undefined
+
   const activeSlugs = useMemo(() => new Set(creatures.map((c) => c.slug)), [creatures])
 
   // "Boss Watch": the raid/world bosses ranked by spawn heat (likelihood of
   // being up right now / about to spawn). Powers both the ☠-mode strip and the
   // always-on right-edge boss rail, so it's fetched on every map view.
   // Plottable bosses (slug + sprite) sorted hottest first.
-  const { data: bossWatch, isLoading: bossLoading } = useBosses('raid', 24, true, world)
+  // Full tracked roster (~164), not a top-N cut: a cut spilled tracked bosses
+  // into the "no recent data" glossary bucket (Gaz'haragoth had kills 2 days
+  // ago yet read "sin datos"). The rail still displays pins + hottest 16.
+  const { data: bossWatch, isLoading: bossLoading } = useBosses('raid', 200, true, world)
   const bosses = useMemo(
     () =>
       (bossWatch ?? [])
@@ -2952,65 +3884,112 @@ export function MapPage() {
           (b): b is BossRow & { slug: string; image: string } =>
             !!b.slug && !!b.image && b.week_killed > 0,
         )
-        .sort((a, b) => b.heat - a.heat || b.due - a.due),
+        // heat null = world-scoped with no kill recorded there — sink those below
+        // any real reading so the rail leads with bosses we can actually call.
+        .sort((a, b) => (b.heat ?? -1) - (a.heat ?? -1) || b.due - a.due),
     [bossWatch],
   )
   // Rail row shape — heat-tracked bosses carry a heat/worlds read; bosses pulled
-  // from the glossary (rare ones with no kill-stats) carry heat = null.
-  type RailBoss = { race: string; slug: string; image: string | null; heat: number | null; worlds: string[] }
-  // Free-text filter for the rail. When empty it keeps the default "hottest 16"
-  // cut (plus any pins). A query searches the whole boss roster — both the
-  // heat-tracked API list AND every published boss from the glossary, so rare
-  // bosses missing from kill-stats (e.g. Gaz'haragoth) are still findable and
-  // followable. Pinned ("followed") bosses always float to the top and skip the
-  // 16-cap, so a watch never scrolls out of view.
-  const shownBosses = useMemo<RailBoss[]>(() => {
-    const q = bossQuery.trim().toLowerCase()
+  // from the glossary (rare ones with no kill-stats) carry heat = null. spawn_type
+  // (from the glossary) drives the category tabs.
+  type RailBoss = { race: string; slug: string; image: string | null; heat: number | null; worlds: string[]; spawn_type: string[] | null }
+  // slug → spawntypes, so the heat-tracked list (which the kill-stats API doesn't
+  // tag) can be classified for the tabs by borrowing the glossary's spawn_type.
+  const spawnTypeBySlug = useMemo(() => {
+    const m = new Map<string, string[]>()
+    for (const g of glossary ?? []) if (g.boss && g.spawn_type?.length) m.set(g.slug, g.spawn_type)
+    return m
+  }, [glossary])
+  // The whole boss roster (heat-tracked + glossary-only), each tagged with its
+  // spawntype. The rail derives both the tab counts and the shown list from it.
+  const allRailBosses = useMemo<RailBoss[]>(() => {
     const heatList: RailBoss[] = bosses.map((b) => ({
       race: b.race,
       slug: b.slug,
       image: b.image,
       heat: b.heat,
       worlds: b.worlds,
+      spawn_type: spawnTypeBySlug.get(b.slug) ?? null,
     }))
     const heatSlugs = new Set(heatList.map((b) => b.slug))
     // Published bosses the heat roster doesn't cover (floor-independent).
     const glossaryBosses: RailBoss[] = (glossary ?? [])
       .filter((g) => g.boss && g.type === 'creature' && !heatSlugs.has(g.slug))
-      .map((g) => ({ race: g.name, slug: g.slug, image: g.image, heat: null, worlds: [] }))
-    const resolve = (slug: string): RailBoss | undefined =>
-      heatList.find((b) => b.slug === slug) ?? glossaryBosses.find((b) => b.slug === slug)
+      .map((g) => ({ race: g.name, slug: g.slug, image: g.image, heat: null, worlds: [], spawn_type: g.spawn_type ?? null }))
+    return [...heatList, ...glossaryBosses]
+  }, [bosses, glossary, spawnTypeBySlug])
+  // Count per tab, for the little badges. A boss counts toward every spawntype it
+  // carries; 'all' = the whole roster.
+  const bossTypeCounts = useMemo(() => {
+    const c: Record<BossType, number> = { all: allRailBosses.length, Raid: 0, Unique: 0, Triggered: 0, Regular: 0, Event: 0, Unblockable: 0 }
+    for (const b of allRailBosses) for (const st of b.spawn_type ?? []) if (st in c) c[st as BossType]++
+    return c
+  }, [allRailBosses])
+  // Free-text filter + spawntype tab for the rail. 'all' with no query keeps the
+  // classic "hottest 16" cut (plus pins); a specific tab shows that spawntype's
+  // whole roster (hottest first, then A–Z), and a query searches within the tab.
+  // The heat-tracked API list AND every published boss from the glossary are both
+  // in scope, so rare bosses missing from kill-stats (e.g. Gaz'haragoth) stay
+  // findable and followable. Pinned ("followed") bosses always float to the top
+  // and skip the cap, so a watch never scrolls out of view.
+  const shownBosses = useMemo<RailBoss[]>(() => {
+    const q = bossQuery.trim().toLowerCase()
+    const byHeatThenName = (a: RailBoss, b: RailBoss) =>
+      (b.heat ?? -1) - (a.heat ?? -1) || a.race.localeCompare(b.race)
+    const inTab = (b: RailBoss) => bossType === 'all' || (b.spawn_type?.includes(bossType) ?? false)
+    const pool = allRailBosses.filter(inTab)
+    const resolve = (slug: string): RailBoss | undefined => allRailBosses.find((b) => b.slug === slug)
 
     if (q) {
       const match = (b: RailBoss) =>
         b.race.toLowerCase().includes(q) || b.worlds.some((w) => w.toLowerCase().includes(q))
-      const heatMatched = heatList.filter(match)
-      const glossMatched = glossaryBosses.filter(match).sort((a, b) => a.race.localeCompare(b.race))
-      const matched = [...heatMatched, ...glossMatched]
+      const matched = pool.filter(match).sort(byHeatThenName)
       const pinned = matched.filter((b) => pinnedBosses.has(b.slug))
       const rest = matched.filter((b) => !pinnedBosses.has(b.slug))
       return [...pinned, ...rest]
     }
 
-    // No query: pins first (resolved from either source so a followed rare boss
-    // stays visible), then the hottest 16 heat-tracked bosses.
-    const pinnedList = [...pinnedBosses].map(resolve).filter((b): b is RailBoss => !!b)
-    const pinnedSlugs = new Set(pinnedList.map((b) => b.slug))
-    const rest = heatList.filter((b) => !pinnedSlugs.has(b.slug)).slice(0, 16)
-    return [...pinnedList, ...rest]
-  }, [bosses, bossQuery, pinnedBosses, glossary])
+    // No query, 'all' tab: pins first (resolved from either source so a followed
+    // rare boss stays visible), then the hottest 16 heat-tracked bosses.
+    if (bossType === 'all') {
+      const pinnedList = [...pinnedBosses].map(resolve).filter((b): b is RailBoss => !!b)
+      const pinnedSlugs = new Set(pinnedList.map((b) => b.slug))
+      const rest = allRailBosses.filter((b) => !pinnedSlugs.has(b.slug)).slice(0, 16)
+      return [...pinnedList, ...rest]
+    }
 
-  // Published community routes, most-loaded first. Only fetched once the gallery
-  // is opened.
-  const { data: communityRoutes, isLoading: routesLoading } = useQuery({
-    queryKey: ['community-routes'],
+    // A specific spawntype tab: the WHOLE category (hottest first, then A–Z), so
+    // browsing the tab surfaces every boss in it — no cap, the rail scrolls. A cap
+    // here would hide alphabetically-late rare spawns like Midnight Panther, which
+    // carry no heat and sort below the heated bosses.
+    const sorted = [...pool].sort(byHeatThenName)
+    const pinned = sorted.filter((b) => pinnedBosses.has(b.slug))
+    const rest = sorted.filter((b) => !pinnedBosses.has(b.slug))
+    return [...pinned, ...rest]
+  }, [allRailBosses, bossQuery, bossType, pinnedBosses])
+
+  // Published community routes, most popular first, one page at a time. Only
+  // fetched once the gallery is opened; keepPreviousData keeps the current page
+  // on screen (no flash to empty) while the next page loads.
+  const { data: routesData, isLoading: routesLoading } = useQuery({
+    queryKey: ['community-routes', routesPage, routesQueryDebounced],
     enabled: routesOpen,
     staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
     queryFn: async () => {
-      const { data } = await api.get<{ data: CommunityRoute[] }>('/routes')
-      return data.data
+      const { data } = await api.get<Paginated<CommunityRoute>>('/routes', {
+        params: { page: routesPage, q: routesQueryDebounced || undefined },
+      })
+      return data
     },
   })
+  const communityRoutes = routesData?.data
+
+  // A new search term resets to the first page (the old page number rarely exists
+  // in the filtered result set).
+  useEffect(() => {
+    setRoutesPage(1)
+  }, [routesQueryDebounced])
 
   // Load a community route onto the map: drop it into the builder (so it renders
   // with pins + legs and can be tweaked/re-published), fly to its start, and bump
@@ -3032,6 +4011,44 @@ export function MapPage() {
       if (map) map.setView(toLatLng(first[0], first[1]), Math.max(map.getZoom(), 3))
     }
     api.post(`/routes/${r.id}/view`).catch(() => {})
+  }
+
+  // Toggle a "like" on a community route. Optimistic: flip the local liked set and
+  // adjust the cached count immediately, then POST like/unlike. On failure, roll
+  // both back so the UI never drifts from the server.
+  function toggleLike(r: CommunityRoute) {
+    const liked = likedRoutes.has(r.id)
+    const delta = liked ? -1 : 1
+    // Optimistically update the liked set…
+    setLikedRoutes((prev) => {
+      const next = new Set(prev)
+      if (liked) next.delete(r.id)
+      else next.add(r.id)
+      return next
+    })
+    // …and the count in the query cache (the current page's slice).
+    const bump = (d: number) =>
+      queryClient.setQueryData<Paginated<CommunityRoute>>(['community-routes', routesPage, routesQueryDebounced], (old) =>
+        old
+          ? {
+              ...old,
+              data: old.data.map((x) =>
+                x.id === r.id ? { ...x, likes: Math.max(0, x.likes + d) } : x,
+              ),
+            }
+          : old,
+      )
+    bump(delta)
+    api.post(`/routes/${r.id}/${liked ? 'unlike' : 'like'}`).catch(() => {
+      // Roll back on error.
+      setLikedRoutes((prev) => {
+        const next = new Set(prev)
+        if (liked) next.add(r.id)
+        else next.delete(r.id)
+        return next
+      })
+      bump(-delta)
+    })
   }
 
   return (
@@ -3124,6 +4141,35 @@ export function MapPage() {
               </svg>
             </button>
           </div>
+          {/* Spawntype tabs — split the roster into Raid / Unique / Triggered / …
+              Empty categories (before the spawntype backfill lands) are hidden. */}
+          {bossRailOpen && (
+            <div
+              className="scroll-atlas mb-1 flex shrink-0 gap-1 overflow-x-auto pb-1"
+              role="tablist"
+              aria-label={t('map.bossTypeFilter')}
+            >
+              {BOSS_TYPES.map((bt) => {
+                const active = bossType === bt
+                const count = bossTypeCounts[bt]
+                if (bt !== 'all' && count === 0 && !active) return null
+                return (
+                  <button
+                    key={bt}
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setBossType(bt)}
+                    className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide transition ${
+                      active ? 'border-theory bg-theory text-white' : 'border-line text-fg-mute hover:border-line-2 hover:text-fg'
+                    }`}
+                  >
+                    {t(`map.bossType.${bt.toLowerCase()}`)}
+                    {count > 0 && <span className="ml-1 font-normal opacity-70">{count}</span>}
+                  </button>
+                )
+              })}
+            </div>
+          )}
           {/* Boss filter — only when the rail is expanded (collapsed it's a 5rem strip) */}
           {bossRailOpen && (
             <div className="mb-1 flex items-center gap-1.5 rounded-lg border border-line bg-bg/50 px-2 focus-within:border-accent">
@@ -3162,7 +4208,7 @@ export function MapPage() {
                       onClick={() => (on ? removeCreature(b.slug) : addCreature(b.slug))}
                       title={
                         hs
-                          ? `${b.race} · ${t(hs.label)} ${b.heat}%${b.worlds.length ? ` · ${b.worlds.join(', ')}` : ''}`
+                          ? `${b.race} · ${t(hs.label)}${b.worlds.length ? ` · ${b.worlds.join(', ')}` : ''}`
                           : `${b.race} · ${t('map.bossNoHeat')}`
                       }
                       className={`flex min-w-0 flex-1 items-center gap-2 text-left ${bossRailOpen ? '' : 'justify-center'}`}
@@ -3190,7 +4236,6 @@ export function MapPage() {
                             <span className={`flex items-center gap-1 text-[15px] font-bold ${hs.cls}`}>
                               <span aria-hidden>{hs.glyph}</span>
                               <span className="truncate">{t(hs.label)}</span>
-                              <span className="tabular-nums opacity-70">{b.heat}%</span>
                             </span>
                           ) : (
                             <span className="block truncate text-xs italic text-fg-mute">{t('map.bossNoHeat')}</span>
@@ -3239,7 +4284,7 @@ export function MapPage() {
               })
               : (
                 <p className="px-2 py-4 text-center text-xs text-fg-mute">
-                  {t('map.bossSearchEmpty', { q: bossQuery.trim() })}
+                  {bossQuery.trim() ? t('map.bossSearchEmpty', { q: bossQuery.trim() }) : t('map.bossTypeEmpty')}
                 </p>
               )
             : Array.from({ length: 8 }).map((_, i) => (
@@ -3248,31 +4293,22 @@ export function MapPage() {
         </aside>
       )}
 
-      {/* Live news ticker — "what's happening on your world" (houses changing
-          hands, etc.), a full-width marquee pinned to the very top. Click an
-          item to fly to that house. */}
-      {!eventsDismissed && worldEvents.length > 0 && (
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-[1001] flex justify-center p-2 sm:p-3">
-          <div className="pointer-events-auto w-full max-w-3xl">
-            <EventsTicker
-              events={worldEvents}
-              t={t}
-              onPick={onPickEvent}
-              onClose={() => setEventsDismissed(true)}
-            />
-          </div>
-        </div>
-      )}
+      {/* Live world-news rail — "what's happening on your world" (houses changing
+          hands + the daily kill-stats digest), docked to the RIGHT edge and
+          collapsed to a 📰 button by default so it never shifts the layout.
+          Clicking an item plots the creature / flies to the house. */}
+      <NewsRail
+        events={worldEvents}
+        open={newsOpen}
+        onToggle={() => setNewsOpen((v) => !v)}
+        t={t}
+        onPick={onPickEvent}
+      />
 
       {/* Floating control layer — pinned to the top, translucent so the map reads
           through it. The outer wrapper ignores pointer events so the map stays
-          draggable in the side gutters; the inner column re-enables them. The top
-          padding grows to clear the news ticker when it's showing. */}
-      <div
-        className={`pointer-events-none absolute inset-x-0 top-0 z-[1000] flex flex-col p-2 sm:p-3 ${
-          !eventsDismissed && worldEvents.length > 0 ? 'pt-16 sm:pt-20' : 'pt-5 sm:pt-7'
-        }`}
-      >
+          draggable in the side gutters; the inner column re-enables them. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-[1000] flex flex-col p-2 pt-5 sm:p-3 sm:pt-7">
         <div ref={topColRef} className="pointer-events-none flex w-full max-w-md flex-col gap-2">
 
       {/* Search — the hero, pinned top-left. The action/layer hotbar lives at the
@@ -3405,7 +4441,52 @@ export function MapPage() {
             like a game action bar (fixed, so it escapes the top control column and
             anchors to the viewport). Tooltips name each action. */}
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[1000] flex flex-wrap items-end justify-center gap-2 p-2 sm:p-3">
-          {/* Navigate & plan routes */}
+          {/* Imported-marker category legend — a full-width line, so it always
+              sits on its own row above the pills. It rides in the bar's flow
+              rather than floating over it, and holds `treeClearance` of empty
+              air below so the trees sprouting out of the pills stay clickable. */}
+          {showPoi && (
+            <div
+              className="flex w-full justify-center"
+              style={{ marginBottom: treeClearance }}
+            >
+              <div className="pointer-events-auto flex max-w-[94vw] flex-wrap items-center justify-center gap-x-4 gap-y-2 overflow-x-auto rounded-2xl border border-line-2 bg-surface/95 px-3 py-2 text-xs font-semibold text-fg-dim shadow-lg backdrop-blur-md">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-fg-mute">
+                  {t('map.markersLegend')}
+                </span>
+                {[
+                  { c: '#d23d2f', i: POI_ICONS.boss, l: t('map.poiBoss') },
+                  { c: '#3fa7d6', i: POI_ICONS.travel, l: t('map.poiTravel') },
+                  { c: '#6cc551', i: POI_ICONS.service, l: t('map.poiService') },
+                  { c: '#e0a531', i: POI_ICONS.quest, l: t('map.poiQuest') },
+                  { c: '#9b8cff', i: POI_ICONS.poi, l: t('map.poiOther') },
+                ].map((e) => (
+                  <span key={e.l} className="flex items-center gap-1.5">
+                    <span
+                      className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white/90"
+                      style={{ background: e.c }}
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="#fff"
+                        strokeWidth="2.4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="h-3.5 w-3.5"
+                      >
+                        <path d={e.i} />
+                      </svg>
+                    </span>
+                    {e.l}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Go — everything about moving around the atlas: jump to a city, or
+              plan a route there. */}
           <div className={PILL}>
             {/* Jump to a city — custom themed dropdown (see CityJumpPicker). */}
             <CityJumpPicker
@@ -3418,131 +4499,73 @@ export function MapPage() {
 
             <span className="mx-0.5 h-6 w-px bg-line/50" />
 
-            {/* Directions */}
-            <button
-              onClick={() => {
-                const next = !routeMode
-                setRouteMode(next)
-                resetRoute()
-                if (next) {
-                  setPlacing(false)
-                  setBuildMode(false)
-                  const cr = creaturesRef.current[0]
-                  const pt = cr && routeEndForCreature(cr)
-                  if (pt) applyRouteEnd(pt)
-                }
-              }}
-              title={routeMode ? t('map.routeActive') : t('map.route')}
-              aria-label={t('map.route')}
-              aria-pressed={routeMode}
-              className={`${SLOT} ${routeMode ? SLOT_ON : SLOT_OFF}`}
+            {/* Routes — directions, community gallery and the route builder all
+                sprout from one slot (same family as the Houses layer's tree). */}
+            <HotbarGroup
+              label={t('map.routesGroup')}
+              active={routeMode || buildMode || routesOpen}
+              icon={
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="3 11 22 2 13 21 11 13 3 11" />
+                </svg>
+              }
             >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="3 11 22 2 13 21 11 13 3 11" />
-              </svg>
-            </button>
-
-            {/* Community routes gallery */}
-            <button
-              onClick={() => setRoutesOpen((v) => !v)}
-              title={t('map.routesGallery')}
-              aria-label={t('map.routesGallery')}
-              aria-pressed={routesOpen}
-              className={`${SLOT} ${routesOpen ? SLOT_ON : SLOT_OFF}`}
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
-              </svg>
-            </button>
-
-            {/* Build a route */}
-            <button
-              onClick={toggleBuildMode}
-              title={t('map.buildRoute')}
-              aria-label={t('map.buildRoute')}
-              aria-pressed={buildMode}
-              className={`${SLOT} ${buildMode ? SLOT_ON : SLOT_OFF}`}
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="6" cy="19" r="2" />
-                <circle cx="18" cy="5" r="2" />
-                <path d="M8 17.5 16 6.5" strokeDasharray="2 3" />
-              </svg>
-            </button>
-
-            <span className="mx-0.5 h-6 w-px bg-line/50" />
-
-            {/* Add a marker */}
-            <button
-              onClick={() => {
-                setPlacing((p) => !p)
-                setRouteMode(false)
-                setBuildMode(false)
-              }}
-              title={t('map.addMarker')}
-              aria-label={t('map.addMarker')}
-              aria-pressed={placing}
-              className={`${SLOT} ${placing ? SLOT_ON : SLOT_OFF}`}
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
-                <path d="M12 8v4M10 10h4" />
-              </svg>
-            </button>
-
-            {/* Clear markers (with count) */}
-            {markers.length > 0 && (
+              {/* Directions (nearest the primary — the most-used) */}
               <button
-                onClick={() => setMarkers([])}
-                title={`${t('map.clear')} (${markers.length})`}
-                aria-label={`${t('map.clear')} (${markers.length})`}
-                className={`relative ${SLOT} ${SLOT_OFF}`}
+                onClick={() => {
+                  const next = !routeMode
+                  setRouteMode(next)
+                  resetRoute()
+                  if (next) {
+                    setPlacing(false)
+                    setBuildMode(false)
+                    const cr = creaturesRef.current[0]
+                    const pt = cr && routeEndForCreature(cr)
+                    if (pt) applyRouteEnd(pt)
+                  }
+                }}
+                title={routeMode ? t('map.routeActive') : t('map.route')}
+                aria-label={t('map.route')}
+                aria-pressed={routeMode}
+                className={`${SLOT} ${routeMode ? SLOT_ON : SLOT_OFF}`}
               >
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                  <polygon points="3 11 22 2 13 21 11 13 3 11" />
                 </svg>
-                <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold text-white">
-                  {markers.length}
-                </span>
               </button>
-            )}
 
-            {/* Share this view */}
-            <button
-              onClick={share}
-              title={t('map.share')}
-              aria-label={t('map.share')}
-              className={`${SLOT} ${copied ? 'border-canon bg-canon/15 text-canon' : SLOT_OFF}`}
-            >
-              {copied ? (
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 6 9 17l-5-5" />
-                </svg>
-              ) : (
+              {/* Community routes gallery */}
+              <button
+                onClick={() => {
+                  setRoutesPage(1)
+                  setRoutesQuery('')
+                  setRoutesOpen((v) => !v)
+                }}
+                title={t('map.routesGallery')}
+                aria-label={t('map.routesGallery')}
+                aria-pressed={routesOpen}
+                className={`${SLOT} ${routesOpen ? SLOT_ON : SLOT_OFF}`}
+              >
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="18" cy="5" r="3" />
-                  <circle cx="6" cy="12" r="3" />
-                  <circle cx="18" cy="19" r="3" />
-                  <path d="m8.6 13.5 6.8 4M15.4 6.5 8.6 10.5" />
+                  <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
                 </svg>
-              )}
-            </button>
+              </button>
 
-            <span className="mx-0.5 h-6 w-px bg-line/50" />
-
-            {/* How-to tour */}
-            <button
-              onClick={() => setShowTour(true)}
-              title={t('map.tutorial.open')}
-              aria-label={t('map.tutorial.open')}
-              className={`${SLOT} ${SLOT_OFF}`}
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3" />
-                <path d="M12 17h.01" />
-              </svg>
-            </button>
+              {/* Build a route */}
+              <button
+                onClick={toggleBuildMode}
+                title={t('map.buildRoute')}
+                aria-label={t('map.buildRoute')}
+                aria-pressed={buildMode}
+                className={`${SLOT} ${buildMode ? SLOT_ON : SLOT_OFF}`}
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="6" cy="19" r="2" />
+                  <circle cx="18" cy="5" r="2" />
+                  <path d="M8 17.5 16 6.5" strokeDasharray="2 3" />
+                </svg>
+              </button>
+            </HotbarGroup>
           </div>
 
           {/* Layers — what's drawn on the atlas */}
@@ -3586,21 +4609,99 @@ export function MapPage() {
               </svg>
             </button>
 
+            {/* Refine filters — sits with the creature toggles because that's
+                exactly what it narrows down (category / zone / level). */}
+            <button
+              onClick={() => setShowFilters((v) => !v)}
+              title={t('map.filters')}
+              aria-label={t('map.filters')}
+              aria-pressed={showFilters}
+              className={`relative ${SLOT} ${showFilters || activeFilterCount ? SLOT_ON : SLOT_OFF}`}
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 6h16M7 12h10M10 18h4" />
+              </svg>
+              {activeFilterCount > 0 && (
+                <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold text-white">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+
             <span className="mx-0.5 h-6 w-px bg-line/50" />
 
-            {/* Imported client markers (points of interest) */}
-            <button
-              onClick={() => setShowPoi((v) => !v)}
-              title={t('map.markersLayer')}
-              aria-label={t('map.markersLayer')}
-              aria-pressed={showPoi}
-              className={`${SLOT} ${showPoi ? 'border-interp bg-interp/15 text-interp' : SLOT_OFF}`}
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-                <path d="M4 22v-7" />
-              </svg>
-            </button>
+            {/* Markers — everything about marks on the atlas hangs off one slot.
+                The primary toggles the imported client markers (points of
+                interest); while it's on, your own marker actions (add / clear)
+                sprout UP from it like the Houses tree below. */}
+            <div className="relative flex items-center">
+              {showPoi && (
+                <div className="absolute bottom-full left-1/2 mb-2 flex -translate-x-1/2 flex-col-reverse items-center gap-1.5">
+                  {/* trunk connecting the branch down to the markers icon */}
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute left-1/2 top-1 -bottom-2.5 -z-10 w-0.5 -translate-x-1/2 rounded"
+                    style={{ background: 'var(--color-interp)', opacity: 0.45 }}
+                  />
+                  <button
+                    onClick={() => {
+                      setPlacing((p) => !p)
+                      setRouteMode(false)
+                      setBuildMode(false)
+                    }}
+                    title={t('map.addMarker')}
+                    aria-label={t('map.addMarker')}
+                    aria-pressed={placing}
+                    className={`${SLOT} ${placing ? SLOT_ON : SLOT_OFF}`}
+                  >
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
+                      <path d="M12 8v4M10 10h4" />
+                    </svg>
+                  </button>
+
+                  {/* Clear your markers (only when there are any) */}
+                  {markers.length > 0 && (
+                    <button
+                      onClick={() => setMarkers([])}
+                      title={`${t('map.clear')} (${markers.length})`}
+                      aria-label={`${t('map.clear')} (${markers.length})`}
+                      className={`${SLOT} ${SLOT_OFF}`}
+                    >
+                      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              )}
+              <button
+                onClick={() => {
+                  const next = !showPoi
+                  setShowPoi(next)
+                  // Collapsing the branch would strand "placing" with no visible
+                  // way out, so close it with the tree.
+                  if (!next) setPlacing(false)
+                }}
+                title={t('map.markersLayer')}
+                aria-label={t('map.markersLayer')}
+                aria-pressed={showPoi}
+                className={`relative ${SLOT} ${showPoi || placing ? 'border-interp bg-interp/15 text-interp' : SLOT_OFF}`}
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                  <path d="M4 22v-7" />
+                </svg>
+                {markers.length > 0 && (
+                  <span
+                    className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-bold leading-none text-white"
+                    style={{ background: 'var(--color-interp)' }}
+                  >
+                    {markers.length}
+                  </span>
+                )}
+              </button>
+            </div>
 
             {/* Rentable houses — the layer toggle. When the layer is on, its
                 sub-controls (available-only filter + availability/alerts panel)
@@ -3660,23 +4761,35 @@ export function MapPage() {
               </button>
             </div>
 
-            {/* Refine filters */}
-            <button
-              onClick={() => setShowFilters((v) => !v)}
-              title={t('map.filters')}
-              aria-label={t('map.filters')}
-              aria-pressed={showFilters}
-              className={`relative ${SLOT} ${showFilters || activeFilterCount ? SLOT_ON : SLOT_OFF}`}
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 6h16M7 12h10M10 18h4" />
-              </svg>
-              {activeFilterCount > 0 && (
-                <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold text-white">
-                  {activeFilterCount}
-                </span>
-              )}
-            </button>
+            {/* Lore / mysteries — curated story POIs. Toggling it off also closes
+                any open reader panel so a stray pin's story can't linger. */}
+            <div className="relative flex items-center">
+              <button
+                onClick={() => {
+                  setShowLore((v) => {
+                    if (v) setLorePoi(null)
+                    return !v
+                  })
+                }}
+                title={t('map.loreLayer')}
+                aria-label={t('map.loreLayer')}
+                aria-pressed={showLore}
+                className={`relative ${SLOT} ${showLore ? 'border-[#c79a3f] bg-[#c79a3f]/15 text-[#c79a3f]' : SLOT_OFF}`}
+              >
+                {/* open book — "read the lore" */}
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                  <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+                </svg>
+                {showLore && (
+                  <span
+                    className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[#c79a3f] px-1 text-[10px] font-bold leading-none text-white"
+                  >
+                    {LORE_POIS.length}
+                  </span>
+                )}
+              </button>
+            </div>
 
             {/* Profit / wealth legend — a framed chip with a gold coin so it
                 clearly reads as the "how rich is this spot" bar, not just a
@@ -3705,8 +4818,640 @@ export function MapPage() {
               </div>
             )}
           </div>
+
+          {/* You & utilities — your character and the hunt finder that reads it,
+              then the two actions that act on the page itself (share, help). */}
+          <div className={PILL}>
+            {/* Your character — settings gear. Lit when a profile is saved; the
+                badge shows the character's level once looked up. */}
+            <button
+              onClick={() => setCharOpen((v) => !v)}
+              title={t('map.charTitle')}
+              aria-label={t('map.charTitle')}
+              aria-pressed={charOpen}
+              className={`relative ${SLOT} ${charOpen || charProfile ? SLOT_ON : SLOT_OFF}`}
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="8" r="4" />
+                <path d="M4 21a8 8 0 0 1 16 0" />
+              </svg>
+              {character?.level != null && (
+                <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none text-white">
+                  {character.level}
+                </span>
+              )}
+            </button>
+
+            {/* Hunt Finder — ranks the best hunting zones for your level/vocation/set. */}
+            <button
+              onClick={() => setHuntOpen((v) => !v)}
+              title={t('map.huntTitle')}
+              aria-label={t('map.huntTitle')}
+              aria-pressed={huntOpen}
+              className={`${SLOT} ${huntOpen ? SLOT_ON : SLOT_OFF}`}
+            >
+              {/* crosshair / target — "find a hunt" */}
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <circle cx="12" cy="12" r="3.5" />
+                <path d="M12 1v4M12 19v4M1 12h4M19 12h4" />
+              </svg>
+            </button>
+
+            <span className="mx-0.5 h-6 w-px bg-line/50" />
+
+            {/* Share this view */}
+            <button
+              onClick={share}
+              title={t('map.share')}
+              aria-label={t('map.share')}
+              className={`${SLOT} ${copied ? 'border-canon bg-canon/15 text-canon' : SLOT_OFF}`}
+            >
+              {copied ? (
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="18" cy="5" r="3" />
+                  <circle cx="6" cy="12" r="3" />
+                  <circle cx="18" cy="19" r="3" />
+                  <path d="m8.6 13.5 6.8 4M15.4 6.5 8.6 10.5" />
+                </svg>
+              )}
+            </button>
+
+            {/* How-to tour — last slot in the bar, where help conventionally sits. */}
+            <button
+              onClick={() => setShowTour(true)}
+              title={t('map.tutorial.open')}
+              aria-label={t('map.tutorial.open')}
+              className={`${SLOT} ${SLOT_OFF}`}
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3" />
+                <path d="M12 17h.01" />
+              </svg>
+            </button>
+          </div>
+
         </div>
       </div>
+
+      {/* "Your character" settings — a floating card above the hotbar. Type a
+          name to save it (localStorage); once saved it's looked up via the
+          /api/character proxy and summarised here. This is the wiring the map's
+          personal overlay (house pin, deaths) will read from. */}
+      {charOpen && (
+        <div className={charPos ? 'pointer-events-none fixed inset-0 z-[1002]' : 'pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3'}>
+          <div
+            ref={charCardRef}
+            style={charPos ? { position: 'absolute', left: charPos.x, top: charPos.y } : undefined}
+            className="scroll-atlas pointer-events-auto max-h-[78vh] w-[30rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-3.5 shadow-2xl backdrop-blur-md"
+          >
+            {/* Header doubles as the drag handle — grab it to move the card. */}
+            <div
+              onPointerDown={startCharDrag}
+              onPointerMove={moveCharDrag}
+              onPointerUp={endCharDrag}
+              onPointerCancel={endCharDrag}
+              className="mb-2 flex cursor-grab touch-none select-none items-center gap-1.5 text-accent active:cursor-grabbing"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="8" r="4" />
+                <path d="M4 21a8 8 0 0 1 16 0" />
+              </svg>
+              <span className="text-xs font-bold uppercase tracking-widest">{t('map.charTitle')}</span>
+              <button
+                onClick={() => setCharOpen(false)}
+                onPointerDown={(e) => e.stopPropagation()}
+                aria-label={t('map.charTitle')}
+                className="ml-auto grid h-6 w-6 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:border-accent hover:text-accent"
+              >
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <p className="mb-2 text-sm text-fg-dim">{t('map.charHint')}</p>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                saveChar()
+              }}
+              className="flex items-center gap-1.5"
+            >
+              <input
+                type="text"
+                value={charDraft}
+                onChange={(e) => setCharDraft(e.target.value)}
+                placeholder={t('map.charPlaceholder')}
+                spellCheck={false}
+                autoComplete="off"
+                className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-bg-2 px-2.5 text-sm font-semibold outline-none transition placeholder:font-normal placeholder:text-fg-mute focus:border-accent"
+              />
+              <button
+                type="submit"
+                disabled={!charDraft.trim() || charDraft.trim() === charProfile?.name}
+                className="h-9 shrink-0 rounded-lg border border-accent bg-accent px-3 text-sm font-bold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {t('map.charSave')}
+              </button>
+              {charProfile && (
+                <button
+                  type="button"
+                  onClick={clearChar}
+                  title={t('map.charClear')}
+                  aria-label={t('map.charClear')}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-line-2 bg-bg-2 text-fg-mute transition hover:border-accent hover:text-accent"
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                  </svg>
+                </button>
+              )}
+            </form>
+
+            {charProfile && (
+              <div className="mt-3">
+                {charQuery.isLoading ? (
+                  <p className="py-2 text-sm text-fg-dim">{t('map.charLoading')}</p>
+                ) : charQuery.isError ? (
+                  <p className="py-2 text-sm text-accent">{t('map.charError')}</p>
+                ) : !character ? (
+                  <p className="py-2 text-sm text-fg-dim">{t('map.charNotFound')}</p>
+                ) : (
+                  <div className="rounded-xl border border-line bg-bg-2 p-3">
+                    <div className="text-base font-bold text-fg">{character.name}</div>
+                    {character.level != null && (
+                      <div className="text-sm text-fg">
+                        {t('map.charLevel', { level: character.level, vocation: character.vocation ?? '' })}
+                      </div>
+                    )}
+                    <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-sm">
+                      {character.world && (
+                        <>
+                          <dt className="font-bold uppercase tracking-wide text-fg-dim">{t('map.charWorld')}</dt>
+                          <dd className="text-fg">{character.world}</dd>
+                        </>
+                      )}
+                      {character.guild && (
+                        <>
+                          <dt className="font-bold uppercase tracking-wide text-fg-dim">{t('map.charGuild')}</dt>
+                          <dd className="truncate text-fg">
+                            {character.guild.name}
+                            {character.guild.rank ? ` · ${character.guild.rank}` : ''}
+                          </dd>
+                        </>
+                      )}
+                      {character.houses[0] && (
+                        <>
+                          <dt className="font-bold uppercase tracking-wide text-fg-dim">{t('map.charHouse')}</dt>
+                          <dd className="truncate text-fg">
+                            {character.houses[0].name}
+                            {character.houses[0].town ? ` · ${character.houses[0].town}` : ''}
+                          </dd>
+                        </>
+                      )}
+                    </dl>
+                    <div className="mt-2.5 border-t border-line pt-2">
+                      <div className="mb-1 text-xs font-bold uppercase tracking-widest text-fg-dim">
+                        {t('map.charDeaths')}
+                      </div>
+                      {character.deaths.length === 0 ? (
+                        <p className="text-sm text-fg-dim">{t('map.charNoDeaths')}</p>
+                      ) : (
+                        <ul className="flex flex-col gap-1">
+                          {character.deaths.slice(0, 5).map((d, i) => (
+                            <li key={i} className="flex items-baseline gap-1.5 text-sm">
+                              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 translate-y-0.5 text-accent" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M9 12h.01M15 12h.01M8 20v2h8v-2M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20" />
+                              </svg>
+                              <span className="min-w-0 flex-1 text-fg">
+                                {d.level != null ? `Lvl ${d.level} · ` : ''}
+                                {d.killers.map((k) => k.name).filter(Boolean).join(', ') || d.reason}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* "Your equipment": pick what you actually wear, slot by slot. The
+                stat readout below and the Hunt Finder both run on this exact
+                set. TibiaData doesn't expose worn items, so it's hand-picked. */}
+            {charProfile && (
+              <div className="mt-3 rounded-xl border border-line bg-bg-2 p-2.5">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.charGear')}</span>
+                  {gearIdList.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={clearGear}
+                      className="text-xs font-semibold text-fg-dim transition hover:text-accent"
+                    >
+                      {t('map.charGearClear')}
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {GEAR_SLOTS.map((slot) => {
+                    const piece = charProfile.gear?.[slot] ?? null
+                    const open = gearSlot === slot
+                    return (
+                      <button
+                        key={slot}
+                        type="button"
+                        onClick={() => {
+                          setGearSlot(open ? null : slot)
+                          setGearQuery('')
+                        }}
+                        aria-pressed={open}
+                        className={`flex flex-col items-center gap-0.5 rounded-lg border px-1 py-2 text-center transition ${open ? 'border-accent bg-accent/10' : piece ? 'border-line-2 bg-bg-2 hover:border-accent' : 'border-dashed border-line bg-bg-2 hover:border-accent'}`}
+                      >
+                        {piece?.image ? (
+                          <img src={piece.image} alt="" className="h-8 w-8 object-contain" loading="lazy" />
+                        ) : (
+                          <span className="grid h-8 w-8 place-items-center text-xl leading-none text-fg-dim">+</span>
+                        )}
+                        <span className="text-[11px] font-bold uppercase tracking-wide text-fg-dim">
+                          {t(`items.slot.${slot}`)}
+                        </span>
+                        <span className={`w-full truncate text-xs ${piece ? 'font-semibold text-fg' : 'text-fg-dim'}`}>
+                          {piece?.name ?? '—'}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Item picker for the open slot: search the catalogue, strongest first. */}
+                {gearSlot && (
+                  <div className="mt-2">
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={gearQuery}
+                        onChange={(e) => setGearQuery(e.target.value)}
+                        placeholder={t('map.charGearSearch', { slot: t(`items.slot.${gearSlot}`) })}
+                        spellCheck={false}
+                        autoComplete="off"
+                        className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-bg-2 px-2.5 text-sm font-semibold outline-none transition placeholder:font-normal placeholder:text-fg-mute focus:border-accent"
+                      />
+                      {charProfile.gear?.[gearSlot] && (
+                        <button
+                          type="button"
+                          onClick={() => setGearPiece(gearSlot, null)}
+                          className="h-9 shrink-0 rounded-lg border border-line-2 bg-bg-2 px-2.5 text-xs font-bold text-fg-dim transition hover:border-accent hover:text-accent"
+                        >
+                          {t('map.charGearRemove')}
+                        </button>
+                      )}
+                    </div>
+                    {gearItemsQuery.isError ? (
+                      // A dead API is NOT "no results" — misreporting it sent
+                      // us chasing phantom missing-item bugs.
+                      <p className="py-2 text-center text-sm text-accent">{t('map.charError')}</p>
+                    ) : gearChoices.length === 0 ? (
+                      // Never claim "no results" mid-search: that's the lie
+                      // that made a working search look broken.
+                      <p className="py-2 text-center text-sm text-fg-dim">
+                        {gearSearching ? t('map.charLoading') : t('map.charGearEmpty')}
+                      </p>
+                    ) : (
+                      <ul
+                        className={`scroll-atlas mt-1.5 max-h-56 overflow-y-auto rounded-lg border border-line transition-opacity ${gearSearching ? 'opacity-50' : ''}`}
+                      >
+                        {gearChoices.map((it) => (
+                          <li key={it.id}>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setGearPiece(gearSlot, {
+                                  id: it.id,
+                                  slug: it.slug,
+                                  name: it.name ?? it.slug,
+                                  image: it.primary_image,
+                                })
+                              }
+                              className="flex w-full items-center gap-2 px-2 py-1.5 text-left transition hover:bg-accent/10"
+                            >
+                              {it.primary_image ? (
+                                <img src={it.primary_image} alt="" className="h-7 w-7 shrink-0 object-contain" loading="lazy" />
+                              ) : (
+                                <span className="h-7 w-7 shrink-0" />
+                              )}
+                              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-fg">{it.name ?? it.slug}</span>
+                              <span className="shrink-0 text-xs text-fg-dim">{gearHint(it)}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
+                {/* Derived stats of the worn set — the exact numbers the Hunt
+                    Finder scores zones with (shared backend math). */}
+                {gearIdList.length === 0 ? (
+                  <p className="mt-2 text-xs text-fg-dim">{t('map.charGearHint')}</p>
+                ) : setStats ? (
+                  <div className="mt-2 border-t border-line pt-2">
+                    <div className="mb-1.5 text-xs font-bold uppercase tracking-widest text-fg-dim">
+                      {t('map.charSetStats')}
+                    </div>
+
+                    {/* Headline tiles: the three numbers you glance at. */}
+                    <div className="grid grid-cols-3 gap-1.5 text-center">
+                      <div className="rounded-lg border border-line-2 bg-bg-2 px-1 py-2">
+                        <div className="text-xl font-black leading-none text-fg">{setStats.armor}</div>
+                        <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-fg-dim">
+                          {t('map.charArmor')}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-line-2 bg-bg-2 px-1 py-2">
+                        <div className="text-xl font-black leading-none text-accent">
+                          −{setStats.physical_reduction}%
+                        </div>
+                        <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-fg-dim">
+                          {t('map.charPhysRed')}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-line-2 bg-bg-2 px-1 py-2">
+                        <div className="truncate text-sm font-black leading-none text-fg">
+                          {setStats.weapon
+                            ? (setStats.weapon.type ?? setStats.weapon.category ?? setStats.weapon.name)
+                            : '—'}
+                        </div>
+                        <div className="mt-1.5 truncate text-[10px] font-bold uppercase tracking-wide text-fg-dim">
+                          {setStats.weapon?.element
+                            ? `${t('map.charWeapon')} · ${elLabel(setStats.weapon.element)}`
+                            : t('map.charWeapon')}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Resist bars, scaled to the 60% set cap; maluses paint red. */}
+                    {Object.entries(setStats.resists).filter(([, p]) => p !== 0).length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        <div className="text-[10px] font-bold uppercase tracking-wide text-fg-dim">
+                          {t('map.huntSetResists')}
+                        </div>
+                        {Object.entries(setStats.resists)
+                          .filter(([, p]) => p !== 0)
+                          .sort((a, b) => b[1] - a[1])
+                          .map(([el, p]) => (
+                            <StatBar
+                              key={el}
+                              label={elLabel(el)}
+                              value={`${signed(p)}%`}
+                              pct={(Math.abs(p) / 60) * 100}
+                              color={p < 0 ? '#c0392b' : (HUNT_ELEMENT_COLOR[el] ?? '#8a8578')}
+                            />
+                          ))}
+                      </div>
+                    )}
+
+                    {/* Skill-bonus bars, scaled to the biggest bonus worn. */}
+                    {Object.keys(setStats.bonuses).length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        <div className="text-[10px] font-bold uppercase tracking-wide text-fg-dim">
+                          {t('map.charSkills')}
+                        </div>
+                        {Object.entries(setStats.bonuses)
+                          .sort((a, b) => b[1] - a[1])
+                          .map(([skill, pts]) => (
+                            <StatBar
+                              key={skill}
+                              label={SKILL_LABELS[skill] ?? skill}
+                              value={signed(pts)}
+                              pct={(Math.abs(pts) / skillMax) * 100}
+                              color={pts < 0 ? '#c0392b' : 'var(--color-accent)'}
+                            />
+                          ))}
+                      </div>
+                    )}
+                    <p className="mt-2 text-xs text-fg-dim">{t('map.charGearHunt')}</p>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Hunt Finder — a floating card above the hotbar. Filters (vocation +
+          level) drive the /api/hunts ranking; each result is a
+          hunting zone you can click to fly to, expanding into its per-creature
+          breakdown (what to hit it with, reward, danger). */}
+      {lorePoi && <LorePanel poi={lorePoi} onClose={() => setLorePoi(null)} />}
+
+      {huntOpen && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
+          <div className="scroll-atlas pointer-events-auto max-h-[70vh] w-[27rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-3 shadow-2xl backdrop-blur-md">
+            <div className="mb-2 flex items-center gap-1.5 text-accent">
+              <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <circle cx="12" cy="12" r="3.5" />
+                <path d="M12 1v4M12 19v4M1 12h4M19 12h4" />
+              </svg>
+              <span className="text-[10px] font-bold uppercase tracking-widest">{t('map.huntTitle')}</span>
+              <button
+                onClick={() => setHuntOpen(false)}
+                aria-label={t('map.huntTitle')}
+                className="ml-auto grid h-6 w-6 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:border-accent hover:text-accent"
+              >
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <p className="mb-2.5 text-xs text-fg-mute">{t('map.huntHint')}</p>
+
+            {/* Filters: vocation + level. */}
+            <div className="mb-2.5 flex items-center gap-1.5">
+              <select
+                value={huntVoc}
+                onChange={(e) => {
+                  setHuntVoc(e.target.value)
+                  resetHuntSel()
+                }}
+                className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-bg-2 px-2 text-sm font-semibold outline-none transition focus:border-accent"
+              >
+                <option value="">{t('map.huntVocation')}…</option>
+                {(['knight', 'paladin', 'sorcerer', 'druid', 'monk'] as const).map((v) => (
+                  <option key={v} value={v}>
+                    {t(`items.voc.${v}`)}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                min={1}
+                inputMode="numeric"
+                value={huntLevel}
+                onChange={(e) => {
+                  setHuntLevel(e.target.value)
+                  setHuntAuto(false)
+                  resetHuntSel()
+                }}
+                placeholder={t('map.huntLevel')}
+                className="h-9 w-20 rounded-lg border border-line bg-bg-2 px-2.5 text-sm font-semibold outline-none transition placeholder:font-normal placeholder:text-fg-mute focus:border-accent"
+              />
+            </div>
+            {huntAuto && character && (
+              <p className="mb-2.5 truncate text-[10px] text-fg-mute">
+                {t('map.huntFromChar', { name: character.name })}
+              </p>
+            )}
+
+            {/* Derived-set summary: what you deal and resist. */}
+            {hunt && (
+              <div className="mb-2.5 rounded-xl border border-line bg-bg-2 p-2 text-xs">
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-fg-mute">{t('map.huntSetDeals')}:</span>
+                  {hunt.set.source === 'gear' && (
+                    <span className="order-last ml-auto rounded bg-accent/15 px-1.5 py-px text-[10px] font-bold text-accent">
+                      {t('map.huntSetReal')}
+                    </span>
+                  )}
+                  {hunt.set.damage_elements.map((el) => (
+                    <span
+                      key={el}
+                      className="inline-flex items-center rounded px-1.5 py-px text-[10px] font-semibold"
+                      style={{ background: `${HUNT_ELEMENT_COLOR[el] ?? '#8a8578'}22`, color: HUNT_ELEMENT_COLOR[el] ?? '#8a8578' }}
+                    >
+                      {elLabel(el)}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-fg-mute">{t('map.huntSetResists')}:</span>
+                  {Object.entries(hunt.set.resists).filter(([, p]) => p > 0).length === 0 ? (
+                    <span className="text-[10px] text-fg-dim">{t('map.huntSetNoResists')}</span>
+                  ) : (
+                    Object.entries(hunt.set.resists)
+                      .filter(([, p]) => p > 0)
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([el, p]) => (
+                        <span
+                          key={el}
+                          className="inline-flex items-center gap-0.5 rounded px-1.5 py-px text-[10px] font-semibold"
+                          style={{ background: `${HUNT_ELEMENT_COLOR[el] ?? '#8a8578'}22`, color: HUNT_ELEMENT_COLOR[el] ?? '#8a8578' }}
+                        >
+                          {elLabel(el)} {p}%
+                        </span>
+                      ))
+                  )}
+                  {hunt.set.weapon && (
+                    <span className="ml-auto truncate text-[10px] text-fg-dim">
+                      {hunt.set.weapon}
+                      {hunt.set.weapon_type ? ` (${hunt.set.weapon_type})` : ''}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Results. */}
+            {!huntLevelNum || !huntVoc ? (
+              <p className="py-3 text-center text-sm text-fg-mute">{t('map.huntNeedInputs')}</p>
+            ) : huntQuery.isLoading ? (
+              <p className="py-3 text-center text-sm text-fg-mute">{t('map.huntLoading')}</p>
+            ) : !hunt || hunt.zones.length === 0 ? (
+              <p className="py-3 text-center text-sm text-fg-mute">{t('map.huntNoResults')}</p>
+            ) : (
+              <div className="space-y-1.5">
+                {hunt.zones.map((z) => {
+                  const band = dangerBand(z.danger)
+                  const sel = z.id === huntZoneId
+                  return (
+                    <div key={z.id} className={`overflow-hidden rounded-xl border ${sel ? 'border-accent' : 'border-line'} bg-bg-2`}>
+                      <button onClick={() => flyToZone(z)} className="w-full px-2.5 py-2 text-left transition hover:bg-accent/5">
+                        <div className="flex items-center gap-2">
+                          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-accent/10 text-sm font-black leading-none text-accent">
+                            {z.match}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-sm font-bold text-fg">
+                            {z.name ?? `${z.x}, ${z.y}`}
+                          </span>
+                          <span className="shrink-0 rounded-md border border-line-2 px-1.5 py-0.5 text-[10px] font-bold text-fg-mute">
+                            {t('map.floor')} {floorLabel(z.z)}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 pl-10 text-[11px] text-fg-dim">
+                          <span>{compact(z.exp_avg)} {t('map.huntExpKill')}</span>
+                          <span>{fmtGold(z.profit_avg)} {t('map.huntGpKill')}</span>
+                          <span className="font-semibold" style={{ color: band.color }}>
+                            {t(`map.${band.key}`)}
+                          </span>
+                          <span>{t('map.huntSpawns', { n: z.spawn_count })}</span>
+                          {z.access === 'quest' && (
+                            <span className="rounded border border-theory/40 px-1 py-px text-[10px] font-semibold text-theory">
+                              {t('map.huntQuestAccess')}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                      {sel && (
+                        <div className="space-y-1.5 border-t border-line px-2.5 py-2">
+                          <div className="text-[10px] font-bold uppercase tracking-widest text-fg-mute">
+                            {t('map.huntCreaturesHere')}
+                          </div>
+                          {z.creatures.map((c) => (
+                            <div key={c.slug} className="flex items-center gap-2">
+                              {c.image ? (
+                                <img src={c.image} alt="" className="h-7 w-7 shrink-0" style={{ imageRendering: 'pixelated' }} />
+                              ) : (
+                                <span className="h-7 w-7 shrink-0 rounded bg-line/40" />
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5">
+                                  <Link
+                                    to={`/entry/${c.slug}`}
+                                    className="truncate text-xs font-bold text-fg hover:text-accent"
+                                  >
+                                    {c.name}
+                                  </Link>
+                                  {c.too_dangerous && (
+                                    <span title={t('map.huntTooDangerous')} className="shrink-0 text-[10px] font-bold text-[#c0392b]">
+                                      ⚠
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                                  <span className="text-[10px] text-fg-mute">{t('map.huntHitWith')}:</span>
+                                  {c.hit_with.map((el) => (
+                                    <span
+                                      key={el}
+                                      className="inline-flex items-center rounded px-1 py-px text-[10px] font-semibold"
+                                      style={{ background: `${HUNT_ELEMENT_COLOR[el] ?? '#8a8578'}22`, color: HUNT_ELEMENT_COLOR[el] ?? '#8a8578' }}
+                                    >
+                                      {elLabel(el)}
+                                    </span>
+                                  ))}
+                                  <span className="text-[10px] text-fg-dim">
+                                    · {compact(c.experience)} exp · {fmtGold(c.gold)} gp
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Community routes gallery — published routes others submitted, most
           popular (most-loaded) first; clicking one loads it onto the map. */}
@@ -3718,42 +5463,109 @@ export function MapPage() {
             </span>
             <span className="text-xs text-fg-mute">{t('map.routesGalleryHint')}</span>
           </div>
+          {/* Search — filters the published set by name or author (server-side, so
+              it searches every page, not just the one on screen). */}
+          <div className="mb-2 flex items-center gap-1.5 rounded-lg border border-line bg-bg/50 px-2 focus-within:border-accent">
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 text-fg-mute" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+            <input
+              type="search"
+              value={routesQuery}
+              onChange={(e) => setRoutesQuery(e.target.value)}
+              placeholder={t('map.routesSearch')}
+              aria-label={t('map.routesSearch')}
+              className="min-w-0 flex-1 border-0 bg-transparent py-1.5 text-sm text-fg outline-none placeholder:text-fg-mute"
+            />
+          </div>
           {routesLoading ? (
             <p className="py-2 text-sm text-fg-mute">{t('map.routesLoading')}</p>
           ) : communityRoutes && communityRoutes.length > 0 ? (
             <div className="flex max-h-64 flex-col gap-1.5 overflow-y-auto">
-              {communityRoutes.map((r) => (
-                <button
+              {communityRoutes.map((r) => {
+                const liked = likedRoutes.has(r.id)
+                return (
+                <div
                   key={r.id}
-                  onClick={() => loadCommunityRoute(r)}
-                  className="flex items-center gap-3 rounded-lg border border-line bg-bg-2 px-3 py-2 text-left transition hover:border-accent hover:bg-accent/5"
+                  className="flex items-center gap-2 rounded-lg border border-line bg-bg-2 pr-1.5 transition hover:border-accent hover:bg-accent/5"
                 >
-                  <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-accent" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="6" cy="19" r="2" />
-                    <circle cx="18" cy="5" r="2" />
-                    <path d="M8 17.5 16 6.5" strokeDasharray="2 3" />
-                  </svg>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-bold text-fg">{r.name}</span>
-                    <span className="block truncate text-xs text-fg-mute">
-                      {t('map.buildPoints', { count: r.waypoints.length })}
-                      {' · '}
-                      {r.connect === 'auto' ? t('map.buildAuto') : t('map.buildStraight')}
-                      {r.author ? ` · ${r.author}` : ''}
-                    </span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-1 text-xs font-bold tabular-nums text-fg-dim">
-                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
-                      <circle cx="12" cy="12" r="3" />
+                  <button
+                    onClick={() => loadCommunityRoute(r)}
+                    className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2 text-left"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-accent" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="6" cy="19" r="2" />
+                      <circle cx="18" cy="5" r="2" />
+                      <path d="M8 17.5 16 6.5" strokeDasharray="2 3" />
                     </svg>
-                    {r.views}
-                  </span>
-                </button>
-              ))}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-bold text-fg">{r.name}</span>
+                      <span className="block truncate text-xs text-fg-mute">
+                        {t('map.buildPoints', { count: r.waypoints.length })}
+                        {' · '}
+                        {r.connect === 'auto' ? t('map.buildAuto') : t('map.buildStraight')}
+                        {r.author ? ` · ${r.author}` : ''}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1 text-xs font-bold tabular-nums text-fg-dim">
+                      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                      {r.views}
+                    </span>
+                  </button>
+                  {/* Like: a heart that fills red when this visitor has liked it. */}
+                  <button
+                    onClick={() => toggleLike(r)}
+                    title={liked ? t('map.routeUnlike') : t('map.routeLike')}
+                    aria-label={liked ? t('map.routeUnlike') : t('map.routeLike')}
+                    aria-pressed={liked}
+                    className={`flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-xs font-bold tabular-nums transition ${
+                      liked ? 'text-accent' : 'text-fg-mute hover:text-accent'
+                    }`}
+                  >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill={liked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1L12 21l7.7-7.6 1.1-1a5.5 5.5 0 0 0 0-7.8z" />
+                    </svg>
+                    {r.likes}
+                  </button>
+                </div>
+                )
+              })}
             </div>
           ) : (
-            <p className="py-2 text-sm text-fg-mute">{t('map.routesEmpty')}</p>
+            <p className="py-2 text-sm text-fg-mute">
+              {routesQueryDebounced ? t('map.routesNoResults') : t('map.routesEmpty')}
+            </p>
+          )}
+          {/* Pager — the gallery serves one page at a time, popular first. */}
+          {routesData && routesData.meta.last_page > 1 && (
+            <div className="mt-2 flex items-center justify-between gap-2 border-t border-line/70 pt-2">
+              <button
+                onClick={() => setRoutesPage((p) => Math.max(1, p - 1))}
+                disabled={routesData.meta.current_page <= 1}
+                className="rounded-md border border-line px-2.5 py-1 text-xs font-semibold text-fg-dim transition hover:border-accent/60 hover:text-fg disabled:opacity-40 disabled:hover:border-line disabled:hover:text-fg-dim"
+              >
+                ‹ {t('map.routesPrev')}
+              </button>
+              <span className="text-xs tabular-nums text-fg-mute">
+                {t('map.routesPageOf', {
+                  page: routesData.meta.current_page,
+                  total: routesData.meta.last_page,
+                })}
+              </span>
+              <button
+                onClick={() =>
+                  setRoutesPage((p) => Math.min(routesData.meta.last_page, p + 1))
+                }
+                disabled={routesData.meta.current_page >= routesData.meta.last_page}
+                className="rounded-md border border-line px-2.5 py-1 text-xs font-semibold text-fg-dim transition hover:border-accent/60 hover:text-fg disabled:opacity-40 disabled:hover:border-line disabled:hover:text-fg-dim"
+              >
+                {t('map.routesNext')} ›
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -3766,7 +5578,7 @@ export function MapPage() {
         <div className="pointer-events-none fixed inset-0 z-[1002]">
         <div
           ref={panelRef}
-          className="pointer-events-auto absolute flex max-h-[min(70vh,440px)] w-[19rem] max-w-[92vw] flex-col overflow-hidden rounded-xl border border-line bg-bg-2/95 shadow-2xl backdrop-blur-md"
+          className="pointer-events-auto absolute flex max-h-[min(82vh,640px)] w-[24rem] max-w-[92vw] flex-col overflow-hidden rounded-xl border border-line bg-bg-2/95 shadow-2xl backdrop-blur-md"
           style={
             panelPos
               ? { left: panelPos.x, top: panelPos.y }
@@ -3784,7 +5596,7 @@ export function MapPage() {
                 <circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" />
                 <circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" />
               </svg>
-              <span className="truncate text-[10px] font-bold uppercase tracking-widest text-[#b3873f]">
+              <span className="truncate text-xs font-bold uppercase tracking-widest text-[#b3873f]">
                 {t('map.houseBrowseTitle')} · {world}
               </span>
             </div>
@@ -3799,43 +5611,62 @@ export function MapPage() {
             </button>
           </div>
 
-          {/* Filters — type (house/guildhall) + rent status. Both drive this list
-              AND the map pins. */}
-          <div className="flex flex-col gap-1 border-b border-line/70 px-3 py-2">
-            <div className="flex gap-1">
-              {(['all', 'house', 'guild'] as const).map((k) => (
-                <button
-                  key={k}
-                  onClick={() => setHouseKind(k)}
-                  aria-pressed={houseKind === k}
-                  className={`flex-1 rounded-md border px-1 py-1 text-[11px] font-semibold transition ${
-                    houseKind === k
-                      ? 'border-[#b3873f] bg-[#b3873f]/15 text-[#b3873f]'
-                      : 'border-line-2 text-fg-dim hover:border-line hover:text-fg'
-                  }`}
-                >
-                  {k === 'all' ? t('map.houseKindAll') : k === 'house' ? t('map.houseKindHouse') : t('map.houseKindGuild')}
-                </button>
-              ))}
+          {/* Filters — rent status + name search. Both drive this list AND the
+              map pins. */}
+          <div className="flex flex-col gap-1.5 border-b border-line/70 px-3 py-2.5">
+            {/* House vs guildhall — segmented control with live count */}
+            <div className="flex gap-0.5 rounded-lg border border-line-2/60 bg-bg/40 p-0.5">
+              {(['all', 'house', 'guild'] as const).map((k) => {
+                const on = houseKind === k
+                const col = k === 'guild' ? '#7c6cf0' : k === 'house' ? '#b3873f' : '#8a8f98'
+                const n = kindCounts[k]
+                return (
+                  <button
+                    key={k}
+                    onClick={() => setHouseKind(k)}
+                    aria-pressed={on}
+                    className={`flex-1 rounded-md px-1 py-1.5 text-xs font-semibold transition ${
+                      on ? '' : 'text-fg-dim hover:text-fg'
+                    }`}
+                    style={on ? { background: `${col}22`, color: col, boxShadow: `inset 0 0 0 1px ${col}66` } : undefined}
+                  >
+                    <span className="flex items-center justify-center gap-1">
+                      {k !== 'all' && (
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: col }} />
+                      )}
+                      <span className="truncate">
+                        {k === 'all' ? t('map.houseKindAll') : k === 'house' ? t('map.houseKindHouse') : t('map.houseKindGuild')}
+                      </span>
+                      <span className={`shrink-0 tabular-nums ${on ? 'opacity-80' : 'text-fg-dim'}`}>{n}</span>
+                    </span>
+                  </button>
+                )
+              })}
             </div>
-            <div className="flex gap-1">
+            {/* Rent status — segmented control with colour dot + live count */}
+            <div className="flex gap-0.5 rounded-lg border border-line-2/60 bg-bg/40 p-0.5">
               {(['all', 'available', 'rented'] as const).map((s) => {
                 const on = houseStatusFilter === s
                 const col = s === 'available' ? '#2f9e5a' : s === 'rented' ? '#a13d3d' : '#b3873f'
+                const n = statusCounts[s]
                 return (
                   <button
                     key={s}
                     onClick={() => setHouseStatusFilter(s)}
                     aria-pressed={on}
-                    className="flex-1 rounded-md border px-1 py-1 text-[11px] font-semibold transition"
-                    style={
-                      on
-                        ? { borderColor: col, background: `${col}26`, color: col }
-                        : undefined
-                    }
+                    className={`flex-1 rounded-md px-1 py-1.5 text-xs font-semibold transition ${
+                      on ? '' : 'text-fg-dim hover:text-fg'
+                    }`}
+                    style={on ? { background: `${col}22`, color: col, boxShadow: `inset 0 0 0 1px ${col}66` } : undefined}
                   >
-                    <span className={on ? '' : 'text-fg-dim'}>
-                      {s === 'all' ? t('map.houseStatusAll') : s === 'available' ? t('map.houseFree') : t('map.houseRented')}
+                    <span className="flex items-center justify-center gap-1">
+                      {s !== 'all' && (
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: col }} />
+                      )}
+                      <span className="truncate">
+                        {s === 'all' ? t('map.houseStatusAll') : s === 'available' ? t('map.houseFree') : t('map.houseRented')}
+                      </span>
+                      <span className={`shrink-0 tabular-nums ${on ? 'opacity-80' : 'text-fg-dim'}`}>{n}</span>
                     </span>
                   </button>
                 )
@@ -3852,7 +5683,7 @@ export function MapPage() {
                 onChange={(e) => setHouseSearch(e.target.value)}
                 placeholder={t('map.houseSearchPlaceholder')}
                 aria-label={t('map.houseSearchPlaceholder')}
-                className="w-full rounded-md border border-line-2 bg-bg-2 py-1 pl-7 pr-6 text-[11px] text-fg placeholder:text-fg-mute focus:border-accent focus:outline-none"
+                className="w-full rounded-md border border-line-2 bg-bg-2 py-1.5 pl-7 pr-6 text-xs text-fg placeholder:text-fg-dim focus:border-accent focus:outline-none"
               />
               {houseSearch && (
                 <button
@@ -3866,27 +5697,70 @@ export function MapPage() {
                 </button>
               )}
             </div>
+            {/* City filter */}
+            {houseTowns.length > 1 && (
+              <select
+                value={houseTownFilter}
+                onChange={(e) => setHouseTownFilter(e.target.value)}
+                aria-label={t('map.houseCityAll')}
+                className="w-full rounded-md border border-line-2 bg-bg-2 px-2 py-1.5 text-xs text-fg focus:border-accent focus:outline-none"
+              >
+                <option value="">{t('map.houseCityAll')}</option>
+                {houseTowns.map((tn) => (
+                  <option key={tn} value={tn}>
+                    {tn}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Server housing spend — total monthly rent paid across all rented
+              houses on this world (respects the type filter). */}
+          <div className="flex items-center justify-between gap-2 border-b border-line/70 bg-bg/40 px-3 py-1.5">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-fg-dim">
+              {t('map.houseWorldRent')}
+            </span>
+            <span className="flex items-center gap-1 text-[13px] font-bold text-fg" title={`${worldRentTotal.gold.toLocaleString()} gp · ${worldRentTotal.count}`}>
+              <img src="/sprites/crystal-coin.webp" alt="" className="h-3.5 w-3.5" style={{ imageRendering: 'pixelated' }} />
+              {fmtGold(worldRentTotal.gold)}
+              <span className="text-[11px] font-medium text-fg-dim">{t('map.houseGoldMonth')}</span>
+            </span>
           </div>
 
           <div className="flex-1 overflow-y-auto px-3 py-2.5">
             {/* Alerts controls */}
             <div className="mb-3 rounded-lg border border-line/70 bg-bg/40 p-2.5">
-              <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-fg-dim">
-                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <button
+                onClick={() => setAlertsOpen((v) => !v)}
+                aria-expanded={alertsOpen}
+                className="flex w-full items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-fg"
+              >
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" />
                 </svg>
-                {t('map.houseWatchlist')}
-              </div>
+                <span className="truncate">{t('map.houseWatchlist')}</span>
+                {watchCount > 0 && (
+                  <span className="shrink-0 rounded-full bg-[#b3873f]/20 px-1.5 py-0.5 text-[10px] font-bold leading-none text-[#b3873f]">
+                    {watchCount}
+                  </span>
+                )}
+                <svg viewBox="0 0 24 24" className={`ml-auto h-4 w-4 shrink-0 text-fg-mute transition-transform ${alertsOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
 
+              {alertsOpen && (
+              <div className="mt-2">
               {/* Browser-alert permission */}
               {notifPerm === 'granted' ? (
-                <p className="mb-2 text-[11px] font-semibold text-[#2f9e5a]">{t('map.houseNotifOn')}</p>
+                <p className="mb-2 text-xs font-semibold text-[#2f9e5a]">{t('map.houseNotifOn')}</p>
               ) : notifPerm === 'denied' ? (
-                <p className="mb-2 text-[11px] text-fg-mute">{t('map.houseNotifBlocked')}</p>
+                <p className="mb-2 text-xs text-fg-dim">{t('map.houseNotifBlocked')}</p>
               ) : (
                 <button
                   onClick={async () => setNotifPerm(await requestNotifyPermission())}
-                  className="mb-2 rounded-md border border-accent/50 bg-accent/10 px-2 py-1 text-[11px] font-bold text-accent transition hover:bg-accent/20"
+                  className="mb-2 rounded-md border border-accent/50 bg-accent/10 px-2 py-1 text-xs font-bold text-accent transition hover:bg-accent/20"
                 >
                   {t('map.houseNotifEnable')}
                 </button>
@@ -3896,7 +5770,7 @@ export function MapPage() {
               <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   onClick={() => applyWatches(toggleWorldWatch(watches, world))}
-                  className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition ${
+                  className={`rounded-md border px-2 py-1 text-xs font-semibold transition ${
                     isWorldWatched(watches, world)
                       ? 'border-[#b3873f] bg-[#b3873f]/15 text-[#b3873f]'
                       : 'border-line-2 text-fg-dim hover:border-line hover:text-fg'
@@ -3909,7 +5783,7 @@ export function MapPage() {
                     <select
                       value={townSel}
                       onChange={(e) => setTownSel(e.target.value)}
-                      className="rounded-md border border-line-2 bg-bg-2 px-1.5 py-1 text-[11px] text-fg"
+                      className="rounded-md border border-line-2 bg-bg-2 px-1.5 py-1 text-xs text-fg"
                     >
                       <option value="">{t('map.houseWatchTown', { town: '…' })}</option>
                       {houseTowns.map((tn) => (
@@ -3921,7 +5795,7 @@ export function MapPage() {
                     {townSel && (
                       <button
                         onClick={() => applyWatches(toggleTownWatch(watches, world, townSel))}
-                        className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition ${
+                        className={`rounded-md border px-2 py-1 text-xs font-semibold transition ${
                           isTownWatched(watches, world, townSel)
                             ? 'border-[#b3873f] bg-[#b3873f]/15 text-[#b3873f]'
                             : 'border-line-2 text-fg-dim hover:border-line hover:text-fg'
@@ -3943,7 +5817,7 @@ export function MapPage() {
                       <button
                         key={w.town}
                         onClick={() => applyWatches(toggleTownWatch(watches, world, w.town))}
-                        className="inline-flex items-center gap-1 rounded-full border border-[#b3873f]/50 bg-[#b3873f]/10 px-2 py-0.5 text-[10px] font-semibold text-[#b3873f]"
+                        className="inline-flex items-center gap-1 rounded-full border border-[#b3873f]/50 bg-[#b3873f]/10 px-2 py-0.5 text-[11px] font-semibold text-[#b3873f]"
                         title={t('map.houseUnwatch')}
                       >
                         {w.town}
@@ -3960,13 +5834,13 @@ export function MapPage() {
                     const st = houseStatus?.houses[w.id]?.status
                     const full = housesRef.current.find((h) => h.id === w.id)
                     return (
-                      <div key={w.id} className="flex items-center gap-2 text-[11px]">
+                      <div key={w.id} className="flex items-center gap-2 text-xs">
                         <button
                           onClick={() => full && flyToHouse(full)}
                           className="min-w-0 flex-1 truncate text-left font-semibold text-fg transition hover:text-accent"
                         >
                           {w.name}
-                          {w.town ? <span className="font-normal text-fg-mute"> · {w.town}</span> : null}
+                          {w.town ? <span className="font-normal text-fg-dim"> · {w.town}</span> : null}
                         </button>
                         {st && (
                           <span
@@ -3993,17 +5867,19 @@ export function MapPage() {
 
               {watchedHouses.length === 0 &&
                 !watches.some((w) => (w.kind === 'town' || w.kind === 'world') && w.world === world) && (
-                  <p className="mt-1.5 text-[11px] leading-snug text-fg-mute">{t('map.houseWatchlistEmpty')}</p>
+                  <p className="mt-1.5 text-xs leading-snug text-fg-dim">{t('map.houseWatchlistEmpty')}</p>
                 )}
 
-              <p className="mt-2 text-[10px] leading-snug text-fg-mute/80">{t('map.houseNotifNote')}</p>
+              <p className="mt-2 text-[11px] leading-snug text-fg-dim">{t('map.houseNotifNote')}</p>
+              </div>
+              )}
             </div>
 
             {/* Houses list (filtered) */}
             {!houseStatus ? (
-              <p className="py-2 text-sm text-fg-mute">{t('map.houseAvailLoading')}</p>
+              <p className="py-2 text-sm text-fg-dim">{t('map.houseAvailLoading')}</p>
             ) : panelHouses.length === 0 ? (
-              <p className="py-2 text-sm text-fg-mute">{t('map.houseListNone', { world })}</p>
+              <p className="py-2 text-sm text-fg-dim">{t('map.houseListNone', { world })}</p>
             ) : (
               <div className="flex flex-col gap-1">
                 {panelHouses.slice(0, HOUSE_LIST_CAP).map(({ h, status, bid }) => {
@@ -4021,14 +5897,14 @@ export function MapPage() {
                         title={t('map.houseFlyTo')}
                       >
                         <span className="flex items-center gap-1.5">
-                          <span className="truncate text-sm font-bold text-fg">{h.name}</span>
+                          <span className="truncate text-[15px] font-bold text-fg">{h.name}</span>
                           {freedIds.has(h.id) && (
                             <span className="shrink-0 rounded-full bg-[#2f9e5a]/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#2f9e5a]">
                               {t('map.houseJustFreed')}
                             </span>
                           )}
                         </span>
-                        <span className="block truncate text-[11px] text-fg-mute">
+                        <span className="block truncate text-xs text-fg-dim">
                           {h.town ? `${h.town} · ` : ''}
                           <span style={{ color: stCol }} className="font-semibold">
                             {stLabel}
@@ -4056,7 +5932,7 @@ export function MapPage() {
                   )
                 })}
                 {panelHouses.length > HOUSE_LIST_CAP && (
-                  <p className="pt-1 text-center text-[10px] text-fg-mute">
+                  <p className="pt-1 text-center text-[11px] text-fg-dim">
                     {t('map.houseListCap', { shown: HOUSE_LIST_CAP, total: panelHouses.length })}
                   </p>
                 )}
@@ -4064,7 +5940,7 @@ export function MapPage() {
             )}
 
             {houseStatus?.synced_at && (
-              <p className="mt-2 text-right text-[10px] text-fg-mute/70">
+              <p className="mt-2 text-right text-[11px] text-fg-dim/80">
                 {t('map.houseSynced', { when: new Date(houseStatus.synced_at).toLocaleString() })}
               </p>
             )}
@@ -4121,12 +5997,32 @@ export function MapPage() {
               <span className="text-fg-dim">
                 {activeItem.total === 0
                   ? t('map.itemNoDroppers')
-                  : t('map.itemDropsFrom', { count: activeItem.plotted.length })}
+                  : t('map.itemDropsFrom', { count: activeItem.total })}
               </span>
-              {activeItem.total > activeItem.plotted.length && (
+              {activeItem.plotted.length > 0 && activeItem.total > activeItem.plotted.length && (
                 <span className="rounded-[2px] border border-line bg-bg-2 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-fg-mute">
                   +{activeItem.total - activeItem.plotted.length} {t('map.itemMore')}
                 </span>
+              )}
+              {(activeItem.trade?.buy.length ?? 0) > 0 && (
+                <button
+                  onClick={() => routeToBestOffer(activeItem.trade!.buy)}
+                  title={t('map.itemBuyChipHint')}
+                  className="flex items-center gap-1.5 rounded-lg border border-[#c79a3f]/70 bg-[#c79a3f]/15 px-2.5 py-1.5 text-xs font-bold uppercase tracking-wider text-[#c79a3f] transition hover:border-[#c79a3f] hover:bg-[#c79a3f]/30"
+                >
+                  <Icon name="pin" size={14} />
+                  {t('map.itemBuyChip', { count: activeItem.trade!.buy.length })}
+                </button>
+              )}
+              {(activeItem.trade?.sell.length ?? 0) > 0 && (
+                <button
+                  onClick={() => routeToBestOffer(activeItem.trade!.sell)}
+                  title={t('map.itemSellChipHint')}
+                  className="flex items-center gap-1.5 rounded-lg border border-[#6faf52]/70 bg-[#6faf52]/15 px-2.5 py-1.5 text-xs font-bold uppercase tracking-wider text-[#6faf52] transition hover:border-[#6faf52] hover:bg-[#6faf52]/30"
+                >
+                  <Icon name="pin" size={14} />
+                  {t('map.itemSellChip', { count: activeItem.trade!.sell.length })}
+                </button>
               )}
               <button
                 onClick={clearItem}
@@ -4143,7 +6039,34 @@ export function MapPage() {
           (◀ 1/4 ▶) is immediately visible after plotting a creature. */}
       {creatures.length > 0 && (
         <div className="pointer-events-auto flex flex-wrap items-center gap-2">
-          {creatures.map((cr) => (
+          {creatures.length > creaturePageSize && (
+            <div className="flex items-center gap-0.5 rounded-xl border border-line bg-bg-2 p-0.5 shadow-sm">
+              <button
+                onClick={() => setCreaturePage(Math.max(0, creaturePageSafe - 1))}
+                disabled={creaturePageSafe === 0}
+                className="grid h-8 w-8 place-items-center rounded-md text-sm text-fg-dim transition hover:bg-line/50 hover:text-fg disabled:opacity-30 disabled:hover:bg-transparent"
+                title={t('map.prevCreatures')}
+                aria-label={t('map.prevCreatures')}
+              >
+                ◀
+              </button>
+              <span className="px-1 text-xs font-bold tabular-nums text-fg">
+                {creaturePageSafe + 1}/{creaturePageCount}
+              </span>
+              <button
+                onClick={() => setCreaturePage(Math.min(creaturePageCount - 1, creaturePageSafe + 1))}
+                disabled={creaturePageSafe >= creaturePageCount - 1}
+                className="grid h-8 w-8 place-items-center rounded-md text-sm text-fg-dim transition hover:bg-line/50 hover:text-fg disabled:opacity-30 disabled:hover:bg-transparent"
+                title={t('map.nextCreatures')}
+                aria-label={t('map.nextCreatures')}
+              >
+                ▶
+              </button>
+            </div>
+          )}
+          {creatures
+            .slice(creaturePageSafe * creaturePageSize, (creaturePageSafe + 1) * creaturePageSize)
+            .map((cr) => (
             <div
               key={cr.slug}
               className="flex items-center gap-2.5 rounded-xl border-2 bg-bg-2 py-1.5 pl-2 pr-2 shadow-sm"
@@ -4162,9 +6085,8 @@ export function MapPage() {
                   className="flex items-center gap-1 rounded-lg bg-accent/15 px-2 py-1.5 text-xs font-bold text-accent transition hover:bg-accent/25"
                   title={t('map.bestSpawn')}
                 >
-                  <span aria-hidden>⭐</span>
+                  <Icon name="star" size={14} />
                   <span className="tabular-nums">{cr.clusters[0].count}×</span>
-                  <span className="text-accent/70">z{cr.clusters[0].z}</span>
                 </button>
               )}
               {cr.clusters.length > 0 && (
@@ -4215,7 +6137,7 @@ export function MapPage() {
                   title={t('map.routeToSpawn')}
                   aria-label={t('map.routeToSpawn')}
                 >
-                  🧭
+                  <Icon name="compass" size={16} />
                 </button>
               )}
               <button
@@ -4337,14 +6259,76 @@ export function MapPage() {
           ) : null}
           {routeMsg && <span className="font-semibold text-accent">{routeMsg}</span>}
 
-          {(routeStart || routeEnd || routePlan) && (
+          <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-2">
+            {/* Report a wrong route: available once both endpoints are set (a bad
+                route, a partial trail or a "no route" are all worth flagging). The
+                submission lands in the DB for a routing fix pass. */}
+            {routeStart && routeEnd && (
+              reportState === 'done' ? (
+                <span className="flex items-center gap-1.5 text-sm font-semibold text-canon">
+                  <Icon name="check" size={15} />
+                  {t('map.routeReportThanks')}
+                </span>
+              ) : reportState === 'editing' || reportState === 'sending' ? (
+                <span className="flex items-center gap-1.5">
+                  <input
+                    value={reportNote}
+                    onChange={(ev) => setReportNote(ev.target.value)}
+                    onKeyDown={(ev) => {
+                      if (ev.key === 'Enter') submitRouteReport()
+                      else if (ev.key === 'Escape') setReportState('idle')
+                    }}
+                    autoFocus
+                    maxLength={2000}
+                    placeholder={t('map.routeReportPlaceholder')}
+                    className="h-8 w-52 rounded-lg border border-line bg-bg-2 px-2.5 text-sm text-fg outline-none transition placeholder:text-fg-mute hover:border-line-2 focus:border-accent"
+                  />
+                  <button
+                    onClick={submitRouteReport}
+                    disabled={reportState === 'sending'}
+                    className="rounded-lg border border-accent bg-accent px-2.5 py-1.5 text-sm font-bold text-white transition hover:brightness-110 disabled:opacity-60"
+                  >
+                    {reportState === 'sending' ? t('map.routeReportSending') : t('map.routeReportSend')}
+                  </button>
+                  <button
+                    onClick={() => setReportState('idle')}
+                    className="text-sm font-bold text-fg-mute transition hover:text-fg"
+                    aria-label={t('map.routeReportCancel')}
+                  >
+                    ✕
+                  </button>
+                </span>
+              ) : (
+                <button
+                  onClick={() => setReportState('editing')}
+                  title={t('map.routeReportHint')}
+                  className="flex items-center gap-1.5 text-sm font-semibold text-fg-mute transition hover:text-accent"
+                >
+                  <Icon name="flag" size={15} />
+                  {reportState === 'error' ? t('map.routeReportError') : t('map.routeReport')}
+                </button>
+              )
+            )}
+
+            {(routeStart || routeEnd || routePlan) && (
+              <button
+                onClick={resetRoute}
+                className="text-sm font-bold uppercase tracking-wider text-fg-mute transition hover:text-accent"
+              >
+                ✕ {t('map.routeClear')}
+              </button>
+            )}
+
+            {/* Dismiss the whole directions bar (works even with no route yet). */}
             <button
-              onClick={resetRoute}
-              className="ml-auto text-sm font-bold uppercase tracking-wider text-fg-mute transition hover:text-accent"
+              onClick={closeRoute}
+              title={t('map.routeClose')}
+              aria-label={t('map.routeClose')}
+              className="grid h-7 w-7 place-items-center rounded-md text-base leading-none text-fg-mute transition hover:bg-bg hover:text-accent"
             >
-              ✕ {t('map.routeClear')}
+              ✕
             </button>
-          )}
+          </div>
         </div>
       )}
 
@@ -4507,42 +6491,6 @@ export function MapPage() {
 
         </div>
       </div>
-
-      {/* Imported-marker category legend — floats along the bottom when the layer is on */}
-      {showPoi && (
-        <div className="pointer-events-auto absolute bottom-20 left-1/2 z-[1000] flex max-w-[94vw] -translate-x-1/2 flex-wrap items-center justify-center gap-x-4 gap-y-2 overflow-x-auto rounded-xl border border-line bg-bg/85 px-3 py-2 text-xs font-semibold text-fg-dim backdrop-blur-md">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-fg-mute">
-            {t('map.markersLegend')}
-          </span>
-          {[
-            { c: '#d23d2f', i: POI_ICONS.boss, l: t('map.poiBoss') },
-            { c: '#3fa7d6', i: POI_ICONS.travel, l: t('map.poiTravel') },
-            { c: '#6cc551', i: POI_ICONS.service, l: t('map.poiService') },
-            { c: '#e0a531', i: POI_ICONS.quest, l: t('map.poiQuest') },
-            { c: '#9b8cff', i: POI_ICONS.poi, l: t('map.poiOther') },
-          ].map((e) => (
-            <span key={e.l} className="flex items-center gap-1.5">
-              <span
-                className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white/90"
-                style={{ background: e.c }}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#fff"
-                  strokeWidth="2.4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="h-3.5 w-3.5"
-                >
-                  <path d={e.i} />
-                </svg>
-              </span>
-              {e.l}
-            </span>
-          ))}
-        </div>
-      )}
 
       <p className="pointer-events-none absolute bottom-2 right-2 z-[1000] max-w-[42vw] text-right text-[10px] leading-tight text-fg-mute/70">
         {t('map.disclaimer')}

@@ -29,6 +29,20 @@ export const ICON_INNER: Record<string, string> = {
   rope: '<path d="M9 3c-3.5 2-3.5 6 0 8s3.5 6 0 8M13 3c-3.5 2-3.5 6 0 8s3.5 6 0 8"/>',
   walk: '<path d="M6 3.2a1.8 1.8 0 0 1 1.8 1.8c0 1.9-.9 2.8-.9 4.7a1.4 1.4 0 0 1-2.8 0c0-1.9 0-2.8-.5-4.7A1.8 1.8 0 0 1 6 3.2zM4 15h3.2M17 8.2a1.8 1.8 0 0 1 1.8 1.8c0 1.9-.9 2.8-.9 4.7a1.4 1.4 0 0 1-2.8 0c0-1.9 0-2.8-.5-4.7A1.8 1.8 0 0 1 17 8.2zM15 20h3.2"/>',
   pickaxe: '<path d="M2 22l8-8M12 4c-3 0-6 1.5-8 4l4 4c2-2.5 3.5-5.5 4-8zM12 4c3 0 6 1.5 8 4l-4 4c-2-2.5-3.5-5.5-4-8z"/>',
+  // World-news ticker: houses, kill-stats digest
+  home: '<path d="M3 10.2 12 3l9 7.2M5 9v12h14V9M10 21v-6h4v6"/>',
+  key: '<circle cx="7.5" cy="7.5" r="4"/><path d="M10.4 10.4 20 20M16 16l2.4-2.4M13.6 13.6 16 11.2"/>',
+  gavel: '<path d="M13 3l8 8-3 3-8-8zM11.5 4.5 15 8M9 12l-6 6 3 3 6-6M3 21h8"/>',
+  sword: '<path d="M14.5 17.5 3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4"/>',
+  skull: '<path d="M9 12h.01M15 12h.01M8 20v2h8v-2M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20"/>',
+  newspaper: '<path d="M4 4h13a1 1 0 0 1 1 1v13a2 2 0 0 0 2 2H5a2 2 0 0 1-2-2V4M18 8h2a1 1 0 0 1 1 1v9M7 8h7M7 12h7M7 16h4"/>',
+  compass: '<circle cx="12" cy="12" r="9.5"/><path d="m15.8 8.2-2.2 5.6-5.6 2.2 2.2-5.6z"/>',
+  star: '<path d="m12 3.2 2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>',
+  // Route-report control: flag it, confirm sent
+  flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V4s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  // Trade chips: "route me to this merchant"
+  pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
 }
 
 export type IconName = keyof typeof ICON_INNER

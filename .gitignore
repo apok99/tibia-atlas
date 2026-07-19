@@ -9,3 +9,17 @@
 /tools/otbm/package.json
 /tools/otbm/package-lock.json
 /tools/otbm/tibiamaps/
+
+# OpenTibia (Canary) server clone — used only to import spawn coordinates locally.
+/ot/
+
+# Scratch MediaWiki API dumps from manual importer testing (not app data).
+/drefia-wiki.json
+/fairy.json
+/feyrist.json
+/gnomprona.json
+/hive.json
+/newhaven.json
+/primal.json
+/shrines.json
+/targuna.json

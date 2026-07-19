@@ -61,6 +61,8 @@ export const REGIONS: { name: string; x: number; y: number }[] = [
   { name: 'Mount Sternum', x: 32494, y: 32072 },
   { name: 'Femor Hills', x: 32569, y: 31803 },
   { name: 'Fibula', x: 32261, y: 32385 },
+  // Bounac (Order of the Lion): OTBM town #25, temple sits on open ground.
+  { name: 'Bounac', x: 32424, y: 32445 },
   { name: 'Plains of Havoc', x: 32735, y: 32297 },
   { name: 'Demona', x: 32479, y: 31663 },
   { name: 'Outlaw Camp', x: 32643, y: 32222 },
@@ -74,15 +76,15 @@ export const REGIONS: { name: string; x: number; y: number }[] = [
   { name: 'Laguna Islands', x: 32466, y: 32939 },
   // Ab'Dendriel & orc lands
   { name: 'Elvenbane', x: 32590, y: 31645 },
-  { name: 'Mistrock', x: 32567, y: 31442 },
-  { name: 'Orc Fortress', x: 32930, y: 31774 },
+  { name: 'Mistrock', x: 32560, y: 31449 },
+  { name: 'Orc Fortress', x: 32934, y: 31781 },
   { name: 'Vengoth', x: 32916, y: 31516 },
   // Edron & the east
   { name: 'Cyclopolis', x: 33251, y: 31698 },
   { name: 'Hero Cave', x: 33164, y: 31638 },
   { name: 'Stonehome', x: 33303, y: 31773 },
   { name: 'Grimvale', x: 33333, y: 31690 },
-  { name: 'Oramond', x: 33479, y: 31986 },
+  { name: 'Oramond', x: 33501, y: 31965 },
   // Venore & the Ghostlands
   { name: 'Shadowthorn', x: 33075, y: 32170 },
   { name: 'Drefia', x: 33018, y: 32443 },
@@ -98,35 +100,47 @@ export const REGIONS: { name: string; x: number; y: number }[] = [
   { name: 'Hellgate', x: 32675, y: 31647 },
   // Svargrond archipelago (ice)
   { name: 'Nibelor', x: 32353, y: 31053 },
-  { name: 'Helheim', x: 32478, y: 31179 },
+  { name: 'Helheim', x: 32473, y: 31174 },
   { name: 'Okolnir', x: 32230, y: 31412 },
   { name: 'Formorgar Glacier', x: 32102, y: 31144 },
   { name: 'Chyllfroest', x: 32060, y: 31034 },
-  { name: 'Tyrsung', x: 32464, y: 31173 },
+  { name: 'Tyrsung', x: 32374, y: 31311 },
   { name: 'Grimlund', x: 32021, y: 31294 },
   { name: 'Inukaya', x: 32367, y: 31058 },
-  // Carlin & western isles
-  { name: 'Senja', x: 32020, y: 31692 },
-  { name: 'Vega', x: 31974, y: 31901 },
-  { name: 'Isle of the Kings', x: 32126, y: 31665 },
+  // Carlin & western isles. Senja/Vega anchored by their residents' wiki
+  // positions (Anderson/Vera on Senja, Ruprecht on Vega) — the old guesses had
+  // Senja's spot holding the Isle of the Kings label and Vega's holding what is
+  // now Targuna.
+  { name: 'Senja', x: 32125, y: 31665 },
+  { name: 'Vega', x: 31955, y: 31725 },
+  { name: 'Isle of the Kings', x: 32173, y: 31938 },
   { name: 'Ghostlands', x: 32220, y: 31770 },
-  { name: 'Fields of Glory', x: 32440, y: 31960 },
+  { name: 'Fields of Glory', x: 32362, y: 31683 },
   { name: 'Mintwallin', x: 32540, y: 32200 },
   // Venore surroundings
   { name: 'Green Claw Swamp', x: 32820, y: 32020 },
   { name: 'Amazon Camp', x: 32839, y: 31920 },
   { name: 'Gnomebase Alpha', x: 33001, y: 31900 },
-  // Southern seas
-  { name: 'Meriana', x: 32132, y: 32912 },
+  // Southern seas. Meriana is the Shattered Isles' main island south-west of
+  // Thais (its NPCs sit at ~32340,32580) — not down by Treasure Island.
+  { name: 'Meriana', x: 32340, y: 32580 },
   { name: 'Marapur', x: 33842, y: 32852 },
+  // Marapur-island towns (OTBM towns #30/#31), anchored on open ground by
+  // their temples.
+  { name: 'Silvertides', x: 33776, y: 32842 },
+  { name: 'Moonfall', x: 33807, y: 32745 },
   { name: 'Murmuring Wilderness', x: 33690, y: 32780 },
   { name: 'Gnomprona', x: 33600, y: 32880 },
   // Zao & the far east
-  { name: 'Zao', x: 33350, y: 31370 },
+  // Zao label sits on the open steppe south of the Great Gate — the gate
+  // compound itself (33350,31370) is a sealed 821-tile pocket in the walk grid.
+  { name: 'Zao', x: 33350, y: 31460 },
   { name: 'Razachai', x: 33074, y: 31100 },
-  { name: 'Zzaion', x: 33262, y: 31100 },
+  // Zzaion is the lizard fortress in southern Zao (wiki Mapper Coords), not up
+  // by Razachai.
+  { name: 'Zzaion', x: 33316, y: 31558 },
   { name: 'Issavi', x: 33946, y: 31516 },
-  { name: 'Warzones 4-6', x: 33800, y: 32170 },
+  { name: 'Warzones 4-6', x: 33844, y: 32214 },
   // Roshamuul & the dream realms
   { name: 'Roshamuul Prison', x: 33520, y: 32600 },
   { name: 'Guzzlemaw Valley', x: 33645, y: 32390 },
@@ -149,14 +163,24 @@ export const REGIONS: { name: string; x: number; y: number }[] = [
   { name: 'Asura Palace', x: 32948, y: 32689 },
   // The Hive & the north-eastern seas
   { name: 'The Hive', x: 33560, y: 31255 },
-  { name: 'Hive Outpost', x: 33467, y: 31322 },
+  // The Hive Outpost is the quarantine base on Vandura, WEST OF LIBERTY BAY
+  // (wiki Mapper Coords) — nowhere near the Hive itself.
+  { name: 'Hive Outpost', x: 32163, y: 32838 },
   { name: 'Gray Island', x: 33191, y: 31985 },
   { name: 'Orcsoberfest', x: 33779, y: 31054 },
   // Kilmaresh south
   { name: 'Ruins of Nuur', x: 33848, y: 31685 },
   // Starter isles & the dream courts
+  // No Dawnport label: the town still exists in the Canary OTBM (#2) but was
+  // retired from live Tibia (Newhaven replaced the beginner island).
   { name: 'Island of Destiny', x: 32094, y: 32004 },
-  { name: 'Targuna', x: 33514, y: 32720 },
+  // The new-player chain (15.x monk update), anchored by their NPCs' wiki
+  // positions: Newhaven village east of Bounac, Targuna in the north-western
+  // isles south of Vega, and Aragonia the pirate island the Targuna sea turtle
+  // sails to (its coords were mistakenly used for the Targuna label before).
+  { name: 'Newhaven', x: 32540, y: 32500 },
+  { name: 'Targuna', x: 31950, y: 31897 },
+  { name: 'Aragonia', x: 33513, y: 32720 },
   { name: 'Winter Court', x: 33697, y: 32127 },
   { name: 'Summer Court', x: 33691, y: 32213 },
   // Forbidden Islands (wiki Mapper Coords)

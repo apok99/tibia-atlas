@@ -174,7 +174,11 @@ function loadItems() {
 
 // --- 3. parse the OTBM → per-floor walkability + raw floor-change records --------
 const NODE_START = 0xFE, NODE_END = 0xFF, ESCAPE = 0xFD
-const T_TILE_AREA = 4, T_TILE = 5, T_ITEM = 6, T_HOUSETILE = 12
+// Node ids per the server's own enum (ot/src/io/io_definitions.hpp):
+// TOWNS=12, TOWN=13, HOUSETILE=14. HOUSETILE was mistakenly 12 before, which
+// dropped real house tiles AND leaked their item children onto the previous
+// tile's still-uncommitted state (phantom blocks / floor-changes).
+const T_TILE_AREA = 4, T_TILE = 5, T_ITEM = 6, T_HOUSETILE = 14
 const A_TELE_DEST = 8, A_ITEM = 9, A_TILE_FLAGS = 3
 // attribute byte → payload size, for scanning past item attributes we don't need.
 const ATTR_1B = new Set([15, 22, 14]) // count / rune charges / house-door id
@@ -198,7 +202,7 @@ function parseOtbm({ unpass, doors, ladders, fchange, gates, useDown, ropeUp, sh
   // hole is standable although its GROUND is unpass mountain (you step onto the
   // hole), but a floor-change tile carrying an unpass ITEM (wall, statue) is NOT
   // — treating those as portals let routes walk through wall columns.
-  let tile = null, blkGround = false, blkItem = false, inb = false, fcDir = null, tele = null, hasGround = false, portal = false, hasGate = false, hasDoor = false
+  let tile = null, blkGround = false, blkItem = false, inb = false, fcDir = null, tele = null, hasGround = false, portal = false, hasGate = false, hasDoor = false, isHouse = false
 
   const readProps = () => {
     const out = []
@@ -213,6 +217,9 @@ function parseOtbm({ unpass, doors, ladders, fchange, gates, useDown, ropeUp, sh
 
   const commit = () => {
     if (!inb || !tile) return
+    // House tiles stay off the grid: auto-walk cannot path through locked
+    // house doors, so houses are hard holes (matches the client's behaviour).
+    if (isHouse) return
     const i = (tile.y - Y0) * W + (tile.x - X0)
     const { x, y, z } = tile
     // Floor-change/teleport records are only emitted for tiles you could actually
@@ -264,7 +271,7 @@ function parseOtbm({ unpass, doors, ladders, fchange, gates, useDown, ropeUp, sh
       const x = area.x + pr[0], y = area.y + pr[1], z = area.z
       tile = { x, y, z }
       inb = z >= 0 && z < 16 && x >= X0 && x < X1 && y >= Y0 && y < Y1
-      blkGround = false; blkItem = false; fcDir = null; tele = null; hasGround = false; portal = false; hasGate = false; hasDoor = false
+      blkGround = false; blkItem = false; fcDir = null; tele = null; hasGround = false; portal = false; hasGate = false; hasDoor = false; isHouse = type === T_HOUSETILE
       // Tile attributes: a ground item (A_ITEM) and/or tile flags precede children.
       let q = type === T_HOUSETILE ? 6 : 2 // HOUSETILE prefixes a u32 house id
       while (q < pr.length) {
@@ -454,6 +461,24 @@ function mergeWaypointCost(walk) {
   return { cost, client }
 }
 
+// --- Owner-verified scripted entrances the OTBM can't express --------------------
+// A handful of real in-game descents are pure server-lua (dug / scripted sand
+// holes) and leave NO floor-change item in the OTBM, so the bake can't derive them
+// — yet the rope-spot the client puts on the floor BELOW proves the passage is
+// real (you drop in from above and rope back out). Each entry is an owner-confirmed
+// route-report fix. Appended straight to the final link set (both endpoints
+// hand-verified walkable). Keep this list SMALL and specific: it is the only place
+// we assert a link the map data does not contain.
+//   [fromX, fromY, fromZ, toX, toY, toZ, type]  (type 0=down hole, 4=shovel)
+const MANUAL_LINKS = [
+  // Larva Cave — Kha'labal desert SE of Ankrahmun. You drop through a hole in the
+  // sand (33161,32598,z7) into the cave (z8) and rope back up; the OTBM only carries
+  // the rope-ceiling ground below (id 386 "dirt floor"), never the hole above.
+  // Route report #1 (Thais→Larva) was detouring through the Ancient Tombs teleport
+  // maze because this was the sole modelled way into the cave's z8 component.
+  [33161, 32598, 7, 33161, 32598, 8, 0],
+]
+
 // --- 5. validate links against the baked walkability ------------------------------
 // A link is only usable if its destination is a tile you can actually stand on.
 // Tens of thousands of raw links land in solid rock / water / void: map noise,
@@ -576,6 +601,23 @@ const { cost, client } = mergeWaypointCost(parsed.walk)
 }
 
 const links = validateLinks(resolveLinks(parsed), cost, client)
+// Owner-verified scripted entrances (MANUAL_LINKS): append after validation and
+// force both endpoints standable so the leg can never dangle.
+{
+  const setWalk = (x, y, z) => {
+    if (z < 0 || z > 15 || x < X0 || x >= X1 || y < Y0 || y >= Y1) return false
+    const i = (y - Y0) * W + (x - X0)
+    if (cost[z][i] === 0) cost[z][i] = DEFAULT_COST
+    return true
+  }
+  let added = 0
+  for (const l of MANUAL_LINKS) {
+    const [x, y, z, dx, dy, dz] = l
+    if (!setWalk(x, y, z) || !setWalk(dx, dy, dz)) { console.warn('  MANUAL_LINK out of bounds, skipped:', l); continue }
+    links.push([...l]); added++
+  }
+  console.log('manual links appended:', added)
+}
 const byT = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0 }
 for (const l of links) byT[l[6]]++
 console.log('floor-links:', links.length, '| down:', byT[0], 'up:', byT[1], 'teleport:', byT[2], 'rope:', byT[3], 'shovel:', byT[4])

@@ -7,6 +7,7 @@ import type {
   Facets,
   ItemDetail,
   ItemFacets,
+  ItemTrade,
   LibraryBook,
   LibraryIndex,
   Loadout,
@@ -166,19 +167,64 @@ export function useItems(
     vocation?: string
     equippable?: '0' | '1'
     q?: string
+    /** 'power' pages strongest-first (gear picker); default is by id (album). */
+    sort?: 'power'
+    /** '1' trims the payload to what a picker renders (name/image/stats). */
+    light?: '1'
     page?: number
     per_page?: number
   } = {},
+  enabled = true,
 ) {
   const { i18n } = useTranslation()
   return useQuery({
     queryKey: ['items', i18n.language, filters],
+    enabled,
     queryFn: async () => {
       const { data } = await api.get<Paginated<EntryListItem>>('/items', { params: filters })
       return data
     },
     placeholderData: keepPreviousData,
     // The catalogue only changes on (rare) imports.
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+// Aggregated combat stats for a worn equipment set (the map's character gear):
+// what /api/items/set-stats computes with the same math the Hunt Finder uses.
+export type SetStats = {
+  vocation: string
+  items: { id: number; slug: string; slot: string }[]
+  armor: number
+  resists: Record<string, number>
+  /** % of an incoming physical hit the armor absorbs in the hunt model. */
+  physical_reduction: number
+  damage_elements: string[]
+  bonuses: Record<string, number>
+  weapon: {
+    name: string | null
+    type: string | null
+    category: string | null
+    attack: number | null
+    element_attack: number | null
+    element: string | null
+    hands: string | null
+  } | null
+}
+
+/** Combat stats for a picked equipment set (entry ids, pre-sorted for a stable key). */
+export function useSetStats(ids: number[], vocation: string) {
+  const { i18n } = useTranslation()
+  return useQuery({
+    queryKey: ['set-stats', i18n.language, ids.join('-'), vocation],
+    enabled: ids.length > 0,
+    queryFn: async () => {
+      const { data } = await api.get<{ data: SetStats }>('/items/set-stats', {
+        params: { items: ids.join(','), vocation },
+      })
+      return data.data
+    },
+    placeholderData: keepPreviousData,
     staleTime: 5 * 60 * 1000,
   })
 }
@@ -206,6 +252,20 @@ export function useItemDetail(slug: string | undefined) {
       const { data } = await api.get<{ data: ItemDetail }>(`/items/${slug}`)
       return data.data
     },
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+/** Where to buy / sell one item: merchants, real prices, map spawns. */
+export function useItemTrade(slug: string | undefined) {
+  return useQuery({
+    queryKey: ['item-trade', slug],
+    enabled: !!slug,
+    queryFn: async () => {
+      const { data } = await api.get<{ data: ItemTrade }>(`/items/${slug}/trade`)
+      return data.data
+    },
+    // Prices only change on OT data updates; Rashid's stop once a day.
     staleTime: 5 * 60 * 1000,
   })
 }

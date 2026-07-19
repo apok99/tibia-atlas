@@ -10,6 +10,7 @@ use App\Queries\KillStats\KillOverviewQuery;
 use App\Queries\KillStats\KillStatsMetaQuery;
 use App\Queries\KillStats\RaceRankingQuery;
 use App\Queries\KillStats\RaceSeriesQuery;
+use App\Support\BossRule;
 use App\Support\KillStatsCache;
 use App\Transformers\KillStats\BossRespawnTransformer;
 use App\Transformers\KillStats\BossWatchTransformer;
@@ -181,7 +182,14 @@ class KillStatsService
                 'latest' => $latest,
                 'type' => $type,
                 'world' => $world,
-                'data' => $this->bossWatchTransformer->collection($rows, config('killstats.iconic_raid_bosses'), $limit, $type, $world),
+                'data' => $this->bossWatchTransformer->collection(
+                    $rows,
+                    config('killstats.iconic_raid_bosses'),
+                    $limit,
+                    $type,
+                    $world,
+                    $latest ? $this->bossWatch->worldCount($latest) : 1,
+                ),
             ];
         });
     }
@@ -205,7 +213,7 @@ class KillStatsService
             return [
                 'linked' => true,
                 'race' => $race->name,
-                'is_boss' => $race->rank === 'Boss',
+                'is_boss' => BossRule::matches($race->rank, $race->spawn_type),
                 'latest_date' => $latestDate,
                 'summary' => $shaped['summary'],
                 'worlds' => $shaped['worlds'],
