@@ -20,3 +20,6 @@
 /primal.json
 /shrines.json
 /targuna.json
+
+# OpenTibia (Canary) server clone — used only to import spawn/npc data locally.
+/ot/
