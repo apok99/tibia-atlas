@@ -632,6 +632,23 @@ const FERRY_LINES: FerryLineDef[] = [
       { name: 'Upper Spike (fondo)', x: 32224, y: 32606, floor: 15 },
     ],
   },
+  // Falcon Bastion (Order of the Falcon — The Secret Library). Entry is a scripted
+  // ritual: you renew a chalk symbol in Edron at (33201,31763,f1) during "night"
+  // minutes and get teleported to (33356,31309,f4). That trigger tile sits on an
+  // upper Edron floor our stair data doesn't reach, so the line anchors on Edron's
+  // surface instead. Inside, the descent to the f9 Falcon Knight pocket is lua too
+  // (quest doors + the Oberon levers), so that pocket gets its own stop at the
+  // landing of the two real f9 teleports. Route report #8 ("como se llega a falcon")
+  // was a 370t partial before this.
+  {
+    name: 'Portal de quest',
+    icon: 'sparkles',
+    stops: [
+      { name: 'Edron', x: 33211, y: 31830 },
+      { name: 'Falcon Bastion', x: 33356, y: 31309, floor: 4 },
+      { name: 'Falcon Bastion (mazmorra)', x: 33294, y: 31288, floor: 9 },
+    ],
+  },
   // Ankrahmun's Ancient Tombs. Owner-verified in-game: each tomb is entered ON
   // FOOT through its own doorway in the desert — NOT by a portal from the city
   // (the old single city-anchored line prescribed "boat to Ankrahmun, teleport
@@ -949,6 +966,7 @@ function loadLinks(): Promise<void> {
       [33200, 33210, 32526, 32536, 7, 8], // pyramid portal (desert, into the tomb network)
       [33188, 33200, 32842, 32856, 4, 8], // pyramid portal (city top f4, into the under-city crypts)
       [33390, 33400, 32655, 32668, 6, 6], // Cobra Bastion gate (5-tile f6 hop; its stairs are all real links)
+      [33270, 33395, 31255, 31375, 0, 15], // Falcon Bastion (its two real f9 teleports into the Falcon Knight pocket; entry is the curated Edron ritual line above)
       [31880, 32160, 32440, 32820, 0, 15], // Forbidden Islands (Talahu/Malada/Nargor): the "Shattered Isles portals" web that stitches the sub-islands (Lich Hell / serpent spawns / Crypt Shamblers). Entry = curated Meriana->Talahu hop above.
     ]
     // A teleport is kept iff ONE plane contains BOTH of its ends ("shared
