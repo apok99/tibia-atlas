@@ -374,8 +374,13 @@ const FERRY_LINES: FerryLineDef[] = [
     icon: 'ship',
     stops: [
       { name: 'Cormaya', x: 33309, y: 31996 },
-      { name: 'Kazordoon minas', x: 32526, y: 32037, floor: 14 },
-      { name: 'Kazordoon', x: 32555, y: 32068, floor: 10 },
+      // These two docks are DEEP INSIDE the Kazordoon mines, not Kazordoon city
+      // (which sits ~95 tiles NE on the surface at 32649,31925). Naming the f10
+      // dock "Kazordoon" made routes claim to drop you in the city — route report
+      // #9 ("Kazordoon no esta ahi"). Map markers: f14 = "Steamboat to Kazordoon",
+      // f10 = "Steamboat to Robson's Isle" (beside the Sunken Mines).
+      { name: 'Minas de Kazordoon (fondo)', x: 32526, y: 32037, floor: 14 },
+      { name: 'Minas de Kazordoon', x: 32555, y: 32068, floor: 10 },
       { name: 'Gnomprona', x: 33517, y: 32857, floor: 14 },
     ],
   },
@@ -548,7 +553,7 @@ const FERRY_LINES: FerryLineDef[] = [
     name: 'Portal de quest',
     icon: 'sparkles',
     stops: [
-      { name: 'Kazordoon', x: 32555, y: 32068, floor: 10 },
+      { name: 'Minas de Kazordoon', x: 32555, y: 32068, floor: 10 },
       { name: 'Gnomebase Alpha', x: 33001, y: 31900, floor: 9 },
       { name: 'Warzone 1', x: 33076, y: 31901, floor: 10 },
       { name: 'Warzone 2', x: 33060, y: 31931, floor: 11 },
