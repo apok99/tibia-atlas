@@ -726,10 +726,10 @@ html[data-theme='dark'] .ks-raid-badge {
   background: linear-gradient(160deg, #c79a3f, #8a6420);
 }
 .tm-trade.is-sell {
-  background: linear-gradient(160deg, #6faf52, #3e6b2b);
+  background: linear-gradient(160deg, #4e8c39, #27501b);
 }
 .tm-trade.is-both {
-  background: linear-gradient(115deg, #c79a3f 48%, #5c934a 52%);
+  background: linear-gradient(115deg, #c79a3f 48%, #45803a 52%);
 }
 .tm-trade.is-off {
   opacity: 0.45;

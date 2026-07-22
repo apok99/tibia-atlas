@@ -43,6 +43,7 @@ import { useItems, useSetStats, useEntry } from '../hooks/useEntries'
 import { LoreText } from '../components/LoreText'
 import { LORE_POIS, type LorePoi } from '../lib/lorePois'
 import { RASHID_ROTATION, rashidEffectiveDay, useRashidClock, type RashidStop } from '../lib/rashid'
+import { YASIR_DOCKS, type YasirDock } from '../lib/yasir'
 import { SKILL_LABELS, signed } from '../components/items/itemStats'
 import { useGlossary } from '../hooks/useGlossary'
 import { useBosses, useKillWorlds, type BossRow } from '../hooks/useKillStats'
@@ -312,9 +313,13 @@ function NewsRail({
   )
 }
 
-// Rashid's own walking sprite (self-hosted, like the other game art), used both
-// as the map marker and as the rail button — no pin or card chrome around it.
+// The travelling merchants' own walking sprites (self-hosted, like the rest of
+// the game art), used both as map markers and as rail buttons — no pin or card
+// chrome around them. Rashid reads gold, Yasir teal, so the two never blur.
 const RASHID_SPRITE = '/sprites/rashid.webp'
+const YASIR_SPRITE = '/sprites/yasir.webp'
+const RASHID_GOLD = '#d8a63c'
+const YASIR_TEAL = '#5fb8a6'
 
 /** Short city tag: initials for multi-word names ("Port Hope" → PH), first
  *  three letters otherwise ("Carlin" → CAR) — the full name is in the tooltip. */
@@ -331,9 +336,58 @@ function rashidCountdown(totalSeconds: number): string {
   return `${hh}:${mm}:${ss}`
 }
 
-// "Rashid hoy" card, docked to the right edge directly under the news rail.
-// One tap flies to today's city, opens his panel and traces the walking route
-// from the nearest city — the whole "where is he / how do I get there" loop.
+// A travelling merchant docked to the right edge, right under the news rail:
+// just his sprite with the city tag under it (no card), because the map is the
+// content. One tap opens his panel — for Rashid that also traces the route.
+function TravellerRail({
+  sprite,
+  tag,
+  color,
+  title,
+  label,
+  active,
+  onPick,
+}: {
+  sprite: string
+  tag: string
+  color: string
+  title: string
+  label: string
+  active: boolean
+  onPick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      title={title}
+      aria-label={label}
+      className={`pointer-events-auto flex flex-col items-center transition hover:scale-110 ${
+        active ? 'scale-110' : ''
+      }`}
+    >
+      <img
+        src={sprite}
+        alt=""
+        width={44}
+        height={44}
+        className="h-11 w-11 [image-rendering:pixelated]"
+        style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,.85))' }}
+      />
+      <span
+        className="-mt-1 rounded px-1 text-[10px] font-black leading-tight tracking-wider"
+        style={{
+          color: active ? '#fff' : color,
+          textShadow: '0 1px 2px rgba(0,0,0,.95), 0 0 3px rgba(0,0,0,.9)',
+        }}
+      >
+        {tag}
+      </span>
+    </button>
+  )
+}
+
+// Rashid's rail button: sprite + today's city tag, ticking its own countdown.
 function RashidRail({
   stop,
   active,
@@ -348,32 +402,15 @@ function RashidRail({
   // The 1 s tick lives here (and in the panel) so it never re-renders the map.
   const { secondsToSave } = useRashidClock()
   return (
-    <button
-      type="button"
-      onClick={onPick}
+    <TravellerRail
+      sprite={RASHID_SPRITE}
+      tag={cityTag(stop.city)}
+      color={RASHID_GOLD}
       title={`${t('map.rashidTitle')} — ${stop.city} · ${t('map.rashidChangesIn')} ${rashidCountdown(secondsToSave)}`}
-      aria-label={`${t('map.rashidTitle')} — ${stop.city}. ${t('map.rashidHint')}`}
-      className={`pointer-events-auto flex flex-col items-center transition hover:scale-110 ${
-        active ? 'scale-110' : ''
-      }`}
-    >
-      <img
-        src={RASHID_SPRITE}
-        alt=""
-        width={44}
-        height={44}
-        className="h-11 w-11 [image-rendering:pixelated]"
-        style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,.85))' }}
-      />
-      <span
-        className={`-mt-1 rounded px-1 text-[10px] font-black leading-tight tracking-wider ${
-          active ? 'text-[#ffd873]' : 'text-[#d8a63c]'
-        }`}
-        style={{ textShadow: '0 1px 2px rgba(0,0,0,.95), 0 0 3px rgba(0,0,0,.9)' }}
-      >
-        {cityTag(stop.city)}
-      </span>
-    </button>
+      label={`${t('map.rashidTitle')} — ${stop.city}. ${t('map.rashidHint')}`}
+      active={active}
+      onPick={onPick}
+    />
   )
 }
 
@@ -441,6 +478,66 @@ function RashidPanel({
             {t('map.rashidFull')}
           </Link>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// In-map reader for Yasir. He keeps no schedule — his ship docks at one of
+// three ports and which one is anybody's guess — so the panel lists all three
+// candidates honestly, each with its own "route me there" button.
+function YasirPanel({
+  docks,
+  lang,
+  onRoute,
+  onClose,
+}: {
+  docks: YasirDock[]
+  lang: 'es' | 'en'
+  onRoute: (dock: YasirDock) => void
+  onClose: () => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
+      <div className="pointer-events-auto w-[26rem] max-w-[calc(100vw-1.5rem)] rounded-2xl border-2 border-line bg-bg-2/95 p-4 shadow-2xl backdrop-blur-md">
+        <div className="mb-2 flex items-center gap-1.5" style={{ color: YASIR_TEAL }}>
+          <img src={YASIR_SPRITE} alt="" className="h-6 w-6 shrink-0 [image-rendering:pixelated]" />
+          <span className="text-[10px] font-bold uppercase tracking-widest">{t('map.yasirTitle')}</span>
+          <button
+            onClick={onClose}
+            aria-label={t('common.close')}
+            className="ml-auto grid h-6 w-6 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:text-fg"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <p className="text-sm leading-relaxed text-fg-dim">{t('map.yasirNote')}</p>
+
+        <ul className="mt-3 flex flex-col gap-1.5">
+          {docks.map((d) => (
+            <li key={d.city} className="flex items-center gap-2 rounded-lg border border-line-2 p-2">
+              <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                <span className="text-sm font-bold text-fg">{d.city}</span>
+                <span className="truncate text-xs text-fg-mute">{d.spot[lang]}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => onRoute(d)}
+                title={t('map.rashidRoute')}
+                aria-label={`${t('map.routeToSpawn')} — ${d.city}`}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition"
+                style={{ borderColor: `${YASIR_TEAL}80`, color: YASIR_TEAL, background: `${YASIR_TEAL}1a` }}
+              >
+                <Icon name="compass" size={14} />
+                {t('map.routeToSpawn')}
+              </button>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   )
@@ -1820,6 +1917,9 @@ export function MapPage() {
     total: number // droppers with a slug (may exceed plotted if capped)
     trade: ItemTrade | null // merchants that buy/sell it (trade pins layer)
   } | null>(null)
+  // Which merchant of the trade board is currently routed to, so the banner can
+  // page through the rest (◀ 2/31 ▶) instead of only ever reaching the best one.
+  const [tradeNav, setTradeNav] = useState<{ side: 'buy' | 'sell'; i: number } | null>(null)
   const [itemBusy, setItemBusy] = useState(false)
   const [showAll, setShowAll] = useState(true)
   const [catFilter, setCatFilter] = useState('') // '' = all classifications
@@ -1830,6 +1930,7 @@ export function MapPage() {
   const [showLore, setShowLore] = useState(false) // curated lore / mystery POIs layer
   const [lorePoi, setLorePoi] = useState<LorePoi | null>(null) // open lore reader
   const [rashidOpen, setRashidOpen] = useState(false) // Rashid reader panel
+  const [yasirOpen, setYasirOpen] = useState(false) // Yasir reader panel
   // Rashid moves city at the 10:00 Europe/Berlin server save. The second-level
   // countdown ticks inside the rail/panel only — this page-level state polls
   // coarsely (30 s) so the pin flips over on its own without re-rendering the
@@ -3117,23 +3218,43 @@ export function MapPage() {
     return () => window.clearInterval(id)
   }, [])
 
-  // Rashid's pin — one marker at today's city, always drawn (dimmed when he
-  // stands on another floor) so "where is he today?" is answerable at a glance.
-  // Clicking is the same action as the rail card: fly + panel + route.
+  // The travelling merchants' pins, always drawn (dimmed when they stand on a
+  // floor other than the one being viewed) so "where are they?" is answerable
+  // at a glance: Rashid at today's city, Yasir at each of his three candidate
+  // docks. Clicking a pin does what its rail button does — panel + route.
   useEffect(() => {
     const grp = rashidGroupRef.current
     if (!grp) return
     grp.clearLayers()
-    const off = rashidStop.z !== floor
-    const icon = L.divIcon({
-      className: '',
-      html: `<div class="tm-rashid${off ? ' is-off' : ''}"><img src="${RASHID_SPRITE}" alt=""></div>`,
-      iconSize: [0, 0],
-    })
-    L.marker(toLatLng(rashidStop.x, rashidStop.y), { icon, interactive: true, keyboard: false, zIndexOffset: 700 })
-      .addTo(grp)
-      .bindTooltip(`<b>Rashid</b> · ${escapeHtml(rashidStop.city)}`, { direction: 'top', offset: [0, -14] })
-      .on('click', () => goToRashid())
+    const pin = (sprite: string, x: number, y: number, z: number, tip: string, onClick: () => void) => {
+      const icon = L.divIcon({
+        className: '',
+        html: `<div class="tm-rashid${z !== floor ? ' is-off' : ''}"><img src="${sprite}" alt=""></div>`,
+        iconSize: [0, 0],
+      })
+      L.marker(toLatLng(x, y), { icon, interactive: true, keyboard: false, zIndexOffset: 700 })
+        .addTo(grp)
+        .bindTooltip(tip, { direction: 'top', offset: [0, -14] })
+        .on('click', onClick)
+    }
+    pin(
+      RASHID_SPRITE,
+      rashidStop.x,
+      rashidStop.y,
+      rashidStop.z,
+      `<b>Rashid</b> · ${escapeHtml(rashidStop.city)}`,
+      () => goToRashid(),
+    )
+    for (const d of YASIR_DOCKS) {
+      pin(
+        YASIR_SPRITE,
+        d.x,
+        d.y,
+        d.z,
+        `<b>Yasir</b> · ${escapeHtml(d.city)}<br>${escapeHtml(t('map.yasirMaybe'))}`,
+        () => goToYasirDock(d),
+      )
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [floor, mapReady, rashidStop])
 
@@ -3876,6 +3997,7 @@ export function MapPage() {
       const it = data.data
       const droppers = it.dropped_by.filter((d): d is Dropper & { slug: string } => !!d.slug)
       const plotted = droppers.slice(0, PALETTE.length)
+      setTradeNav(null)
       setActiveItem({
         slug: it.slug,
         name: it.name ?? slug,
@@ -3900,6 +4022,7 @@ export function MapPage() {
   function clearItem() {
     if (activeItem) for (const s of activeItem.plotted) removeCreature(s)
     setActiveItem(null)
+    setTradeNav(null)
   }
 
   // Fly to the next/previous spawn cluster of a creature, switching floor.
@@ -3997,6 +4120,7 @@ export function MapPage() {
       label: `Rashid · ${rashidStop.city}`,
     }
     setRashidOpen(true)
+    setYasirOpen(false)
     setRouteMode(true)
     if (refresh) {
       routeStartRef.current = null
@@ -4006,19 +4130,47 @@ export function MapPage() {
     applyRouteEnd(pt)
   }
 
-  // Banner chips: fly-and-route to the best-priced merchant of one side of the
-  // trade board (the API lists arrive best-price-first; merchants without map
-  // coords — scripted spawns outside the mapped region — are skipped). Going
-  // shopping means the dropper overlays are noise now, so they get cleared —
-  // the trade pins and the route are what's left on screen.
-  function routeToBestOffer(offers: ItemTrade['buy']) {
-    const o = offers.find((x) => x.coords && x.coords.length > 0)
-    if (!o) return
+  // Yasir: no schedule to trust, so the rail button only opens the panel with
+  // his three candidate docks; picking one (there or on the map) flies and
+  // routes to it from the nearest city, like Rashid.
+  function openYasir() {
+    setYasirOpen(true)
+    setRashidOpen(false)
+  }
+
+  function goToYasirDock(dock: YasirDock) {
+    const pt: RoutePoint = { x: dock.x, y: dock.y, floor: dock.z, label: `Yasir · ${dock.city}` }
+    openYasir()
+    setRouteMode(true)
+    routeStartRef.current = null
+    setRouteStart(null)
+    ensureRouteStartNear(pt)
+    applyRouteEnd(pt)
+  }
+
+  // The merchants of one side of the board we can actually walk to: the API
+  // lists arrive best-price-first, and merchants without map coords (scripted
+  // spawns outside the mapped region) can't be routed to, so they drop out.
+  function routableOffers(side: 'buy' | 'sell'): ItemTrade['buy'] {
+    const list = side === 'buy' ? activeItem?.trade?.buy : activeItem?.trade?.sell
+    return (list ?? []).filter((o) => o.coords && o.coords.length > 0)
+  }
+
+  // Banner chips: fly-and-route to the n-th merchant of one side of the board,
+  // best price first. Going shopping means the dropper overlays are noise now,
+  // so they get cleared — the trade pins and the route are what's left on
+  // screen. The banner then shows a pager to walk the rest of the list.
+  function routeToOffer(side: 'buy' | 'sell', i: number) {
+    const offers = routableOffers(side)
+    if (offers.length === 0) return
+    const idx = (i + offers.length) % offers.length
+    const o = offers[idx]
     const item = activeItem
     if (item && item.plotted.length) {
       for (const s of item.plotted) removeCreature(s)
       setActiveItem({ ...item, plotted: [] })
     }
+    setTradeNav({ side, i: idx })
     routeToTradeNpc(o.npc, o.coords![0])
   }
 
@@ -4491,8 +4643,8 @@ export function MapPage() {
           hands + the daily kill-stats digest), docked to the RIGHT edge and
           collapsed to a 📰 button by default so it never shifts the layout.
           Clicking an item plots the creature / flies to the house. */}
-      {/* Right-edge stack: the news rail, and directly under it the "Rashid hoy"
-          card — one tap flies to today's city and routes there. */}
+      {/* Right-edge stack: the news rail, and directly under it the travelling
+          merchants — one tap flies to them and routes there. */}
       <div className="pointer-events-none absolute right-2 top-3 z-[1101] flex flex-col items-end gap-2 sm:right-3">
         <NewsRail
           events={worldEvents}
@@ -4501,7 +4653,20 @@ export function MapPage() {
           t={t}
           onPick={onPickEvent}
         />
-        <RashidRail stop={rashidStop} active={rashidOpen} onPick={() => goToRashid()} t={t} />
+        {/* Same panel shell as the news rail (rounded, blurred, bordered) but in
+            gold, so the two sprites read cleanly over any map tile. */}
+        <div className="pointer-events-auto flex items-start gap-1 rounded-2xl border-2 border-[#d8a63c]/70 bg-bg-2/95 px-2 py-1.5 shadow-lg backdrop-blur-md">
+          <RashidRail stop={rashidStop} active={rashidOpen} onPick={() => goToRashid()} t={t} />
+          <TravellerRail
+            sprite={YASIR_SPRITE}
+            tag={`×${YASIR_DOCKS.length}`}
+            color={YASIR_TEAL}
+            title={`${t('map.yasirTitle')} — ${YASIR_DOCKS.map((d) => d.city).join(' / ')}`}
+            label={`${t('map.yasirTitle')}. ${t('map.yasirHint')}`}
+            active={yasirOpen}
+            onPick={openYasir}
+          />
+        </div>
       </div>
 
       {/* Floating control layer — pinned to the top, translucent so the map reads
@@ -5460,6 +5625,16 @@ export function MapPage() {
         />
       )}
 
+      {/* Yasir's reader: his three candidate docks, each routable. */}
+      {yasirOpen && (
+        <YasirPanel
+          docks={YASIR_DOCKS}
+          lang={i18n.language?.slice(0, 2) === 'en' ? 'en' : 'es'}
+          onRoute={goToYasirDock}
+          onClose={() => setYasirOpen(false)}
+        />
+      )}
+
       {huntOpen && (
         <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
           <div className="scroll-atlas pointer-events-auto max-h-[70vh] w-[27rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-3 shadow-2xl backdrop-blur-md">
@@ -6215,9 +6390,13 @@ export function MapPage() {
               )}
               {(activeItem.trade?.buy.length ?? 0) > 0 && (
                 <button
-                  onClick={() => routeToBestOffer(activeItem.trade!.buy)}
+                  onClick={() => routeToOffer('buy', 0)}
                   title={t('map.itemBuyChipHint')}
-                  className="flex items-center gap-1.5 rounded-lg border border-[#c79a3f]/70 bg-[#c79a3f]/15 px-2.5 py-1.5 text-xs font-bold uppercase tracking-wider text-[#c79a3f] transition hover:border-[#c79a3f] hover:bg-[#c79a3f]/30"
+                  className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold uppercase tracking-wider text-[#c79a3f] transition hover:border-[#c79a3f] hover:bg-[#c79a3f]/30 ${
+                    tradeNav?.side === 'buy'
+                      ? 'border-[#c79a3f] bg-[#c79a3f]/30'
+                      : 'border-[#c79a3f]/70 bg-[#c79a3f]/15'
+                  }`}
                 >
                   <Icon name="pin" size={14} />
                   {t('map.itemBuyChip', { count: activeItem.trade!.buy.length })}
@@ -6225,14 +6404,58 @@ export function MapPage() {
               )}
               {(activeItem.trade?.sell.length ?? 0) > 0 && (
                 <button
-                  onClick={() => routeToBestOffer(activeItem.trade!.sell)}
+                  onClick={() => routeToOffer('sell', 0)}
                   title={t('map.itemSellChipHint')}
-                  className="flex items-center gap-1.5 rounded-lg border border-[#6faf52]/70 bg-[#6faf52]/15 px-2.5 py-1.5 text-xs font-bold uppercase tracking-wider text-[#6faf52] transition hover:border-[#6faf52] hover:bg-[#6faf52]/30"
+                  className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold uppercase tracking-wider text-[#3f7d31] transition hover:border-[#3f7d31] hover:bg-[#3f7d31]/30 ${
+                    tradeNav?.side === 'sell'
+                      ? 'border-[#3f7d31] bg-[#3f7d31]/30'
+                      : 'border-[#3f7d31]/70 bg-[#3f7d31]/15'
+                  }`}
                 >
                   <Icon name="pin" size={14} />
                   {t('map.itemSellChip', { count: activeItem.trade!.sell.length })}
                 </button>
               )}
+              {/* Merchant pager: the chip only ever reaches the best price, so
+                  ◀ 2/31 ▶ walks the rest of that side of the board, re-routing
+                  to each one. */}
+              {tradeNav && routableOffers(tradeNav.side).length > 0 && (() => {
+                const offers = routableOffers(tradeNav.side)
+                const idx = Math.min(tradeNav.i, offers.length - 1)
+                const o = offers[idx]
+                const tint = tradeNav.side === 'buy' ? '#c79a3f' : '#3f7d31'
+                return (
+                  <div
+                    className="flex items-center gap-0.5 rounded-lg border bg-bg-2 p-0.5"
+                    style={{ borderColor: `${tint}80` }}
+                  >
+                    <button
+                      onClick={() => routeToOffer(tradeNav.side, idx - 1)}
+                      disabled={offers.length < 2}
+                      className="grid h-8 w-8 place-items-center rounded-md text-sm text-fg-dim transition hover:bg-line/50 hover:text-fg disabled:opacity-30 disabled:hover:bg-transparent"
+                      title={t('map.tradePrev')}
+                      aria-label={t('map.tradePrev')}
+                    >
+                      ◀
+                    </button>
+                    <span className="px-1 text-center leading-tight">
+                      <span className="block max-w-[10rem] truncate text-xs font-bold text-fg">{o.npc}</span>
+                      <span className="block text-[10px] font-semibold tabular-nums text-fg-mute">
+                        {idx + 1}/{offers.length} · {o.price.toLocaleString()} {o.currency ?? t('items.gp')}
+                      </span>
+                    </span>
+                    <button
+                      onClick={() => routeToOffer(tradeNav.side, idx + 1)}
+                      disabled={offers.length < 2}
+                      className="grid h-8 w-8 place-items-center rounded-md text-sm text-fg-dim transition hover:bg-line/50 hover:text-fg disabled:opacity-30 disabled:hover:bg-transparent"
+                      title={t('map.tradeNext')}
+                      aria-label={t('map.tradeNext')}
+                    >
+                      ▶
+                    </button>
+                  </div>
+                )
+              })()}
               <button
                 onClick={clearItem}
                 className="ml-auto text-xs font-bold uppercase tracking-wider text-fg-mute transition hover:text-accent"

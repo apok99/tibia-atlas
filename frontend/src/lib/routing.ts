@@ -349,6 +349,24 @@ const FERRY_LINES: FerryLineDef[] = [
   // Great-Gate compound (an 821-tile pocket unreachable from the mainland),
   // so the line could never be boarded — dead weight in the search.
   { name: 'Barca', icon: 'sailboat', stops: [{ name: 'Liberty Bay', x: 32347, y: 32858 }, { name: 'Meriana', x: 32132, y: 32912 }] },
+  // Giant-turtle hops between the islands south-east of Liberty Bay (Laguna and
+  // the three turtle isles: Toads, Thornback Tortoises, Tortoises, blood crabs).
+  // You ride giant turtles — pure lua MoveEvents keyed by unique id (turtles.lua,
+  // uids 3206-3213), so the bake sees four disconnected islands and every creature
+  // on them was unroutable. Boarding tiles verified in the OTBM; stops are the real
+  // turtle landing tiles, plus Liberty Bay as the mainland anchor (its harbour is
+  // where the isles are served from).
+  {
+    name: 'Tortuga',
+    icon: 'sailboat',
+    stops: [
+      { name: 'Liberty Bay', x: 32347, y: 32858 },
+      { name: 'Isla de las tortugas', x: 32359, y: 32901 },
+      { name: 'Isla de las tortugas (este)', x: 32472, y: 32869 },
+      { name: 'Isla de las tortugas (sur)', x: 32490, y: 32979 },
+      { name: 'Laguna', x: 32340, y: 32538 },
+    ],
+  },
   // The Forbidden Islands (Talahu / Malada / Nargor — the far-west "Ferumbras"
   // isles: Crypt Shamblers, serpent spawns, Lich Hell). In-game they're reached
   // only through the scripted Shattered Isles portal chain from the main isles —
