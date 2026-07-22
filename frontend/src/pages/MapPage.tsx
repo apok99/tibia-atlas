@@ -4723,7 +4723,7 @@ export function MapPage() {
           <div className="flex shrink-0 items-center gap-0.5 rounded-xl bg-bg/50 p-0.5">
             {(
               [
-                { key: 'creature', icon: '/sprites/giant-spider.webp', label: t('map.searchModeCreature') },
+                { key: 'creature', icon: '/sprites/infernal-demon.webp', label: t('map.searchModeCreature') },
                 { key: 'item', icon: '/sprites/magic-longsword.webp', label: t('map.searchModeItem') },
                 { key: 'npc', icon: '/sprites/rashid.webp', label: t('map.searchModeNpc') },
               ] as const
@@ -4745,7 +4745,7 @@ export function MapPage() {
                 <img
                   src={m.icon}
                   alt=""
-                  className="h-6 w-6 object-contain [image-rendering:pixelated]"
+                  className="h-8 w-8 object-contain [image-rendering:pixelated]"
                 />
               </button>
             ))}
