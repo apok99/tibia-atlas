@@ -349,22 +349,6 @@ const FERRY_LINES: FerryLineDef[] = [
   // Great-Gate compound (an 821-tile pocket unreachable from the mainland),
   // so the line could never be boarded — dead weight in the search.
   { name: 'Barca', icon: 'sailboat', stops: [{ name: 'Liberty Bay', x: 32347, y: 32858 }, { name: 'Meriana', x: 32132, y: 32912 }] },
-  // Farmine's elevator (The New Frontier): a lever-operated lua lift joining the
-  // outside platform with the city interior stages (action_elevator.lua —
-  // 33061,31527 at f14/f12/f10 depending on quest stage; we model the final
-  // stage-3 f10, where the trade NPCs live). No map data for any of it, so the
-  // whole city interior was unroutable (route report #10: Esrik, 601t wrong-way
-  // partial). Esrik's own shop tile sits in a tiny explored pocket walled by real
-  // rock/counters, so routes end just beside it — the interior stop is the honest
-  // landing.
-  {
-    name: 'Ascensor de Farmine',
-    icon: 'door',
-    stops: [
-      { name: 'Farmine', x: 33030, y: 31500 },
-      { name: 'Farmine (interior)', x: 33061, y: 31527, floor: 10 },
-    ],
-  },
   // Giant-turtle hops between the islands south-east of Liberty Bay (Laguna and
   // the three turtle isles: Toads, Thornback Tortoises, Tortoises, blood crabs).
   // You ride giant turtles — pure lua MoveEvents keyed by unique id (turtles.lua,
@@ -664,24 +648,6 @@ const FERRY_LINES: FerryLineDef[] = [
       { name: 'Middle Spike (fondo)', x: 32244, y: 32619, floor: 13 },
       { name: 'Upper Spike', x: 32244, y: 32588, floor: 14 },
       { name: 'Upper Spike (fondo)', x: 32224, y: 32606, floor: 15 },
-    ],
-  },
-  // Falcon Bastion (Order of the Falcon — The Secret Library). Entry is a scripted
-  // ritual: you renew a chalk symbol in Edron at (33201,31763,f1) during "night"
-  // minutes and get teleported to (33356,31309,f4). That trigger tile sits on an
-  // upper Edron floor our stair data doesn't reach, so the line anchors on Edron's
-  // surface. Inside, the descent to the f9 Falcon Knight pocket is lua too (quest
-  // doors + the Oberon levers), so that pocket gets its own stop at the landing of
-  // the two real f9 teleports. Route report #8 ("como se llega a falcon") was a
-  // 370t partial before this. (A chalk-building anchor was tried for report #11
-  // and reverted — owner preferred the plaza anchor.)
-  {
-    name: 'Portal de quest',
-    icon: 'sparkles',
-    stops: [
-      { name: 'Edron', x: 33211, y: 31830 },
-      { name: 'Falcon Bastion', x: 33356, y: 31309, floor: 4 },
-      { name: 'Falcon Bastion (mazmorra)', x: 33294, y: 31288, floor: 9 },
     ],
   },
   // Ankrahmun's Ancient Tombs. Owner-verified in-game: each tomb is entered ON
@@ -1001,7 +967,6 @@ function loadLinks(): Promise<void> {
       [33200, 33210, 32526, 32536, 7, 8], // pyramid portal (desert, into the tomb network)
       [33188, 33200, 32842, 32856, 4, 8], // pyramid portal (city top f4, into the under-city crypts)
       [33390, 33400, 32655, 32668, 6, 6], // Cobra Bastion gate (5-tile f6 hop; its stairs are all real links)
-      [33270, 33395, 31255, 31375, 0, 15], // Falcon Bastion (its two real f9 teleports into the Falcon Knight pocket; entry is the curated Edron ritual line above)
       [31880, 32160, 32440, 32820, 0, 15], // Forbidden Islands (Talahu/Malada/Nargor): the "Shattered Isles portals" web that stitches the sub-islands (Lich Hell / serpent spawns / Crypt Shamblers). Entry = curated Meriana->Talahu hop above.
     ]
     // A teleport is kept iff ONE plane contains BOTH of its ends ("shared
