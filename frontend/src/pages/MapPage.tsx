@@ -4725,7 +4725,7 @@ export function MapPage() {
               [
                 { key: 'creature', icon: '/sprites/infernal-demon.webp', label: t('map.searchModeCreature') },
                 { key: 'item', icon: '/sprites/magic-longsword.webp', label: t('map.searchModeItem') },
-                { key: 'npc', icon: '/sprites/rashid.webp', label: t('map.searchModeNpc') },
+                { key: 'npc', icon: '/sprites/npc-frodo.png', label: t('map.searchModeNpc') },
               ] as const
             ).map((m) => (
               <button
