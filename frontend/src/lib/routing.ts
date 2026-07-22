@@ -300,25 +300,16 @@ const FERRY_LINES: FerryLineDef[] = [
       { name: 'Yalahar', x: 32805, y: 31234 },
     ],
   },
-  // Buddel's raft between Svargrond and its hunting islands. Stop names + coords
-  // are Buddel's ACTUAL travel keywords/destinations (data-otservbr buddel*.lua):
-  // svargrond, okolnir, helheim, tyrsung, and camp (the barbarian/raider camp,
-  // where the Barbarian Headsplitters live). The old line mislabeled them with a
-  // nonexistent 'Grimlund'/'Hrodmir' and swapped Svargrond/Tyrsung/Helheim — route
-  // report #5 hit this: Buddel doesn't understand "grimlund"; the keyword is "camp".
+  // Buddel's raft between Svargrond's hunting islands (dock coords = his map markers).
   {
     name: 'Buddel',
     icon: 'sailboat',
     stops: [
-      { name: 'Svargrond', x: 32255, y: 31197 },
-      { name: 'Okolnir', x: 32225, y: 31381 },
-      { name: 'Helheim', x: 32462, y: 31174 },
-      { name: 'Tyrsung', x: 32333, y: 31227 },
-      // NOTE: Buddel's "camp" stop (32021,31294) is deliberately NOT listed. The
-      // barbarian camp it serves is walkable from Svargrond (~378 tiles), and
-      // Buddel is quest-gated (Barbarian Test — "you are no barbarian, talk to the
-      // Jarl"). Listing it gave a cheaper 215t boat route that hijacked the
-      // walkable Barbarian Headsplitter/Skullhunter camps (route report #5).
+      { name: 'Svargrond', x: 32333, y: 31227 },
+      { name: 'Grimlund', x: 32021, y: 31294 },
+      { name: 'Okolnir', x: 32224, y: 31382 },
+      { name: 'Hrodmir', x: 32256, y: 31197 },
+      { name: 'Tyrsung', x: 32464, y: 31173 },
     ],
   },
   // Ice passages / dog sled between Svargrond's coast, Nibelor and Inukaya.
@@ -349,36 +340,6 @@ const FERRY_LINES: FerryLineDef[] = [
   // Great-Gate compound (an 821-tile pocket unreachable from the mainland),
   // so the line could never be boarded — dead weight in the search.
   { name: 'Barca', icon: 'sailboat', stops: [{ name: 'Liberty Bay', x: 32347, y: 32858 }, { name: 'Meriana', x: 32132, y: 32912 }] },
-  // Giant-turtle hops between the islands south-east of Liberty Bay (Laguna and
-  // the three turtle isles: Toads, Thornback Tortoises, Tortoises, blood crabs).
-  // You ride giant turtles — pure lua MoveEvents keyed by unique id (turtles.lua,
-  // uids 3206-3213), so the bake sees four disconnected islands and every creature
-  // on them was unroutable. Boarding tiles verified in the OTBM; stops are the real
-  // turtle landing tiles, plus Liberty Bay as the mainland anchor (its harbour is
-  // where the isles are served from).
-  {
-    name: 'Tortuga',
-    icon: 'sailboat',
-    stops: [
-      { name: 'Liberty Bay', x: 32347, y: 32858 },
-      { name: 'Isla de las tortugas', x: 32359, y: 32901 },
-      { name: 'Isla de las tortugas (este)', x: 32472, y: 32869 },
-      { name: 'Isla de las tortugas (sur)', x: 32490, y: 32979 },
-      { name: 'Laguna', x: 32340, y: 32538 },
-    ],
-  },
-  // The Forbidden Islands (Talahu / Malada / Nargor — the far-west "Ferumbras"
-  // isles: Crypt Shamblers, serpent spawns, Lich Hell). In-game they're reached
-  // only through the scripted Shattered Isles portal chain from the main isles —
-  // a pure-lua ritual/turtle hop with NO map data, so this whole island cluster
-  // (51k connected tiles) sits disconnected from everything in the bake. Meriana
-  // is already boat-served (the Waverider 'Barca' from Liberty Bay); this curated
-  // hop bridges Meriana to the Forbidden Islands surface, whose interior then walks
-  // to the spawns. Route report #3 (Ankrahmun->Crypt Shambler) dead-ended without it.
-  { name: 'Portal de quest', icon: 'sparkles', stops: [
-    { name: 'Meriana', x: 32132, y: 32912, floor: 7 },
-    { name: 'Islas Prohibidas (Talahu)', x: 31961, y: 32636, floor: 8 },
-  ] },
   // Marapur (Moonfall): its "To Port Hope" dock marker pairs with Port Hope's harbour.
   { name: 'Barca', icon: 'sailboat', stops: [{ name: 'Port Hope', x: 32629, y: 32769 }, { name: 'Marapur', x: 33842, y: 32852 }] },
   // Gray Island (the gateway to Quirefang/The Hive): sailed from the eastern
@@ -392,13 +353,8 @@ const FERRY_LINES: FerryLineDef[] = [
     icon: 'ship',
     stops: [
       { name: 'Cormaya', x: 33309, y: 31996 },
-      // These two docks are DEEP INSIDE the Kazordoon mines, not Kazordoon city
-      // (which sits ~95 tiles NE on the surface at 32649,31925). Naming the f10
-      // dock "Kazordoon" made routes claim to drop you in the city — route report
-      // #9 ("Kazordoon no esta ahi"). Map markers: f14 = "Steamboat to Kazordoon",
-      // f10 = "Steamboat to Robson's Isle" (beside the Sunken Mines).
-      { name: 'Minas de Kazordoon (fondo)', x: 32526, y: 32037, floor: 14 },
-      { name: 'Minas de Kazordoon', x: 32555, y: 32068, floor: 10 },
+      { name: 'Kazordoon minas', x: 32526, y: 32037, floor: 14 },
+      { name: 'Kazordoon', x: 32555, y: 32068, floor: 10 },
       { name: 'Gnomprona', x: 33517, y: 32857, floor: 14 },
     ],
   },
@@ -571,7 +527,7 @@ const FERRY_LINES: FerryLineDef[] = [
     name: 'Portal de quest',
     icon: 'sparkles',
     stops: [
-      { name: 'Minas de Kazordoon', x: 32555, y: 32068, floor: 10 },
+      { name: 'Kazordoon', x: 32555, y: 32068, floor: 10 },
       { name: 'Gnomebase Alpha', x: 33001, y: 31900, floor: 9 },
       { name: 'Warzone 1', x: 33076, y: 31901, floor: 10 },
       { name: 'Warzone 2', x: 33060, y: 31931, floor: 11 },
@@ -744,13 +700,7 @@ const FERRY_LINES: FerryLineDef[] = [
     icon: 'door',
     stops: [
       { name: 'Horestis Tomb', x: 33060, y: 32734 },
-      // (removed) 'Horestis Tomb (medio)' (33025,32704,f9) was a mis-anchor: that
-      // 88-tile f9 pocket is NOT a tomb wing — its only link is a rope down into the
-      // Terramite desert cave (33011,32695,f8), which has its OWN real desert-hole
-      // entrances (32974,32685 / 33052,32693, f7↔f8). The stop gave a cheaper tomb-
-      // ferry route that hijacked the Terramite (route report #4 "mal esta"); with it
-      // gone the planner uses the real desert descent. Deep Horestis (f13) still
-      // routes via the entrance↔profundo clique hop.
+      { name: 'Horestis Tomb (medio)', x: 33025, y: 32704, floor: 9 },
       { name: 'Horestis Tomb (profundo)', x: 33028, y: 32736, floor: 13 },
     ],
   },
@@ -967,7 +917,6 @@ function loadLinks(): Promise<void> {
       [33200, 33210, 32526, 32536, 7, 8], // pyramid portal (desert, into the tomb network)
       [33188, 33200, 32842, 32856, 4, 8], // pyramid portal (city top f4, into the under-city crypts)
       [33390, 33400, 32655, 32668, 6, 6], // Cobra Bastion gate (5-tile f6 hop; its stairs are all real links)
-      [31880, 32160, 32440, 32820, 0, 15], // Forbidden Islands (Talahu/Malada/Nargor): the "Shattered Isles portals" web that stitches the sub-islands (Lich Hell / serpent spawns / Crypt Shamblers). Entry = curated Meriana->Talahu hop above.
     ]
     // A teleport is kept iff ONE plane contains BOTH of its ends ("shared
     // plane"), not "first matching plane of each end is the same" — planes may
