@@ -740,6 +740,51 @@ html[data-theme='dark'] .ks-raid-badge {
   z-index: 500;
 }
 
+/* Rashid, the travelling merchant — a single gold pin that moves with his
+   weekly rotation. It pulses so it reads as "he's here TODAY"; dimmed when he
+   stands on another floor than the one being viewed. */
+.tm-rashid {
+  width: 34px;
+  height: 34px;
+  transform: translate(-50%, -50%);
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2a1d05;
+  background: radial-gradient(circle at 35% 30%, #ffdf8a, #d8a63c 60%, #8a6420);
+  border: 2.5px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 0 0 rgba(215, 166, 60, 0.6), 0 2px 8px rgba(0, 0, 0, 0.8);
+  cursor: pointer;
+  animation: tm-rashid-pulse 2.4s ease-out infinite;
+  transition: transform 0.1s, filter 0.15s;
+}
+.tm-rashid svg {
+  width: 19px;
+  height: 19px;
+  display: block;
+}
+.tm-rashid.is-off {
+  opacity: 0.45;
+  animation: none;
+}
+.tm-rashid:hover {
+  transform: translate(-50%, -50%) scale(1.15);
+  filter: brightness(1.1);
+  z-index: 500;
+}
+@keyframes tm-rashid-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(215, 166, 60, 0.55), 0 2px 8px rgba(0, 0, 0, 0.8);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(215, 166, 60, 0), 0 2px 8px rgba(0, 0, 0, 0.8);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(215, 166, 60, 0), 0 2px 8px rgba(0, 0, 0, 0.8);
+  }
+}
+
 /* Map tutorial — a gentle fade+rise as each step swaps in. */
 .tm-tour-step {
   animation: tm-tour-in 0.28s ease;

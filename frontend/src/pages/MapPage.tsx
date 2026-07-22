@@ -42,6 +42,7 @@ import {
 import { useItems, useSetStats, useEntry } from '../hooks/useEntries'
 import { LoreText } from '../components/LoreText'
 import { LORE_POIS, type LorePoi } from '../lib/lorePois'
+import { RASHID_ROTATION, rashidEffectiveDay, useRashidClock, type RashidStop } from '../lib/rashid'
 import { SKILL_LABELS, signed } from '../components/items/itemStats'
 import { useGlossary } from '../hooks/useGlossary'
 import { useBosses, useKillWorlds, type BossRow } from '../hooks/useKillStats'
@@ -224,7 +225,7 @@ function NewsRail({
   if (!events.length) return null
   return (
     <aside
-      className="scroll-atlas absolute right-2 top-3 z-[1101] flex max-h-[calc(50vh-3rem)] flex-col gap-0.5 overflow-y-auto overflow-x-hidden rounded-2xl border-2 border-line bg-bg-2/95 p-2 shadow-lg backdrop-blur-md transition-[max-width] duration-300 ease-in-out sm:right-3"
+      className="scroll-atlas pointer-events-auto flex max-h-[calc(50vh-6rem)] flex-col gap-0.5 overflow-y-auto overflow-x-hidden rounded-2xl border-2 border-line bg-bg-2/95 p-2 shadow-lg backdrop-blur-md transition-[max-width] duration-300 ease-in-out"
       style={{ maxWidth: open ? 'min(21rem, calc(100vw - 1rem))' : '2.9rem' }}
     >
       <div className={`flex items-center gap-1.5 ${open ? 'px-0.5 pb-1' : 'justify-center'}`}>
@@ -308,6 +309,147 @@ function NewsRail({
         </div>
       )}
     </aside>
+  )
+}
+
+// Rashid's coin pin/badge glyph — a merchant's gold coin, drawn inline so the
+// same paths serve both the React rail and the Leaflet divIcon HTML.
+const RASHID_SVG =
+  '<circle cx="12" cy="12" r="8.2"/>' +
+  '<path d="M12 7.4v9.2"/>' +
+  '<path d="M14.6 9.6c0-1-1.1-1.7-2.6-1.7s-2.6.7-2.6 1.8c0 2.3 5.2 1.3 5.2 3.6 0 1.1-1.1 1.8-2.6 1.8s-2.6-.7-2.6-1.8"/>'
+
+function rashidIcon(size: number, cls = '') {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={cls}
+      style={{ width: size, height: size }}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      dangerouslySetInnerHTML={{ __html: RASHID_SVG }}
+    />
+  )
+}
+
+function rashidCountdown(totalSeconds: number): string {
+  const hh = String(Math.floor(totalSeconds / 3600)).padStart(2, '0')
+  const mm = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0')
+  const ss = String(totalSeconds % 60).padStart(2, '0')
+  return `${hh}:${mm}:${ss}`
+}
+
+// "Rashid hoy" card, docked to the right edge directly under the news rail.
+// One tap flies to today's city, opens his panel and traces the walking route
+// from the nearest city — the whole "where is he / how do I get there" loop.
+function RashidRail({
+  stop,
+  active,
+  onPick,
+  t,
+}: {
+  stop: RashidStop
+  active: boolean
+  onPick: () => void
+  t: (k: string, o?: Record<string, unknown>) => string
+}) {
+  // The 1 s tick lives here (and in the panel) so it never re-renders the map.
+  const { secondsToSave } = useRashidClock()
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      title={t('map.rashidHint')}
+      aria-label={`${t('map.rashidTitle')} — ${stop.city}`}
+      className={`pointer-events-auto flex items-center gap-2 rounded-2xl border-2 bg-bg-2/95 p-2 text-left shadow-lg backdrop-blur-md transition hover:border-[#d8a63c] ${
+        active ? 'border-[#d8a63c]' : 'border-line'
+      }`}
+    >
+      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-[#d8a63c]/60 bg-[#d8a63c]/15 text-[#d8a63c]">
+        {rashidIcon(17)}
+      </span>
+      <span className="flex min-w-0 flex-col leading-tight">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-[#d8a63c]">
+          {t('map.rashidTitle')}
+        </span>
+        <span className="truncate text-xs font-semibold text-fg-dim">{stop.city}</span>
+      </span>
+      <span className="shrink-0 font-mono text-[11px] font-bold tabular-nums text-fg-mute">
+        {rashidCountdown(secondsToSave)}
+      </span>
+    </button>
+  )
+}
+
+// In-map reader for Rashid: today's exact spot, the countdown to the 10:00
+// Berlin server save that moves him, and a re-trace button for the route.
+function RashidPanel({
+  stop,
+  lang,
+  onRoute,
+  onClose,
+}: {
+  stop: RashidStop
+  lang: 'es' | 'en'
+  onRoute: () => void
+  onClose: () => void
+}) {
+  const { t } = useTranslation()
+  const { secondsToSave } = useRashidClock()
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
+      <div className="pointer-events-auto w-[26rem] max-w-[calc(100vw-1.5rem)] rounded-2xl border-2 border-line bg-bg-2/95 p-4 shadow-2xl backdrop-blur-md">
+        <div className="mb-2 flex items-center gap-1.5 text-[#d8a63c]">
+          {rashidIcon(16, 'shrink-0')}
+          <span className="text-[10px] font-bold uppercase tracking-widest">{t('map.rashidTitle')}</span>
+          <button
+            onClick={onClose}
+            aria-label={t('common.close')}
+            className="ml-auto grid h-6 w-6 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:border-[#d8a63c] hover:text-[#d8a63c]"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <h3 className="font-serif text-lg font-bold leading-tight text-fg">{stop.city}</h3>
+        <p className="mt-1 text-sm leading-relaxed text-fg-dim">
+          <span className="font-semibold text-fg-mute">{t('map.rashidWhere')}: </span>
+          {stop.spot[lang]}
+        </p>
+        <p className="mt-2 text-xs text-fg-mute">
+          <span className="font-mono tabular-nums text-fg-dim">
+            {stop.x}, {stop.y}, {stop.z}
+          </span>
+          {' · '}
+          {t('map.rashidChangesIn')}{' '}
+          <span className="font-mono font-semibold tabular-nums text-fg-dim">
+            {rashidCountdown(secondsToSave)}
+          </span>
+        </p>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onRoute}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#d8a63c]/50 bg-[#d8a63c]/10 px-3 py-1.5 text-sm font-semibold text-[#d8a63c] transition hover:bg-[#d8a63c]/20"
+          >
+            <Icon name="compass" size={15} />
+            {t('map.rashidRoute')}
+          </button>
+          <Link
+            to="/rashid"
+            className="text-sm font-semibold text-fg-mute underline decoration-dotted underline-offset-4 transition hover:text-fg"
+          >
+            {t('map.rashidFull')}
+          </Link>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -1616,6 +1758,7 @@ export function MapPage() {
   const houseGroupRef = useRef<L.LayerGroup | null>(null)
   const loreGroupRef = useRef<L.LayerGroup | null>(null)
   const tradeGroupRef = useRef<L.LayerGroup | null>(null)
+  const rashidGroupRef = useRef<L.LayerGroup | null>(null)
   // Highlight ring drawn over the hunting zone the user picked in the Hunt Finder.
   const huntHiRef = useRef<L.LayerGroup | null>(null)
   // A dedicated SVG renderer for that ring, so it draws crisply above the canvas
@@ -1693,6 +1836,13 @@ export function MapPage() {
   const [showPoi, setShowPoi] = useState(false) // imported minimap markers layer
   const [showLore, setShowLore] = useState(false) // curated lore / mystery POIs layer
   const [lorePoi, setLorePoi] = useState<LorePoi | null>(null) // open lore reader
+  const [rashidOpen, setRashidOpen] = useState(false) // Rashid reader panel
+  // Rashid moves city at the 10:00 Europe/Berlin server save. The second-level
+  // countdown ticks inside the rail/panel only — this page-level state polls
+  // coarsely (30 s) so the pin flips over on its own without re-rendering the
+  // whole map every second.
+  const [rashidDay, setRashidDay] = useState(rashidEffectiveDay)
+  const rashidStop = RASHID_ROTATION[rashidDay]
   const [showHouses, setShowHouses] = useState(false) // rentable houses layer
   const [houseStatusFilter, setHouseStatusFilter] = useState<'all' | 'available' | 'rented'>('all') // rent-status filter
   const [houseKind, setHouseKind] = useState<'all' | 'house' | 'guild'>('all') // house vs guildhall filter
@@ -2710,6 +2860,7 @@ export function MapPage() {
     const cityGroup = L.layerGroup().addTo(map)
     const loreGroup = L.layerGroup().addTo(map)
     const tradeGroup = L.layerGroup().addTo(map)
+    const rashidGroup = L.layerGroup().addTo(map)
     const markersGroup = L.layerGroup().addTo(map)
     const routeGroup = L.layerGroup().addTo(map)
     const buildGroup = L.layerGroup().addTo(map)
@@ -2732,6 +2883,7 @@ export function MapPage() {
     houseGroupRef.current = houseGroup
     loreGroupRef.current = loreGroup
     tradeGroupRef.current = tradeGroup
+    rashidGroupRef.current = rashidGroup
     routeGroupRef.current = routeGroup
     buildGroupRef.current = buildGroup
     // Fresh map, fresh layer groups: the diff caches hold markers bound to the
@@ -2866,6 +3018,7 @@ export function MapPage() {
       houseGroupRef.current = null
       loreGroupRef.current = null
       tradeGroupRef.current = null
+      rashidGroupRef.current = null
       routeGroupRef.current = null
       buildGroupRef.current = null
     }
@@ -2963,6 +3116,36 @@ export function MapPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [floor, mapReady, showLore, lorePoi])
+
+  // Roll Rashid's city over on its own when the 10:00 Berlin server save passes
+  // while the map is open (a 30 s poll is plenty for a once-a-day change).
+  useEffect(() => {
+    const id = window.setInterval(() => setRashidDay(rashidEffectiveDay()), 30_000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  // Rashid's pin — one marker at today's city, always drawn (dimmed when he
+  // stands on another floor) so "where is he today?" is answerable at a glance.
+  // Clicking is the same action as the rail card: fly + panel + route.
+  useEffect(() => {
+    const grp = rashidGroupRef.current
+    if (!grp) return
+    grp.clearLayers()
+    const off = rashidStop.z !== floor
+    const icon = L.divIcon({
+      className: '',
+      html:
+        `<div class="tm-rashid${off ? ' is-off' : ''}">` +
+        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${RASHID_SVG}</svg>` +
+        `</div>`,
+      iconSize: [0, 0],
+    })
+    L.marker(toLatLng(rashidStop.x, rashidStop.y), { icon, interactive: true, keyboard: false, zIndexOffset: 700 })
+      .addTo(grp)
+      .bindTooltip(`<b>Rashid</b> · ${escapeHtml(rashidStop.city)}`, { direction: 'top', offset: [0, -14] })
+      .on('click', () => goToRashid())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [floor, mapReady, rashidStop])
 
   // Trade pins for the searched item: one pin per merchant spawn — gold when
   // the NPC sells it, green when it pays you for it, split when both. Pins on
@@ -3812,6 +3995,27 @@ export function MapPage() {
     applyRouteEnd(pt)
   }
 
+  // Rashid card / pin: open his panel, fly to today's spot and trace the walking
+  // route to him from the nearest city (his own, in practice — he always stands
+  // inside one). Re-picking forces a fresh origin so the route is always "from
+  // the nearest city" even if an older route origin is still set.
+  function goToRashid(refresh = false) {
+    const pt: RoutePoint = {
+      x: rashidStop.x,
+      y: rashidStop.y,
+      floor: rashidStop.z,
+      label: `Rashid · ${rashidStop.city}`,
+    }
+    setRashidOpen(true)
+    setRouteMode(true)
+    if (refresh) {
+      routeStartRef.current = null
+      setRouteStart(null)
+    }
+    ensureRouteStartNear(pt)
+    applyRouteEnd(pt)
+  }
+
   // Banner chips: fly-and-route to the best-priced merchant of one side of the
   // trade board (the API lists arrive best-price-first; merchants without map
   // coords — scripted spawns outside the mapped region — are skipped). Going
@@ -4297,13 +4501,18 @@ export function MapPage() {
           hands + the daily kill-stats digest), docked to the RIGHT edge and
           collapsed to a 📰 button by default so it never shifts the layout.
           Clicking an item plots the creature / flies to the house. */}
-      <NewsRail
-        events={worldEvents}
-        open={newsOpen}
-        onToggle={() => setNewsOpen((v) => !v)}
-        t={t}
-        onPick={onPickEvent}
-      />
+      {/* Right-edge stack: the news rail, and directly under it the "Rashid hoy"
+          card — one tap flies to today's city and routes there. */}
+      <div className="pointer-events-none absolute right-2 top-3 z-[1101] flex flex-col items-end gap-2 sm:right-3">
+        <NewsRail
+          events={worldEvents}
+          open={newsOpen}
+          onToggle={() => setNewsOpen((v) => !v)}
+          t={t}
+          onPick={onPickEvent}
+        />
+        <RashidRail stop={rashidStop} active={rashidOpen} onPick={() => goToRashid()} t={t} />
+      </div>
 
       {/* Floating control layer — pinned to the top, translucent so the map reads
           through it. The outer wrapper ignores pointer events so the map stays
@@ -5250,6 +5459,16 @@ export function MapPage() {
           hunting zone you can click to fly to, expanding into its per-creature
           breakdown (what to hit it with, reward, danger). */}
       {lorePoi && <LorePanel poi={lorePoi} onClose={() => setLorePoi(null)} />}
+
+      {/* Rashid's reader: today's exact spot + re-trace of the route to him. */}
+      {rashidOpen && (
+        <RashidPanel
+          stop={rashidStop}
+          lang={i18n.language?.slice(0, 2) === 'en' ? 'en' : 'es'}
+          onRoute={() => goToRashid(true)}
+          onClose={() => setRashidOpen(false)}
+        />
+      )}
 
       {huntOpen && (
         <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">

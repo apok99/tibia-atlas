@@ -45,6 +45,22 @@ class HuntFinder
     /** Team hunts share tanking/healing: effective incoming damage is divided by this. */
     private const TEAM_DANGER_RELIEF = 2.4;
 
+    /**
+     * How much of a creature's MELEE (the physical component of its attack
+     * table) actually lands on you, by vocation. A knight fights toe-to-toe and
+     * eats all of it; a mage or paladin hunts at distance and mostly doesn't.
+     *
+     * Without this the danger model treated every vocation as a tank, and since
+     * mages get less than half a knight's HP per level, a sorcerer 500 read as
+     * exactly as fragile as a knight 200 — so tightening the danger cutoff to
+     * stop sending level-200 knights to the Pits of Inferno also wiped the
+     * entire endgame off the mage's list. Ranged vocations dodge the melee;
+     * they still take the spells in full.
+     */
+    private const MELEE_EXPOSURE = [
+        'knight' => 1.0, 'monk' => 0.95, 'paladin' => 0.45, 'sorcerer' => 0.40, 'druid' => 0.40, '' => 0.7,
+    ];
+
     /** Fraction of a creature's full attack table that lands in a bad turn. */
     private const BAD_TURN = 0.65;
 
@@ -311,7 +327,7 @@ class HuntFinder
             // creature's real per-attack damage table (meta.ot) against the
             // element your set resists worst; the old HP-based estimate remains
             // only as fallback for the few creatures without server data.
-            $hitFrac = $this->danger($meta, $set, $ehp, $team);
+            $hitFrac = $this->danger($meta, $set, $ehp, $team, $vocation);
             $danger = $hitFrac * (1 + log(1 + $killTime / 6));
 
             $expEffVals[] = $expEff;
@@ -355,8 +371,8 @@ class HuntFinder
             // a quarter of your HP) barely matters — every real hunt does that —
             // but past ~0.65 the curve dives, and a lethal creature is dropped
             // from solo advice outright. Team hunts tolerate more.
-            $tooDangerous = $s['danger'] >= ($team ? 1.1 : 0.85);
-            $dangerMult = $tooDangerous ? 0.12 : max(0.12, 1 / (1 + ($s['danger'] / 0.65) ** 3));
+            $tooDangerous = $s['danger'] >= ($team ? 0.60 : 0.45);
+            $dangerMult = $tooDangerous ? 0.12 : max(0.12, 1 / (1 + ($s['danger'] / 0.34) ** 3));
 
             $score = round(100 * $reward * $dangerMult, 1);
 
@@ -438,17 +454,20 @@ class HuntFinder
      *
      * @param  array{resists: array<string,int>, armor: int}  $set
      */
-    private function danger(array $meta, array $set, float $ehp, bool $team): float
+    private function danger(array $meta, array $set, float $ehp, bool $team, string $vocation = ''): float
     {
         $armorRelief = SetStats::armorRelief((int) $set['armor']);
         $burstByEl = (array) (($meta['ot'] ?? [])['burst_by_element'] ?? []);
+        $melee = self::MELEE_EXPOSURE[$vocation] ?? self::MELEE_EXPOSURE[''];
 
         $incoming = 0.0;
         foreach ($burstByEl as $el => $dmg) {
             $resist = (int) ($set['resists'][$el] ?? 0);
             $frac = in_array($el, SetStats::ELEMENTS, true) ? max(0.0, 1 - $resist / 100) : 1.0;
             if ($el === 'physical') {
-                $frac *= (1 - $armorRelief);
+                // Physical is overwhelmingly the melee attack: armour blunts it,
+                // and a ranged vocation mostly isn't standing there to receive it.
+                $frac *= (1 - $armorRelief) * $melee;
             }
             $incoming += (float) $dmg * $frac;
         }
@@ -460,7 +479,7 @@ class HuntFinder
         // HP-based estimate when it's larger. (Genuine pure-melee creatures
         // are mostly low-HP trash, where the overshoot is harmless.)
         if (count($burstByEl) <= 1) {
-            $incoming = max($incoming, $this->estimatedIncoming($meta, $set, $armorRelief));
+            $incoming = max($incoming, $this->estimatedIncoming($meta, $set, $armorRelief, $melee));
         }
 
         $effective = self::BAD_TURN * $incoming;
@@ -478,7 +497,7 @@ class HuntFinder
      *
      * @param  array{resists: array<string,int>, armor: int}  $set
      */
-    private function estimatedIncoming(array $meta, array $set, float $armorRelief): float
+    private function estimatedIncoming(array $meta, array $set, float $armorRelief, float $melee = 1.0): float
     {
         $hp = (int) ($meta['hitpoints'] ?? 0);
         $estHit = 3.1 * ($hp > 0 ? $hp ** 0.71 : 0);
@@ -496,7 +515,7 @@ class HuntFinder
             $resist = (int) ($set['resists'][$el] ?? 0);
             $frac = max(0.0, 1 - $resist / 100);
             if ($el === 'physical') {
-                $frac *= (1 - $armorRelief);
+                $frac *= (1 - $armorRelief) * $melee;
             }
             $worst = max($worst, $frac);
         }
@@ -742,7 +761,7 @@ class HuntFinder
         $pull = min(3.0, 1 + max(0.0, $density - self::MIN_CLUSTER_POINTS) / 8);
         $avgDanger = $dangerCount > 0 ? $weightedDanger / $dangerCount : 0.0;
         $packDanger = $avgDanger * $pull;
-        if ($packDanger >= ($team ? 1.3 : 0.85)) {
+        if ($packDanger >= ($team ? 0.70 : 0.45)) {
             return null;
         }
         $risk = max($zoneDanger, $packDanger);
