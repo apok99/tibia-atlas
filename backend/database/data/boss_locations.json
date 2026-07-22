@@ -540,7 +540,7 @@
     "z": 14,
     "src": "TibiaWiki: Fury Dungeon below Edron ({{Mapper Coords|130.23|124.85|14}}) — Fury Gate MWC entrance is random, but the dungeon itself is a fixed map location"
   },
-  "_unmapped": "No defensible public-map tile (raid-only, random world-change, off-grid instance, or unclear location) — intentionally left without a pin: captured-versperoth, cave-spider (basic creature mis-ranked as boss), court-warlock, devovorga, devovorga-invincible, earth-overlord (Earth Sphere 33330,32076,13 — mappable, pending), fire-overlord (Fire Sphere 33180,32196,13 — pending a minimap tile fill), faceless-bane, fernfang, fluffy, freegoiz.",
+  "_unmapped": "No defensible public-map tile — intentionally left without a pin: the-corruptor-of-souls (wiki location Unknown), spirit-overlord (Spirit Sphere has no coords yet), fluffy/freegoiz/court-warlock (historic raid-only), cave-spider (basic creature mis-ranked as boss).",
   "ferumbras": {
     "x": 32121,
     "y": 32688,
@@ -554,10 +554,10 @@
     "src": "Kha'labal ancient-scarab field (roaming desert boss)"
   },
   "anomaly": {
-    "x": 32106,
-    "y": 31329,
-    "z": 12,
-    "src": "Client marker: Boss Anomaly - Darama (exact)"
+    "x": 32272,
+    "y": 31249,
+    "z": 14,
+    "src": "TibiaWiki location Mapper Coords — Otherworld z14 (matches 2026-07-04 audit)"
   },
   "dreadmaw": {
     "x": 33272,
@@ -572,22 +572,22 @@
     "src": "Client marker: Eradicator (SD) (exact)"
   },
   "heoni": {
-    "x": 33232,
-    "y": 31750,
-    "z": 4,
-    "src": "reverted to original import value (no exact marker; my wiki edit was unverified)"
+    "x": 33231,
+    "y": 31757,
+    "z": 5,
+    "src": "TibiaWiki location Mapper Coords — Edron z5"
   },
   "hide": {
-    "x": 32827,
-    "y": 32691,
-    "z": 7,
-    "src": "Client marker: task boss: Hide (exact)"
+    "x": 32822,
+    "y": 32693,
+    "z": 8,
+    "src": "TibiaWiki location Mapper Coords"
   },
   "thul": {
-    "x": 32085,
+    "x": 32082,
     "y": 32782,
-    "z": 12,
-    "src": "Client marker: Task boss: Thul (exact)"
+    "z": 13,
+    "src": "TibiaWiki location Mapper Coords — Calassa z13"
   },
   "bibby-bloodbath": {
     "x": 32350,
@@ -600,5 +600,437 @@
     "y": 31921,
     "z": 15,
     "src": "Client marker: Essence of Malice room"
+  },
+  "ascending-ferumbras": {
+    "x": 32121,
+    "y": 32688,
+    "z": 7,
+    "src": "Ferumbras' Citadel on Kharos — Ascension anchor (OT arena coord was Edron-side)"
+  },
+  "the-many": {
+    "x": 32920,
+    "y": 32883,
+    "z": 8,
+    "src": "TibiaWiki location Mapper Coords — Chor teleporter"
+  },
+  "melting-frozen-horror": {
+    "x": 32268,
+    "y": 31090,
+    "z": 14,
+    "src": "TibiaWiki location Mapper Coords — The Frozen Horror arena, Okolnir"
+  },
+  "solid-frozen-horror": {
+    "x": 32268,
+    "y": 31090,
+    "z": 14,
+    "src": "TibiaWiki location Mapper Coords — The Frozen Horror arena, Okolnir"
+  },
+  "the-remorseless-corruptor": {
+    "x": 33449,
+    "y": 32242,
+    "z": 7,
+    "src": "TibiaWiki location Mapper Coords — \"Fight Begins\" spot"
+  },
+  "spider-queen": {
+    "x": 32051,
+    "y": 32112,
+    "z": 7,
+    "src": "TibiaWiki location Mapper Coords — Rookgaard Spider Lair"
+  },
+  "anmothra": {
+    "x": 32635,
+    "y": 32330,
+    "z": 7,
+    "src": "TibiaWiki location Mapper Coords"
+  },
+  "chikhaton": {
+    "x": 33325,
+    "y": 31743,
+    "z": 7,
+    "src": "TibiaWiki location Mapper Coords"
+  },
+  "the-blazing-time-guardian": {
+    "x": 32977,
+    "y": 31663,
+    "z": 14,
+    "src": "TibiaWiki location Mapper Coords"
+  },
+  "the-freezing-time-guardian": {
+    "x": 32977,
+    "y": 31663,
+    "z": 14,
+    "src": "TibiaWiki location Mapper Coords"
+  },
+  "soul-of-dragonking-zyrtarch": {
+    "x": 33357,
+    "y": 31181,
+    "z": 11,
+    "src": "TibiaWiki location Mapper Coords"
+  },
+  "the-abomination": {
+    "x": 32432,
+    "y": 31029,
+    "z": 15,
+    "src": "TibiaWiki location Mapper Coords — own room under the Ice Islands"
+  },
+  "teleskor": {
+    "x": 31977,
+    "y": 32228,
+    "z": 7,
+    "src": "TibiaWiki location Mapper Coords — Rookgaard graveyard"
+  },
+  "neferi-the-spy": {
+    "x": 33886,
+    "y": 31478,
+    "z": 6,
+    "src": "TibiaWiki location Mapper Coords"
+  },
+  "snake-god-essence": {
+    "x": 33059,
+    "y": 31121,
+    "z": 14,
+    "src": "Wrath of the Emperor realm (old pin had no minimap tile)"
+  },
+  "sulphur-scuttler": {
+    "x": 33286,
+    "y": 31112,
+    "z": 8,
+    "src": "TibiaWiki location Mapper Coords"
+  },
+  "urmahlullu-the-tamed": {
+    "x": 33920,
+    "y": 31612,
+    "z": 8,
+    "src": "TibiaWiki location Mapper Coords — Kilmaresh temple arena"
+  },
+  "urmahlullu-the-weakened": {
+    "x": 33920,
+    "y": 31612,
+    "z": 8,
+    "src": "TibiaWiki location Mapper Coords — Kilmaresh temple arena"
+  },
+  "wisdom-of-urmahlullu": {
+    "x": 33920,
+    "y": 31612,
+    "z": 8,
+    "src": "TibiaWiki location Mapper Coords — Kilmaresh temple arena"
+  },
+  "wildness-of-urmahlullu": {
+    "x": 33920,
+    "y": 31612,
+    "z": 8,
+    "src": "TibiaWiki location Mapper Coords — Kilmaresh temple arena"
+  },
+  "shardhead": {
+    "x": 32141,
+    "y": 31144,
+    "z": 3,
+    "src": "TibiaWiki location Mapper Coords — Formorgar Glacier"
+  },
+  "morik-the-gladiator": {
+    "x": 32685,
+    "y": 31242,
+    "z": 6,
+    "src": "TibiaWiki location Mapper Coords"
+  },
+  "paiz-the-pauperizer": {
+    "x": 33066,
+    "y": 31105,
+    "z": 2,
+    "src": "TibiaWiki location Mapper Coords"
+  },
+  "the-mutated-pumpkin": {
+    "x": 33115,
+    "y": 32398,
+    "z": 7,
+    "src": "TibiaWiki location Mapper Coords — Halloween event, Darashia area"
+  },
+  "merikh-the-slaughterer": {
+    "x": 32870,
+    "y": 31112,
+    "z": 4,
+    "src": "TibiaWiki location Mapper Coords"
+  },
+  "zorvorax": {
+    "x": 33003,
+    "y": 31593,
+    "z": 11,
+    "src": "TibiaWiki location Mapper Coords — Edron Vampire Crypt last floor"
+  },
+  "the-shielded-thorn-knight": {
+    "x": 32623,
+    "y": 32881,
+    "z": 14,
+    "src": "TibiaWiki location Mapper Coords — Forgotten Knowledge arena"
+  },
+  "thorn-steed": {
+    "x": 32623,
+    "y": 32881,
+    "z": 14,
+    "src": "TibiaWiki location Mapper Coords — Forgotten Knowledge arena"
+  },
+  "the-bloodweb": {
+    "x": 32122,
+    "y": 31189,
+    "z": 4,
+    "src": "TibiaWiki location Mapper Coords"
+  },
+  "kalyassa": {
+    "x": 33160,
+    "y": 31319,
+    "z": 5,
+    "src": "TibiaWiki location Mapper Coords — Dragonblaze Peaks"
+  },
+  "tazhadur": {
+    "x": 33234,
+    "y": 32276,
+    "z": 12,
+    "src": "TibiaWiki location Mapper Coords"
+  },
+  "devovorga": {
+    "x": 32916,
+    "y": 31516,
+    "z": 7,
+    "src": "Vengoth (approx — lair is below the castle)"
+  },
+  "devovorga-invincible": {
+    "x": 32916,
+    "y": 31516,
+    "z": 7,
+    "src": "Vengoth (approx — lair is below the castle)"
+  },
+  "the-ravager": {
+    "x": 33479,
+    "y": 31986,
+    "z": 7,
+    "src": "Oramond (raid, approx)"
+  },
+  "enraged-soul": {
+    "x": 32246,
+    "y": 32601,
+    "z": 8,
+    "src": "Upper Spike"
+  },
+  "sin-devourer": {
+    "x": 33485,
+    "y": 32786,
+    "z": 13,
+    "src": "Shulgrax's room, Grounds of Damnation"
+  },
+  "fallen-challenger": {
+    "x": 33049,
+    "y": 32758,
+    "z": 7,
+    "src": "First Dragon Lair"
+  },
+  "leviathan": {
+    "x": 31929,
+    "y": 31069,
+    "z": 8,
+    "src": "Sea Serpent Area"
+  },
+  "supercharged-mazzinor": {
+    "x": 32751,
+    "y": 32689,
+    "z": 10,
+    "src": "Secret Library boss wing (OT cluster)"
+  },
+  "the-devourer-of-secrets": {
+    "x": 32751,
+    "y": 32689,
+    "z": 10,
+    "src": "Secret Library boss wing (OT cluster)"
+  },
+  "the-scion-of-havoc": {
+    "x": 32751,
+    "y": 32689,
+    "z": 10,
+    "src": "Secret Library boss wing (OT cluster)"
+  },
+  "the-spellstealer": {
+    "x": 32751,
+    "y": 32689,
+    "z": 10,
+    "src": "Secret Library boss wing (OT cluster)"
+  },
+  "dorokoll-the-mystic": {
+    "x": 32404,
+    "y": 31790,
+    "z": 8,
+    "src": "Forbidden Temple under the Carlin Graveyard"
+  },
+  "eliz-the-unyielding": {
+    "x": 32404,
+    "y": 31790,
+    "z": 8,
+    "src": "Forbidden Temple under the Carlin Graveyard"
+  },
+  "eshtaba-the-conjurer": {
+    "x": 32404,
+    "y": 31790,
+    "z": 8,
+    "src": "Forbidden Temple under the Carlin Graveyard"
+  },
+  "malkhar-deathbringer": {
+    "x": 32404,
+    "y": 31790,
+    "z": 8,
+    "src": "Forbidden Temple under the Carlin Graveyard"
+  },
+  "mezlon-the-defiler": {
+    "x": 32404,
+    "y": 31790,
+    "z": 8,
+    "src": "Forbidden Temple under the Carlin Graveyard"
+  },
+  "dread-minion": {
+    "x": 32404,
+    "y": 31790,
+    "z": 8,
+    "src": "Forbidden Temple under the Carlin Graveyard"
+  },
+  "destroyed-pillar": {
+    "x": 32404,
+    "y": 31790,
+    "z": 8,
+    "src": "Forbidden Temple under the Carlin Graveyard"
+  },
+  "snake-thing": {
+    "x": 33356,
+    "y": 31411,
+    "z": 10,
+    "src": "Two floors below Zalamon (NPC posx/posy)"
+  },
+  "lizard-abomination": {
+    "x": 33356,
+    "y": 31411,
+    "z": 10,
+    "src": "Two floors below Zalamon (NPC posx/posy)"
+  },
+  "mutated-zalamon": {
+    "x": 33356,
+    "y": 31411,
+    "z": 10,
+    "src": "Two floors below Zalamon (NPC posx/posy)"
+  },
+  "the-keeper": {
+    "x": 33219,
+    "y": 31100,
+    "z": 7,
+    "src": "Brimstone Bug Caves, northern Zao"
+  },
+  "vermin-swarm": {
+    "x": 33130,
+    "y": 31919,
+    "z": 15,
+    "src": "The Souldespoiler's room"
+  },
+  "freed-soul": {
+    "x": 33130,
+    "y": 31919,
+    "z": 15,
+    "src": "The Souldespoiler's room"
+  },
+  "the-astral-source": {
+    "x": 32799,
+    "y": 32827,
+    "z": 14,
+    "src": "Forgotten Knowledge final boss room (Lloyd arena)"
+  },
+  "the-distorted-astral-source": {
+    "x": 32799,
+    "y": 32827,
+    "z": 14,
+    "src": "Forgotten Knowledge final boss room (Lloyd arena)"
+  },
+  "brain-parasite": {
+    "x": 33844,
+    "y": 32591,
+    "z": 12,
+    "src": "The Monster fight, Dwelling of the Forgotten"
+  },
+  "enraged-sand-brood": {
+    "x": 33099,
+    "y": 31859,
+    "z": 15,
+    "src": "The Sandking arena"
+  },
+  "sand-vortex": {
+    "x": 33099,
+    "y": 31859,
+    "z": 15,
+    "src": "The Sandking arena"
+  },
+  "weakened-demon": {
+    "x": 31977,
+    "y": 32157,
+    "z": 7,
+    "src": "Rookgaard Orc Fortress (client marker)"
+  },
+  "stonecracker": {
+    "x": 33013,
+    "y": 32564,
+    "z": 7,
+    "src": "PoH Behemoth quest area (client marker)"
+  },
+  "spirit-of-earth": {
+    "x": 32236,
+    "y": 31089,
+    "z": 6,
+    "src": "Svargrond Arena pits"
+  },
+  "slim": {
+    "x": 32236,
+    "y": 31089,
+    "z": 6,
+    "src": "Svargrond Arena pits"
+  },
+  "norgle-glacierbeard": {
+    "x": 32236,
+    "y": 31089,
+    "z": 6,
+    "src": "Svargrond Arena pits"
+  },
+  "svoren-the-mad": {
+    "x": 32236,
+    "y": 31089,
+    "z": 6,
+    "src": "Svargrond Arena pits"
+  },
+  "the-sinister-hermit-yellow": {
+    "x": 32643,
+    "y": 32222,
+    "z": 7,
+    "src": "Humans Cult hideout under the Outlaw Camp (approx)"
+  },
+  "reflection-of-obujos": {
+    "x": 32624,
+    "y": 31868,
+    "z": 11,
+    "src": "Chamber of Reflections via Gnome Deep Hub (approx)"
+  },
+  "last-planegazer": {
+    "x": 32624,
+    "y": 31868,
+    "z": 11,
+    "src": "Chamber of Reflections via Gnome Deep Hub (approx)"
+  },
+  "the-percht-queen": {
+    "x": 33813,
+    "y": 31044,
+    "z": 6,
+    "src": "Under Percht Island (winterlight island, OT coords)"
+  },
+  "fire-overlord": {
+    "x": 33180,
+    "y": 32196,
+    "z": 13,
+    "src": "Fire Sphere (Elemental Spheres)"
+  },
+  "captured-versperoth": {
+    "x": 33072,
+    "y": 31877,
+    "z": 12,
+    "src": "Versperoth's Warzone room (same arena as versperoth)"
   }
 }
