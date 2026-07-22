@@ -349,6 +349,22 @@ const FERRY_LINES: FerryLineDef[] = [
   // Great-Gate compound (an 821-tile pocket unreachable from the mainland),
   // so the line could never be boarded — dead weight in the search.
   { name: 'Barca', icon: 'sailboat', stops: [{ name: 'Liberty Bay', x: 32347, y: 32858 }, { name: 'Meriana', x: 32132, y: 32912 }] },
+  // Farmine's elevator (The New Frontier): a lever-operated lua lift joining the
+  // outside platform with the city interior stages (action_elevator.lua —
+  // 33061,31527 at f14/f12/f10 depending on quest stage; we model the final
+  // stage-3 f10, where the trade NPCs live). No map data for any of it, so the
+  // whole city interior was unroutable (route report #10: Esrik, 601t wrong-way
+  // partial). Esrik's own shop tile sits in a tiny explored pocket walled by real
+  // rock/counters, so routes end just beside it — the interior stop is the honest
+  // landing.
+  {
+    name: 'Ascensor de Farmine',
+    icon: 'door',
+    stops: [
+      { name: 'Farmine', x: 33030, y: 31500 },
+      { name: 'Farmine (interior)', x: 33061, y: 31527, floor: 10 },
+    ],
+  },
   // Giant-turtle hops between the islands south-east of Liberty Bay (Laguna and
   // the three turtle isles: Toads, Thornback Tortoises, Tortoises, blood crabs).
   // You ride giant turtles — pure lua MoveEvents keyed by unique id (turtles.lua,
@@ -664,7 +680,9 @@ const FERRY_LINES: FerryLineDef[] = [
     name: 'Portal de quest',
     icon: 'sparkles',
     stops: [
-      { name: 'Edron (símbolo de tiza)', x: 33200, y: 31763 },
+      // Street tile just south of the chalk building — its doorway tile itself
+      // (33200,31763) sits in a walk-data pocket cut off from Edron's streets.
+      { name: 'Edron (símbolo de tiza)', x: 33192, y: 31775 },
       { name: 'Falcon Bastion', x: 33356, y: 31309, floor: 4 },
       { name: 'Falcon Bastion (mazmorra)', x: 33294, y: 31288, floor: 9 },
     ],
