@@ -653,16 +653,18 @@ const FERRY_LINES: FerryLineDef[] = [
   // Falcon Bastion (Order of the Falcon — The Secret Library). Entry is a scripted
   // ritual: you renew a chalk symbol in Edron at (33201,31763,f1) during "night"
   // minutes and get teleported to (33356,31309,f4). That trigger tile sits on an
-  // upper Edron floor our stair data doesn't reach, so the line anchors on Edron's
-  // surface instead. Inside, the descent to the f9 Falcon Knight pocket is lua too
-  // (quest doors + the Oberon levers), so that pocket gets its own stop at the
+  // upper Edron floor our stair data doesn't reach, so the line anchors at the
+  // chalk building's own doorway on Edron's surface (33200,31763 — routes WALK
+  // there first; anchoring at the city plaza read as a fake downtown teleport,
+  // route report #11). Inside, the descent to the f9 Falcon Knight pocket is lua
+  // too (quest doors + the Oberon levers), so that pocket gets its own stop at the
   // landing of the two real f9 teleports. Route report #8 ("como se llega a falcon")
   // was a 370t partial before this.
   {
     name: 'Portal de quest',
     icon: 'sparkles',
     stops: [
-      { name: 'Edron', x: 33211, y: 31830 },
+      { name: 'Edron (símbolo de tiza)', x: 33200, y: 31763 },
       { name: 'Falcon Bastion', x: 33356, y: 31309, floor: 4 },
       { name: 'Falcon Bastion (mazmorra)', x: 33294, y: 31288, floor: 9 },
     ],

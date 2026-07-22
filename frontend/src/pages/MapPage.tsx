@@ -369,9 +369,9 @@ function TravellerRail({
       <img
         src={sprite}
         alt=""
-        width={44}
-        height={44}
-        className="h-11 w-11 [image-rendering:pixelated]"
+        width={32}
+        height={32}
+        className="h-8 w-8 [image-rendering:pixelated]"
         style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,.85))' }}
       />
       <span
@@ -1920,6 +1920,9 @@ export function MapPage() {
   // Which merchant of the trade board is currently routed to, so the banner can
   // page through the rest (◀ 2/31 ▶) instead of only ever reaching the best one.
   const [tradeNav, setTradeNav] = useState<{ side: 'buy' | 'sell'; i: number } | null>(null)
+  // Mirrored in a ref so two fast clicks on ▶ advance two merchants instead of
+  // both reading the same pre-render state.
+  const tradeNavRef = useRef<{ side: 'buy' | 'sell'; i: number } | null>(null)
   const [itemBusy, setItemBusy] = useState(false)
   const [showAll, setShowAll] = useState(true)
   const [catFilter, setCatFilter] = useState('') // '' = all classifications
@@ -3997,6 +4000,7 @@ export function MapPage() {
       const it = data.data
       const droppers = it.dropped_by.filter((d): d is Dropper & { slug: string } => !!d.slug)
       const plotted = droppers.slice(0, PALETTE.length)
+      tradeNavRef.current = null
       setTradeNav(null)
       setActiveItem({
         slug: it.slug,
@@ -4022,6 +4026,7 @@ export function MapPage() {
   function clearItem() {
     if (activeItem) for (const s of activeItem.plotted) removeCreature(s)
     setActiveItem(null)
+    tradeNavRef.current = null
     setTradeNav(null)
   }
 
@@ -4170,8 +4175,15 @@ export function MapPage() {
       for (const s of item.plotted) removeCreature(s)
       setActiveItem({ ...item, plotted: [] })
     }
+    tradeNavRef.current = { side, i: idx }
     setTradeNav({ side, i: idx })
     routeToTradeNpc(o.npc, o.coords![0])
+  }
+
+  // ◀ / ▶ on the merchant pager, wrapping around both ends.
+  function cycleOffer(dir: 1 | -1) {
+    const cur = tradeNavRef.current
+    if (cur) routeToOffer(cur.side, cur.i + dir)
   }
 
   function goTo(l: Landmark) {
@@ -4654,8 +4666,10 @@ export function MapPage() {
           onPick={onPickEvent}
         />
         {/* Same panel shell as the news rail (rounded, blurred, bordered) but in
-            gold, so the two sprites read cleanly over any map tile. */}
-        <div className="pointer-events-auto flex items-start gap-1 rounded-2xl border-2 border-[#d8a63c]/70 bg-bg-2/95 px-2 py-1.5 shadow-lg backdrop-blur-md">
+            gold — and the same 2.9rem width as the collapsed news button, with
+            the merchants stacked one above the other, so the right edge stays a
+            single narrow column instead of growing sideways. */}
+        <div className="pointer-events-auto flex w-[2.9rem] flex-col items-center gap-1 rounded-2xl border-2 border-[#d8a63c]/70 bg-bg-2/95 p-1.5 shadow-lg backdrop-blur-md">
           <RashidRail stop={rashidStop} active={rashidOpen} onPick={() => goToRashid()} t={t} />
           <TravellerRail
             sprite={YASIR_SPRITE}
@@ -6430,7 +6444,7 @@ export function MapPage() {
                     style={{ borderColor: `${tint}80` }}
                   >
                     <button
-                      onClick={() => routeToOffer(tradeNav.side, idx - 1)}
+                      onClick={() => cycleOffer(-1)}
                       disabled={offers.length < 2}
                       className="grid h-8 w-8 place-items-center rounded-md text-sm text-fg-dim transition hover:bg-line/50 hover:text-fg disabled:opacity-30 disabled:hover:bg-transparent"
                       title={t('map.tradePrev')}
@@ -6445,7 +6459,7 @@ export function MapPage() {
                       </span>
                     </span>
                     <button
-                      onClick={() => routeToOffer(tradeNav.side, idx + 1)}
+                      onClick={() => cycleOffer(1)}
                       disabled={offers.length < 2}
                       className="grid h-8 w-8 place-items-center rounded-md text-sm text-fg-dim transition hover:bg-line/50 hover:text-fg disabled:opacity-30 disabled:hover:bg-transparent"
                       title={t('map.tradeNext')}
