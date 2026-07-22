@@ -40,10 +40,21 @@ export function EntryPage() {
 
   // Internal bookkeeping fields that must never appear in the stat block.
   // immune_to / weak_to get their own visual Combat panel below.
-  const hiddenMeta = ['imported_from', 'wiki_pageid', 'auto_stub', 'artwork', 'origin_image', 'note', 'character_kind', 'location', 'importance_rank', 'immune_to', 'weak_to']
+  const hiddenMeta = ['imported_from', 'wiki_pageid', 'auto_stub', 'artwork', 'origin_image', 'note', 'character_kind', 'location', 'importance_rank', 'immune_to', 'weak_to', 'max_damage']
   const metaEntries = Object.entries(entry.meta ?? {}).filter(
     ([k, v]) => !hiddenMeta.includes(k) && v !== null && v !== '' && typeof v !== 'object',
   )
+
+  // Damage: `meta.ot` carries the real per-turn burst and DPS parsed from the
+  // server monster files; the wiki's `max_damage` measures the same thing but
+  // is blank or stale for a third of the bestiary. Prefer the server number,
+  // fall back to the wiki one, and never show both (they'd read as two stats).
+  const ot = (entry.meta?.ot ?? null) as { burst?: number; dps?: number } | null
+  const wikiMax = typeof entry.meta?.max_damage === 'number' ? entry.meta.max_damage : null
+  const maxDamage = ot?.burst && ot.burst > 0 ? ot.burst : wikiMax
+  const dps = ot?.dps && ot.dps > 0 ? Math.round(ot.dps) : null
+  if (dps) metaEntries.unshift(['dps', dps])
+  if (maxDamage) metaEntries.unshift(['max_damage', maxDamage])
   const artwork = typeof entry.meta?.artwork === 'string' ? entry.meta.artwork : null
   // Textual spawn locations from TibiaWiki ("Plains of Havoc, Hellgate, …").
   const location = typeof entry.meta?.location === 'string' ? entry.meta.location : null
