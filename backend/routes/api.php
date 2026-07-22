@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\HuntController;
 use App\Http\Controllers\Api\ItemController;
 use App\Http\Controllers\Api\KillStatsController;
 use App\Http\Controllers\Api\MapRouteController;
+use App\Http\Controllers\Api\NpcController;
 use App\Http\Controllers\Api\RouteReportController;
 use App\Http\Controllers\Api\WordleController;
 use App\Http\Middleware\SetLocale;
@@ -40,6 +41,8 @@ Route::middleware([SetLocale::class, 'throttle:public'])->group(function () {
         Route::get('/items/set-stats', [ItemController::class, 'setStats']);
         // Where to buy/sell an item: merchants, real prices, map spawns.
         Route::get('/items/{slug}/trade', [ItemController::class, 'trade']);
+        // Merchant NPC search for the map ("Cómo llegar" straight to the shop).
+        Route::get('/npcs', [NpcController::class, 'index']);
         // Hunt Finder: best hunting zones for a level + vocation + solo/team.
         Route::get('/hunts', [HuntController::class, 'index']);
         // Detail must come AFTER the literal item routes or it'd bind them as a slug.

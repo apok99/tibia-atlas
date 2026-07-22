@@ -234,6 +234,17 @@ export interface TradeOffer {
   price: number
 }
 
+/** A merchant found by the map's NPC search, with its walkable spawn tiles. */
+export interface MapNpc {
+  npc: string
+  /** Lore-entry slug when the NPC has a published page. */
+  slug: string | null
+  image: string | null
+  city: string | null
+  coords: [number, number, number][]
+  travelling: TradeOffer['travelling']
+}
+
 /** Where to buy / sell one item ("buy" = you pay, "sell" = the NPC pays you). */
 export interface ItemTrade {
   buy: TradeOffer[]

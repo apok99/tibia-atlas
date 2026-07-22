@@ -1,7 +1,7 @@
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useEntry } from '../hooks/useEntries'
-import { EntryCard } from '../components/EntryCard'
+import { RelatedCodex } from '../components/RelatedCodex'
 import { EntryPageSkeleton } from '../components/Skeleton'
 import { RecommendedReading } from '../components/RecommendedReading'
 import { TypeIcon } from '../components/TypeIcon'
@@ -13,7 +13,6 @@ import { BossRespawn } from '../components/BossRespawn'
 import { Lightbox } from '../components/Lightbox'
 import { Seo, articleJsonLd, breadcrumbJsonLd, entrySeoTitle, entrySeoDescription } from '../lib/seo'
 import { useState } from 'react'
-import type { EntryListItem } from '../types'
 
 export function EntryPage() {
   const { slug } = useParams<{ slug: string }>()
@@ -34,9 +33,6 @@ export function EntryPage() {
   const canonBody = entry.content.overview ? entry.content.canon : null
 
   const related = entry.related ?? []
-  const creatures = related.filter((r) => r.type === 'creature')
-  const npcs = related.filter((r) => r.type === 'character')
-  const others = related.filter((r) => r.type !== 'creature' && r.type !== 'character')
 
   // Internal bookkeeping fields that must never appear in the stat block.
   // immune_to / weak_to get their own visual Combat panel below.
@@ -251,30 +247,10 @@ export function EntryPage() {
         </div>
 
         <aside className="space-y-5">
-          <RelatedGroup title={t('entry.relatedCreatures')} items={creatures} />
-          <RelatedGroup title={t('entry.relatedNpcs')} items={npcs} />
-          <RelatedGroup title={t('entry.relatedOther')} items={others} />
+          <RelatedCodex items={related} />
           <RecommendedReading excludeSlug={entry.slug} />
         </aside>
       </div>
     </div>
-  )
-}
-
-function RelatedGroup({ title, items }: { title: string; items: EntryListItem[] }) {
-  if (items.length === 0) return null
-  return (
-    <section>
-      <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-fg-mute">
-        <span className="h-px flex-1 bg-line" />
-        {title}
-        <span className="h-px flex-1 bg-line" />
-      </h2>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-        {items.map((r) => (
-          <EntryCard key={r.id} entry={r} />
-        ))}
-      </div>
-    </section>
   )
 }

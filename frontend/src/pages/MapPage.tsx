@@ -51,7 +51,7 @@ import { useHunts, type HuntZone } from '../hooks/useHunts'
 import { TypeIcon } from '../components/TypeIcon'
 import { Skeleton } from '../components/Skeleton'
 import { MapTutorial, mapTourSeen } from '../components/MapTutorial'
-import type { Dropper, Entry, EntryListItem, ItemDetail, ItemTrade, Paginated, Spawn } from '../types'
+import type { Dropper, Entry, EntryListItem, ItemDetail, ItemTrade, MapNpc, Paginated, Spawn } from '../types'
 import {
   TILE,
   X_MIN,
@@ -1905,9 +1905,10 @@ export function MapPage() {
   }, [creaturePageCount])
   const [query, setQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
-  // What the search box looks up: a creature (plot its spawns) or an item (plot
-  // every creature that drops it). "Dónde farmeo este objeto".
-  const [searchKind, setSearchKind] = useState<'creature' | 'item'>('creature')
+  // What the search box looks up: a creature (plot its spawns), an item (plot
+  // every creature that drops it) or a merchant NPC (route straight to the
+  // shop). "Dónde farmeo este objeto" / "llévame con este NPC".
+  const [searchKind, setSearchKind] = useState<'creature' | 'item' | 'npc'>('creature')
   // The item whose droppers are currently plotted, for the context banner.
   const [activeItem, setActiveItem] = useState<{
     slug: string
@@ -3923,6 +3924,19 @@ export function MapPage() {
     },
   })
 
+  // --- merchant NPC search (server-side, over the trade directory) ---
+  const { data: npcResults } = useQuery({
+    queryKey: ['map-npc-search', debouncedQuery.trim().toLowerCase()],
+    enabled: searchKind === 'npc' && debouncedQuery.trim().length >= 2,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const { data } = await api.get<{ data: MapNpc[] }>('/npcs', {
+        params: { q: debouncedQuery.trim() },
+      })
+      return data.data
+    },
+  })
+
   // Restore creatures + a shared route from the link (once, StrictMode-safe).
   useEffect(() => {
     if (restoredRef.current) return
@@ -4103,6 +4117,16 @@ export function MapPage() {
     setRouteMode(true)
     ensureRouteStartNear(pt)
     applyRouteEnd(pt)
+  }
+
+  // NPC picked in the search box: fly to the merchant and trace the walking
+  // route straight to them (origin defaults to the nearest city).
+  function goToNpc(n: MapNpc) {
+    setQuery('')
+    setSearchOpen(false)
+    const c = n.coords[0]
+    if (!c) return
+    routeToTradeNpc(n.city ? `${n.npc} · ${n.city}` : n.npc, c)
   }
 
   // "Cómo llegar" to a merchant pin from the item trade layer.
@@ -4694,12 +4718,14 @@ export function MapPage() {
       <div className="pointer-events-none flex flex-col gap-2">
         {/* Search pill — creature/item mode toggle + the search field */}
         <div className="pointer-events-auto flex w-full items-center gap-1.5 rounded-2xl border-2 border-line bg-bg-2/95 p-1 shadow-lg backdrop-blur-md transition focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25">
-          {/* Mode: creature spawns, or item droppers ("where does it drop?") */}
+          {/* Mode: creature spawns, item droppers ("where does it drop?") or
+              merchant NPCs (route straight to the shop) */}
           <div className="flex shrink-0 items-center gap-0.5 rounded-xl bg-bg/50 p-0.5">
             {(
               [
-                { key: 'creature', icon: '/sprites/hydra.webp', label: t('map.searchModeCreature') },
+                { key: 'creature', icon: '/sprites/giant-spider.webp', label: t('map.searchModeCreature') },
                 { key: 'item', icon: '/sprites/magic-longsword.webp', label: t('map.searchModeItem') },
+                { key: 'npc', icon: '/sprites/rashid.webp', label: t('map.searchModeNpc') },
               ] as const
             ).map((m) => (
               <button
@@ -4747,7 +4773,13 @@ export function MapPage() {
               }}
               onFocus={() => setSearchOpen(true)}
               onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
-              placeholder={t(searchKind === 'item' ? 'map.searchItem' : 'map.searchCreature')}
+              placeholder={t(
+                searchKind === 'item'
+                  ? 'map.searchItem'
+                  : searchKind === 'npc'
+                    ? 'map.searchNpc'
+                    : 'map.searchCreature',
+              )}
               className="h-10 w-full rounded-xl bg-transparent pl-10 pr-3 text-base font-semibold text-fg outline-none placeholder:font-medium placeholder:text-fg-mute"
             />
           </div>
@@ -4809,6 +4841,43 @@ export function MapPage() {
                   </button>
                 </li>
               ))}
+            </ul>
+          )}
+          {searchOpen && debouncedQuery.trim().length >= 2 && searchKind === 'npc' && npcResults && npcResults.length > 0 && (
+            <ul className="scroll-atlas absolute z-[1100] mt-2 max-h-80 w-full overflow-auto rounded-xl border-2 border-line bg-bg-2 py-1.5 shadow-2xl">
+              {npcResults.map((r, i) => {
+                const routable = r.coords.length > 0
+                return (
+                  <li key={`${r.npc}-${i}`}>
+                    <button
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => routable && goToNpc(r)}
+                      disabled={!routable}
+                      className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition ${
+                        routable ? 'hover:bg-surface-2' : 'cursor-not-allowed opacity-50'
+                      }`}
+                    >
+                      {r.image ? (
+                        <img
+                          src={r.image}
+                          alt=""
+                          className="h-6 w-6 shrink-0 object-contain"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <TypeIcon type="npc" className="h-4 w-4 shrink-0 text-fg-mute" />
+                      )}
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg">
+                        {r.npc}
+                        {r.city && <span className="text-fg-mute"> · {r.city}</span>}
+                      </span>
+                      <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-fg-mute">
+                        {routable ? t('map.searchNpcGo') : t('map.searchNpcNoSpot')}
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
             </ul>
           )}
         </div>
