@@ -312,27 +312,16 @@ function NewsRail({
   )
 }
 
-// Rashid's coin pin/badge glyph — a merchant's gold coin, drawn inline so the
-// same paths serve both the React rail and the Leaflet divIcon HTML.
-const RASHID_SVG =
-  '<circle cx="12" cy="12" r="8.2"/>' +
-  '<path d="M12 7.4v9.2"/>' +
-  '<path d="M14.6 9.6c0-1-1.1-1.7-2.6-1.7s-2.6.7-2.6 1.8c0 2.3 5.2 1.3 5.2 3.6 0 1.1-1.1 1.8-2.6 1.8s-2.6-.7-2.6-1.8"/>'
+// Rashid's own walking sprite (self-hosted, like the other game art), used both
+// as the map marker and as the rail button — no pin or card chrome around it.
+const RASHID_SPRITE = '/sprites/rashid.webp'
 
-function rashidIcon(size: number, cls = '') {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={cls}
-      style={{ width: size, height: size }}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.9"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      dangerouslySetInnerHTML={{ __html: RASHID_SVG }}
-    />
-  )
+/** Short city tag: initials for multi-word names ("Port Hope" → PH), first
+ *  three letters otherwise ("Carlin" → CAR) — the full name is in the tooltip. */
+function cityTag(city: string): string {
+  const words = city.split(/\s+/).filter(Boolean)
+  if (words.length > 1) return words.map((w) => w[0]).join('').toUpperCase()
+  return city.slice(0, 3).toUpperCase()
 }
 
 function rashidCountdown(totalSeconds: number): string {
@@ -362,23 +351,27 @@ function RashidRail({
     <button
       type="button"
       onClick={onPick}
-      title={t('map.rashidHint')}
-      aria-label={`${t('map.rashidTitle')} — ${stop.city}`}
-      className={`pointer-events-auto flex items-center gap-2 rounded-2xl border-2 bg-bg-2/95 p-2 text-left shadow-lg backdrop-blur-md transition hover:border-[#d8a63c] ${
-        active ? 'border-[#d8a63c]' : 'border-line'
+      title={`${t('map.rashidTitle')} — ${stop.city} · ${t('map.rashidChangesIn')} ${rashidCountdown(secondsToSave)}`}
+      aria-label={`${t('map.rashidTitle')} — ${stop.city}. ${t('map.rashidHint')}`}
+      className={`pointer-events-auto flex flex-col items-center transition hover:scale-110 ${
+        active ? 'scale-110' : ''
       }`}
     >
-      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-[#d8a63c]/60 bg-[#d8a63c]/15 text-[#d8a63c]">
-        {rashidIcon(17)}
-      </span>
-      <span className="flex min-w-0 flex-col leading-tight">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-[#d8a63c]">
-          {t('map.rashidTitle')}
-        </span>
-        <span className="truncate text-xs font-semibold text-fg-dim">{stop.city}</span>
-      </span>
-      <span className="shrink-0 font-mono text-[11px] font-bold tabular-nums text-fg-mute">
-        {rashidCountdown(secondsToSave)}
+      <img
+        src={RASHID_SPRITE}
+        alt=""
+        width={44}
+        height={44}
+        className="h-11 w-11 [image-rendering:pixelated]"
+        style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,.85))' }}
+      />
+      <span
+        className={`-mt-1 rounded px-1 text-[10px] font-black leading-tight tracking-wider ${
+          active ? 'text-[#ffd873]' : 'text-[#d8a63c]'
+        }`}
+        style={{ textShadow: '0 1px 2px rgba(0,0,0,.95), 0 0 3px rgba(0,0,0,.9)' }}
+      >
+        {cityTag(stop.city)}
       </span>
     </button>
   )
@@ -403,7 +396,7 @@ function RashidPanel({
     <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
       <div className="pointer-events-auto w-[26rem] max-w-[calc(100vw-1.5rem)] rounded-2xl border-2 border-line bg-bg-2/95 p-4 shadow-2xl backdrop-blur-md">
         <div className="mb-2 flex items-center gap-1.5 text-[#d8a63c]">
-          {rashidIcon(16, 'shrink-0')}
+          <img src={RASHID_SPRITE} alt="" className="h-6 w-6 shrink-0 [image-rendering:pixelated]" />
           <span className="text-[10px] font-bold uppercase tracking-widest">{t('map.rashidTitle')}</span>
           <button
             onClick={onClose}
@@ -3134,10 +3127,7 @@ export function MapPage() {
     const off = rashidStop.z !== floor
     const icon = L.divIcon({
       className: '',
-      html:
-        `<div class="tm-rashid${off ? ' is-off' : ''}">` +
-        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${RASHID_SVG}</svg>` +
-        `</div>`,
+      html: `<div class="tm-rashid${off ? ' is-off' : ''}"><img src="${RASHID_SPRITE}" alt=""></div>`,
       iconSize: [0, 0],
     })
     L.marker(toLatLng(rashidStop.x, rashidStop.y), { icon, interactive: true, keyboard: false, zIndexOffset: 700 })
