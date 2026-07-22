@@ -880,6 +880,15 @@ const FERRY_LINES: FerryLineDef[] = [
     icon: 'sparkles',
     stops: [
       { name: 'Ciudadela de Ferumbras', x: 33420, y: 32678, floor: 14 },
+      // Ferumbras' Ascension: the ascent dungeon is mapped up north (Zao latitude,
+      // f11-f15) and is entered from THIS citadel via real t2 pairs
+      // (33279,32392,f9 -> 33293,31453,f12 and 33292,32322,f14 -> 33233,31441,f11)
+      // — cross-region rows the shared-plane rule can't keep, so the pockets get
+      // stops on this line. Route report #12 (Farmine->Ferumbras) invented a
+      // 464t cave crawl through Zao instead. The lever room is the boss target.
+      { name: 'Ascenso de Ferumbras', x: 33293, y: 31453, floor: 12 },
+      { name: 'Ascenso de Ferumbras (f11)', x: 33233, y: 31441, floor: 11 },
+      { name: 'Sala de la palanca (Ferumbras)', x: 33268, y: 31478, floor: 14 },
       { name: 'Sellos de la Ciudadela (f14)', x: 33397, y: 32836, floor: 14 },
       { name: 'Sellos de la Ciudadela (f12)', x: 33453, y: 32782, floor: 12 },
       { name: 'Cuevas del este (Ankrahmun)', x: 33415, y: 32567, floor: 8 },
@@ -1001,6 +1010,7 @@ function loadLinks(): Promise<void> {
       [33200, 33210, 32526, 32536, 7, 8], // pyramid portal (desert, into the tomb network)
       [33188, 33200, 32842, 32856, 4, 8], // pyramid portal (city top f4, into the under-city crypts)
       [33390, 33400, 32655, 32668, 6, 6], // Cobra Bastion gate (5-tile f6 hop; its stairs are all real links)
+      [33150, 33390, 31360, 31530, 0, 15], // Ferumbras' Ascension dungeon (Zao latitude): its local t2 hops (Plagirath chain, 'To upper floor', lever-room approaches); entry = the citadel t2 stops on the Ferumbras line
       [33270, 33395, 31255, 31375, 0, 15], // Falcon Bastion (its two real f9 teleports into the Falcon Knight pocket; entry is the curated Edron ritual line above)
       [31880, 32160, 32440, 32820, 0, 15], // Forbidden Islands (Talahu/Malada/Nargor): the "Shattered Isles portals" web that stitches the sub-islands (Lich Hell / serpent spawns / Crypt Shamblers). Entry = curated Meriana->Talahu hop above.
     ]
