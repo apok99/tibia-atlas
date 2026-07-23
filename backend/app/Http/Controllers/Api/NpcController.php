@@ -27,6 +27,7 @@ class NpcController extends Controller
             ->with('entry')
             ->where('name', 'ilike', '%'.$q.'%')
             ->orderByRaw('(name ilike ?) desc', [$q.'%']) // prefix matches first
+            ->orderByDesc('is_merchant') // merchants outrank same-named extras
             ->orderBy('name')
             ->limit(8)
             ->get();

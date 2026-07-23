@@ -51,6 +51,7 @@ import { useHunts, type HuntZone } from '../hooks/useHunts'
 import { TypeIcon } from '../components/TypeIcon'
 import { Skeleton } from '../components/Skeleton'
 import { MapTutorial, mapTourSeen } from '../components/MapTutorial'
+import HuntProfitTool from '../components/HuntProfitTool'
 import type { Dropper, Entry, EntryListItem, ItemDetail, ItemTrade, MapNpc, Paginated, Spawn } from '../types'
 import {
   TILE,
@@ -2062,6 +2063,8 @@ export function MapPage() {
   // Panel ranking the best hunting zones for a level + vocation (solo hunts).
   // Level/vocation auto-fill from the saved character (below) but stay editable.
   const [huntOpen, setHuntOpen] = useState(false)
+  // Hunt profit calculator — the draggable "real profit" card (analyzer paste).
+  const [profitOpen, setProfitOpen] = useState(false)
   const [huntLevel, setHuntLevel] = useState('')
   const [huntVoc, setHuntVoc] = useState('')
   const [huntZoneId, setHuntZoneId] = useState<number | null>(null)
@@ -4464,8 +4467,26 @@ export function MapPage() {
             <span className="text-xs font-bold leading-none text-fg">{t(q.title)}</span>
           </Link>
         ))}
-        {/* Active world — sits right below "Stats"; drives the Boss Watch heat
-            and the houses layer's live rent status. */}
+        {/* Hunt profit calculator — sits right below "Stats". Opens the
+            draggable card: paste the analyzer, subtract imbuement wear +
+            silver-token recharges from the balance. */}
+        <button
+          onClick={() => setProfitOpen((v) => !v)}
+          title={t('map.hpHint')}
+          aria-pressed={profitOpen}
+          className={`group flex items-center gap-2 rounded-lg border px-2.5 py-1.5 shadow-lg backdrop-blur-md transition hover:-translate-x-0.5 hover:border-accent ${profitOpen ? 'border-accent bg-accent/15' : 'border-line-2 bg-bg-2/90'}`}
+        >
+          {/* two coins — "count the money" */}
+          <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-accent transition group-hover:scale-110" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="8" cy="8" r="6" />
+            <path d="M18.09 10.37A6 6 0 1 1 10.34 18" />
+            <path d="M7 6h1v4" />
+            <path d="m16.71 13.88.7.71-2.82 2.82" />
+          </svg>
+          <span className="text-xs font-bold leading-none text-fg">{t('map.hpTitle')}</span>
+        </button>
+        {/* Active world — drives the Boss Watch heat and the houses layer's
+            live rent status. */}
         <WorldPicker worlds={worldNames} value={world} label={t('map.world')} onSelect={setWorld} />
       </div>
 
@@ -4711,16 +4732,16 @@ export function MapPage() {
           through it. The outer wrapper ignores pointer events so the map stays
           draggable in the side gutters; the inner column re-enables them. */}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-[1000] flex flex-col p-2 pt-5 sm:p-3 sm:pt-7">
-        <div ref={topColRef} className="pointer-events-none flex w-full max-w-md flex-col gap-2">
+        <div ref={topColRef} className="pointer-events-none flex w-full max-w-lg flex-col gap-2">
 
       {/* Search — the hero, pinned top-left. The action/layer hotbar lives at the
           bottom of the screen (see below). */}
       <div className="pointer-events-none flex flex-col gap-2">
         {/* Search pill — creature/item mode toggle + the search field */}
-        <div className="pointer-events-auto flex w-full items-center gap-1.5 rounded-2xl border-2 border-line bg-bg-2/95 p-1 shadow-lg backdrop-blur-md transition focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25">
+        <div className="pointer-events-auto flex w-full items-center gap-2 rounded-2xl border-2 border-line bg-bg-2/95 p-1.5 shadow-lg backdrop-blur-md transition focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25">
           {/* Mode: creature spawns, item droppers ("where does it drop?") or
               merchant NPCs (route straight to the shop) */}
-          <div className="flex shrink-0 items-center gap-0.5 rounded-xl bg-bg/50 p-0.5">
+          <div className="flex shrink-0 items-center gap-1 rounded-xl bg-bg/50 p-1.5">
             {(
               [
                 { key: 'creature', icon: '/sprites/infernal-demon.webp', label: t('map.searchModeCreature') },
@@ -4738,7 +4759,7 @@ export function MapPage() {
                 title={m.label}
                 aria-label={m.label}
                 aria-pressed={searchKind === m.key}
-                className={`grid h-9 w-9 place-items-center rounded-lg transition ${
+                className={`grid h-10 w-10 place-items-center rounded-lg transition ${
                   searchKind === m.key ? 'bg-accent shadow-sm' : 'opacity-60 hover:opacity-100'
                 }`}
               >
@@ -4780,7 +4801,7 @@ export function MapPage() {
                     ? 'map.searchNpc'
                     : 'map.searchCreature',
               )}
-              className="h-10 w-full rounded-xl bg-transparent pl-10 pr-3 text-base font-semibold text-fg outline-none placeholder:font-medium placeholder:text-fg-mute"
+              className="h-12 w-full rounded-xl bg-transparent pl-10 pr-3 text-lg font-semibold text-fg outline-none placeholder:font-medium placeholder:text-fg-mute"
             />
           </div>
           {searchOpen && debouncedQuery.trim().length >= 2 && searchKind === 'creature' && searchResults && searchResults.length > 0 && (
@@ -5691,6 +5712,10 @@ export function MapPage() {
           </div>
         </div>
       )}
+
+      {/* Hunt profit calculator — draggable card: paste the analyzer, subtract
+          imbuement wear + silver-token recharges from the balance. */}
+      <HuntProfitTool open={profitOpen} onClose={() => setProfitOpen(false)} />
 
       {/* Hunt Finder — a floating card above the hotbar. Filters (vocation +
           level) drive the /api/hunts ranking; each result is a

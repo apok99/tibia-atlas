@@ -22,6 +22,10 @@ use Illuminate\Support\Facades\DB;
  * tables at runtime. Requiring a buy/sell price inside the row keeps travel
  * fares and quest tables out.
  *
+ * NPCs without a shop are imported too (flagged `is_merchant = false`) when
+ * the world XML pins them to a map tile, so the map search can route to quest
+ * givers, bankers, captains… — not just merchants.
+ *
  * Both tables are derived data, so the run wipes and rebuilds them (--dry to
  * only report). Re-run after creature/item imports or an OT data update.
  *
@@ -138,10 +142,16 @@ class EtlNpcShops extends Command
                 }
             }
 
+            $npcSpawns = $spawns[mb_strtolower($name)] ?? null;
+
+            // Shopless NPCs (quest givers, bankers, captains…) still matter to
+            // the map search — keep them when the world XML pins them to a
+            // walkable tile; script-spawned shopless ones have nothing to show.
             if ($offers === []) {
                 $shopless++;
-
-                continue;
+                if ($npcSpawns === null) {
+                    continue;
+                }
             }
 
             $currency = null;
@@ -154,7 +164,7 @@ class EtlNpcShops extends Command
             $merchants[$name] = [
                 'entry_id' => $entry?->id,
                 'city' => $entry->meta['city'] ?? null,
-                'spawns' => $spawns[mb_strtolower($name)] ?? null,
+                'spawns' => $npcSpawns,
                 'currency' => $currency,
                 'offers' => $offers,
             ];
@@ -163,8 +173,9 @@ class EtlNpcShops extends Command
         $offerCount = array_sum(array_map(fn ($m) => count($m['offers']), $merchants));
         $noSpawn = count(array_filter($merchants, fn ($m) => $m['spawns'] === null));
         $linked = count(array_filter($merchants, fn ($m) => $m['entry_id'] !== null));
+        $plain = count(array_filter($merchants, fn ($m) => $m['offers'] === []));
 
-        $this->info(count($merchants)." merchants with offers ({$shopless} NPCs without a shop).");
+        $this->info((count($merchants) - $plain)." merchants with offers + {$plain} shopless NPCs pinned to the map ({$shopless} shopless total).");
         $this->info("{$offerCount} offers matched to items; ".count($unmatched).' OT item names unmatched.');
         $this->info("{$linked} merchants linked to lore entries; {$noSpawn} without map spawns (travelling/scripted).");
 
@@ -188,6 +199,7 @@ class EtlNpcShops extends Command
                     'city' => $m['city'],
                     'spawns' => $m['spawns'],
                     'currency' => $m['currency'],
+                    'is_merchant' => $m['offers'] !== [],
                 ]);
 
                 $now = now();

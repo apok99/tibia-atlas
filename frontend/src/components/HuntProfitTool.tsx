@@ -1,0 +1,344 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
+import { useTranslation } from 'react-i18next'
+
+// Items Cledwyn (Feyrist) recharges for silver tokens — straight from the OT
+// server data (npc/cledwyn.lua + items.xml): tokens per recharge and how long
+// one recharge lasts while worn. Grouped cheap-first so the list reads sane.
+const RECHARGEABLES = [
+  { id: 'sleep-shawl', name: 'Sleep shawl', tokens: 2, hours: 1 },
+  { id: 'blister-ring', name: 'Blister ring', tokens: 2, hours: 1 },
+  { id: 'pendulet', name: 'Pendulet', tokens: 2, hours: 2 },
+  { id: 'theurgic-amulet', name: 'Theurgic amulet', tokens: 2, hours: 2 },
+  { id: 'ring-of-souls', name: 'Ring of souls', tokens: 2, hours: 2 },
+  { id: 'turtle-amulet', name: 'Turtle amulet', tokens: 2, hours: 2 },
+  { id: 'merudri-brooch', name: 'Merudri brooch', tokens: 2, hours: 2 },
+  { id: 'spiritthorn-ring', name: 'Spiritthorn ring', tokens: 5, hours: 3 },
+  { id: 'alicorn-ring', name: 'Alicorn ring', tokens: 5, hours: 3 },
+  { id: 'arcanomancer-sigil', name: 'Arcanomancer sigil', tokens: 5, hours: 3 },
+  { id: 'arboreal-ring', name: 'Arboreal ring', tokens: 5, hours: 3 },
+  { id: 'ethereal-ring', name: 'Ethereal ring', tokens: 5, hours: 3 },
+] as const
+
+// Tier 3 ("Powerful") imbuement defaults: ~500k of materials + fees, 20h of
+// hunting per application. Both are editable in the panel.
+const IMBUE_DEFAULT_COST = 500_000
+const IMBUE_DURATION_H = 20
+const SILVER_TOKEN_DEFAULT = 50_000
+
+const STORE_KEY = 'atlas:map:huntProfit'
+
+type Parsed = {
+  hours: number | null
+  loot: number | null
+  supplies: number | null
+  balance: number | null
+}
+
+// Pull the totals out of a pasted (party) hunt analyzer. Per-player sections
+// repeat "Loot:/Supplies:/Balance:" below the totals, so the FIRST match of
+// each line is always the session total. Numbers keep their thousand
+// separators ("1,234,567" or "1.234.567") and Balance may be negative.
+function parseAnalyzer(text: string): Parsed {
+  const num = (re: RegExp): number | null => {
+    const m = re.exec(text)
+    if (!m) return null
+    const neg = m[1].trim().startsWith('-')
+    const v = parseInt(m[1].replace(/[^\d]/g, ''), 10)
+    if (!Number.isFinite(v)) return null
+    return neg ? -v : v
+  }
+  let hours: number | null = null
+  const s = /Session:\s*(\d+):(\d{2})\s*h/i.exec(text)
+  if (s) {
+    const h = parseInt(s[1], 10) + parseInt(s[2], 10) / 60
+    if (h > 0) hours = h
+  }
+  return {
+    hours,
+    loot: num(/^[ \t]*Loot:[ \t]*(-?[\d.,  ]+)[ \t]*$/im),
+    supplies: num(/^[ \t]*Supplies:[ \t]*(-?[\d.,  ]+)[ \t]*$/im),
+    balance: num(/^[ \t]*Balance:[ \t]*(-?[\d.,  ]+)[ \t]*$/im),
+  }
+}
+
+type Config = {
+  imbueCount: number
+  imbueCost: number
+  silverPrice: number
+  items: string[]
+}
+
+function loadConfig(): Config {
+  try {
+    const raw = localStorage.getItem(STORE_KEY)
+    if (raw) {
+      const c = JSON.parse(raw)
+      return {
+        imbueCount: Number.isFinite(c.imbueCount) ? c.imbueCount : 3,
+        imbueCost: Number.isFinite(c.imbueCost) ? c.imbueCost : IMBUE_DEFAULT_COST,
+        silverPrice: Number.isFinite(c.silverPrice) ? c.silverPrice : SILVER_TOKEN_DEFAULT,
+        items: Array.isArray(c.items) ? c.items.filter((i: unknown) => typeof i === 'string') : [],
+      }
+    }
+  } catch {
+    /* corrupted storage — fall through to defaults */
+  }
+  return { imbueCount: 3, imbueCost: IMBUE_DEFAULT_COST, silverPrice: SILVER_TOKEN_DEFAULT, items: [] }
+}
+
+const gp = (n: number) => Math.round(n).toLocaleString()
+
+// Small labelled number input used across the panel.
+function NumField({
+  label,
+  value,
+  onChange,
+  suffix,
+  min,
+  step,
+  wide,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  suffix?: string
+  min?: number
+  step?: number
+  wide?: boolean
+}) {
+  return (
+    <label className={`flex flex-col gap-0.5 ${wide ? 'flex-1' : ''}`}>
+      <span className="text-[10px] font-bold uppercase tracking-wide text-fg-dim">{label}</span>
+      <span className="flex items-center gap-1">
+        <input
+          type="number"
+          value={value}
+          min={min ?? 0}
+          step={step ?? 1}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-8 w-full min-w-0 rounded-lg border border-line bg-bg-2 px-2 text-sm font-semibold outline-none transition focus:border-accent"
+        />
+        {suffix && <span className="shrink-0 text-[11px] font-semibold text-fg-mute">{suffix}</span>}
+      </span>
+    </label>
+  )
+}
+
+export default function HuntProfitTool({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useTranslation()
+
+  const [text, setText] = useState('')
+  const [hoursDraft, setHoursDraft] = useState('') // manual override of the session length
+  const [cfg, setCfg] = useState<Config>(loadConfig)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(cfg))
+    } catch {
+      /* storage full/blocked — the tool still works, it just forgets */
+    }
+  }, [cfg])
+
+  // Draggable card: null = docked (centered above the hotbar); a point once the
+  // user grabs the header. Pointer capture keeps the drag alive when the cursor
+  // outruns the handle; position clamps to the viewport.
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
+  const cardRef = useRef<HTMLDivElement | null>(null)
+  const dragOff = useRef<{ dx: number; dy: number } | null>(null)
+  const startDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const card = cardRef.current
+    if (!card) return
+    const rect = card.getBoundingClientRect()
+    dragOff.current = { dx: e.clientX - rect.left, dy: e.clientY - rect.top }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  const moveDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const off = dragOff.current
+    const card = cardRef.current
+    if (!off || !card) return
+    const x = Math.min(Math.max(8, e.clientX - off.dx), window.innerWidth - card.offsetWidth - 8)
+    const y = Math.min(Math.max(8, e.clientY - off.dy), window.innerHeight - 56)
+    setPos({ x, y })
+  }
+  const endDrag = () => {
+    dragOff.current = null
+  }
+
+  const parsed = useMemo(() => parseAnalyzer(text), [text])
+
+  // The analyzer's session length auto-fills the hours field but stays editable
+  // (a fixed 20:00h party session, someone hunting less than a full recharge…).
+  useEffect(() => {
+    if (parsed.hours != null) setHoursDraft((parsed.hours * 60) % 60 === 0 ? String(parsed.hours) : parsed.hours.toFixed(2))
+  }, [parsed.hours])
+
+  const hours = (() => {
+    const h = parseFloat(hoursDraft.replace(',', '.'))
+    return Number.isFinite(h) && h > 0 ? h : null
+  })()
+
+  const balance = parsed.balance ?? (parsed.loot != null && parsed.supplies != null ? parsed.loot - parsed.supplies : null)
+
+  const imbueCount = Math.max(0, Math.round(Number(cfg.imbueCount) || 0))
+  const imbueCost = Math.max(0, Number(cfg.imbueCost) || 0)
+  const silverPrice = Math.max(0, Number(cfg.silverPrice) || 0)
+
+  const imbueTotal = hours != null ? imbueCount * (imbueCost / IMBUE_DURATION_H) * hours : 0
+  const wornItems = RECHARGEABLES.filter((r) => cfg.items.includes(r.id))
+  const tokenTotal =
+    hours != null ? wornItems.reduce((sum, r) => sum + (hours / r.hours) * r.tokens * silverPrice, 0) : 0
+
+  const ready = hours != null && balance != null
+  const realProfit = ready ? balance! - imbueTotal - tokenTotal : null
+  const perHour = realProfit != null && hours != null ? realProfit / hours : null
+
+  const toggleItem = (id: string) =>
+    setCfg((c) => ({
+      ...c,
+      items: c.items.includes(id) ? c.items.filter((i) => i !== id) : [...c.items, id],
+    }))
+
+  if (!open) return null
+
+  return (
+    <div
+      className={
+        pos
+          ? 'pointer-events-none fixed inset-0 z-[1002]'
+          : 'pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3'
+      }
+    >
+      <div
+        ref={cardRef}
+        style={pos ? { position: 'absolute', left: pos.x, top: pos.y } : undefined}
+        className="scroll-atlas pointer-events-auto max-h-[78vh] w-[32rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-3.5 shadow-2xl backdrop-blur-md"
+      >
+        {/* Header doubles as the drag handle — grab it to move the card. */}
+        <div
+          onPointerDown={startDrag}
+          onPointerMove={moveDrag}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          className="mb-2 flex cursor-grab touch-none select-none items-center gap-1.5 text-accent active:cursor-grabbing"
+        >
+          <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="8" cy="8" r="6" />
+            <path d="M18.09 10.37A6 6 0 1 1 10.34 18" />
+            <path d="M7 6h1v4" />
+            <path d="m16.71 13.88.7.71-2.82 2.82" />
+          </svg>
+          <span className="text-xs font-bold uppercase tracking-widest">{t('map.hpTitle')}</span>
+          <button
+            onClick={onClose}
+            onPointerDown={(e) => e.stopPropagation()}
+            aria-label={t('map.hpTitle')}
+            className="ml-auto grid h-6 w-6 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:border-accent hover:text-accent"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <p className="mb-2 text-sm text-fg-dim">{t('map.hpHint')}</p>
+
+        {/* Analyzer paste box */}
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={t('map.hpPaste')}
+          spellCheck={false}
+          rows={4}
+          className="w-full resize-y rounded-lg border border-line bg-bg-2 px-2.5 py-2 font-mono text-xs leading-relaxed outline-none transition placeholder:font-sans placeholder:text-sm placeholder:text-fg-mute focus:border-accent"
+        />
+
+        {/* What we read from the paste + the editable session length */}
+        <div className="mt-2 flex flex-wrap items-end gap-x-3 gap-y-2">
+          <NumField label={t('map.hpHours')} value={hoursDraft} onChange={setHoursDraft} suffix="h" min={0} step={0.25} />
+          <div className="flex flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+            {parsed.loot != null && (
+              <span className="text-fg-dim">
+                {t('map.hpLoot')} <b className="text-fg">{gp(parsed.loot)}</b>
+              </span>
+            )}
+            {parsed.supplies != null && (
+              <span className="text-fg-dim">
+                {t('map.hpSupplies')} <b className="text-fg">{gp(parsed.supplies)}</b>
+              </span>
+            )}
+            {balance != null && (
+              <span className="text-fg-dim">
+                {t('map.hpBalance')}{' '}
+                <b className={balance >= 0 ? 'text-canon' : 'text-accent'}>{gp(balance)}</b>
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Imbuements — slots x (cost / 20h) x session hours */}
+        <div className="mt-3 rounded-xl border border-line bg-bg-2 p-2.5">
+          <div className="mb-1.5 text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpImbues')}</div>
+          <div className="flex items-end gap-2">
+            <NumField label={t('map.hpImbueCount')} value={String(cfg.imbueCount)} onChange={(v) => setCfg((c) => ({ ...c, imbueCount: Math.max(0, parseInt(v, 10) || 0) }))} min={0} />
+            <NumField wide label={t('map.hpImbueCost')} value={String(cfg.imbueCost)} onChange={(v) => setCfg((c) => ({ ...c, imbueCost: Math.max(0, parseInt(v, 10) || 0) }))} suffix="gp" min={0} step={1000} />
+            <div className="pb-1 text-right text-sm font-bold text-fg">
+              {hours != null && imbueTotal > 0 ? '-' + gp(imbueTotal) : '—'}
+            </div>
+          </div>
+          <p className="mt-1.5 text-xs text-fg-mute">{t('map.hpImbueNote')}</p>
+        </div>
+
+        {/* Silver-token rechargeables — tick what you wore for the session */}
+        <div className="mt-2 rounded-xl border border-line bg-bg-2 p-2.5">
+          <div className="mb-1.5 flex items-end justify-between gap-2">
+            <div className="text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpTokens')}</div>
+            <NumField label={t('map.hpTokenPrice')} value={String(cfg.silverPrice)} onChange={(v) => setCfg((c) => ({ ...c, silverPrice: Math.max(0, parseInt(v, 10) || 0) }))} suffix="gp" min={0} step={1000} />
+          </div>
+          <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+            {RECHARGEABLES.map((r) => {
+              const on = cfg.items.includes(r.id)
+              const cost = hours != null ? (hours / r.hours) * r.tokens * silverPrice : null
+              return (
+                <label
+                  key={r.id}
+                  className={`flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-sm transition ${on ? 'bg-accent/10 text-fg' : 'text-fg-dim hover:bg-surface-2/60'}`}
+                >
+                  <input type="checkbox" checked={on} onChange={() => toggleItem(r.id)} className="h-3.5 w-3.5 accent-accent" />
+                  <span className="min-w-0 flex-1 truncate">{r.name}</span>
+                  <span className="shrink-0 text-[11px] text-fg-mute">
+                    {on && cost != null ? '-' + gp(cost) : `${r.tokens}tk/${r.hours}h`}
+                  </span>
+                </label>
+              )
+            })}
+          </div>
+          <p className="mt-1.5 text-xs text-fg-mute">{t('map.hpTokenNote')}</p>
+        </div>
+
+        {/* The verdict */}
+        {ready ? (
+          <div className="mt-2 rounded-xl border border-line bg-bg-2 p-2.5">
+            <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 text-sm">
+              <dt className="text-fg-dim">{t('map.hpBalanceRow')}</dt>
+              <dd className="text-right font-semibold text-fg">{gp(balance!)}</dd>
+              <dt className="text-fg-dim">{t('map.hpCostImbues')}</dt>
+              <dd className="text-right font-semibold text-fg">-{gp(imbueTotal)}</dd>
+              <dt className="text-fg-dim">{t('map.hpCostTokens')}</dt>
+              <dd className="text-right font-semibold text-fg">-{gp(tokenTotal)}</dd>
+            </dl>
+            <div className="mt-1.5 flex items-baseline justify-between border-t border-line pt-1.5">
+              <span className="text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpReal')}</span>
+              <span className="text-right">
+                <b className={`text-lg ${realProfit! >= 0 ? 'text-canon' : 'text-accent'}`}>{gp(realProfit!)} gp</b>
+                <span className="ml-2 text-sm text-fg-dim">{gp(perHour!)}/h</span>
+              </span>
+            </div>
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-fg-mute">{t('map.hpNoData')}</p>
+        )}
+      </div>
+    </div>
+  )
+}
