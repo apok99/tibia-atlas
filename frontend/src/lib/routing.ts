@@ -336,6 +336,18 @@ const FERRY_LINES: FerryLineDef[] = [
   },
   { name: 'Barca', icon: 'sailboat', stops: [{ name: 'Yalahar', x: 32837, y: 31365 }, { name: 'Vengoth', x: 32857, y: 31549 }] },
   { name: 'Barca', icon: 'sailboat', stops: [{ name: 'Edron', x: 33304, y: 31720 }, { name: 'Grimvale', x: 33333, y: 31690 }] },
+  // Eremo's island: a 121-tile islet with no land connection at all, so without
+  // this line the Wisdom of Solitude shrine is simply unreachable. Pemaret stands
+  // on Cormaya (f6) and sails there free — `addTravelKeyword("eremo", …, 0,
+  // Position(33314, 31883, 7))` in the OT's own npc/pemaret.lua.
+  {
+    name: 'Pemaret',
+    icon: 'sailboat',
+    stops: [
+      { name: 'Cormaya', x: 33286, y: 31955, floor: 6 },
+      { name: 'Isla de Eremo', x: 33314, y: 31883, floor: 7 },
+    ],
+  },
   // (removed) Zao ↔ north island raft: both docks sit inside the sealed
   // Great-Gate compound (an 821-tile pocket unreachable from the mainland),
   // so the line could never be boarded — dead weight in the search.

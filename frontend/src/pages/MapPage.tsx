@@ -63,6 +63,13 @@ import { Skeleton } from '../components/Skeleton'
 import { MapTutorial, mapTourSeen } from '../components/MapTutorial'
 import HuntProfitTool from '../components/HuntProfitTool'
 import { HouseBidChart, HousePriceIndex } from '../components/HousePrices'
+import {
+  SHRINE_ACCESS,
+  nearestTour,
+  planPilgrimage,
+  useBlessings,
+  type PilgrimStop,
+} from '../lib/blessings'
 import type { Dropper, Entry, EntryListItem, ItemDetail, ItemTrade, MapNpc, Paginated, SearchResult, Spawn } from '../types'
 import {
   TILE,
@@ -2314,6 +2321,8 @@ export function MapPage() {
   const [routePlan, setRoutePlan] = useState<RoutePlan | null>(null)
   const [routeBusy, setRouteBusy] = useState(false)
   const [routeMsg, setRouteMsg] = useState<string | null>(null)
+  const [blessSet, setBlessSet] = useState<null | 'five' | 'seven'>(null) // pilgrimage in progress
+  const [blessStops, setBlessStops] = useState<PilgrimStop[] | null>(null) // its stop list
   // "Reportar" flow for a wrong route: idle → editing (note box open) → sending →
   // done/error. The submitted report (endpoints + itinerary + note) lands in the
   // DB for a later routing fix pass (read via `php artisan tibia:route-reports`).
@@ -3802,6 +3811,48 @@ export function MapPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [floor, mapReady, showRaids, raids, raid])
+
+  // The blessing pilgrimage. The visiting ORDER is precomputed — an exact tour
+  // over real travel distances (tools/gen-blessings.mjs) — because solving it in
+  // the browser would mean thousands of searches over the walkability bake. Here
+  // we take the tour whose starting city is nearest to where you are looking and
+  // walk it for real, leg by leg, so it draws like any other route.
+  const { data: blessings } = useBlessings(blessSet !== null)
+
+  async function runPilgrimage(set: 'five' | 'seven') {
+    setBlessSet(set)
+    setBlessStops(null)
+    setRouteMsg(null)
+    setRoutePlan(null)
+    setRouteBusy(true)
+    try {
+      // The hook only starts fetching once blessSet flips, so the very first
+      // click has to fetch the file itself rather than wait a render.
+      const data = blessings ?? (await (await fetch('/blessings.json')).json())
+      const map = mapRef.current
+      const c = map?.getCenter()
+      const here = { x: Math.round(c ? c.lng : 32365), y: Math.round(c ? -c.lat : 32224) }
+      const tour = nearestTour(data, set, here)
+      if (!tour) {
+        setRouteMsg(t('map.routeNone'))
+        return
+      }
+      const { plan, stops } = await planPilgrimage(data, tour, {
+        x: tour.start.x,
+        y: tour.start.y,
+        floor: tour.start.z,
+      })
+      setRoutePlan(plan)
+      setBlessStops(stops)
+      floorRef.current = tour.start.z
+      setFloor(tour.start.z)
+      if (map) map.flyTo(toLatLng(tour.start.x, tour.start.y), Math.max(map.getZoom(), 2), { duration: 0.5 })
+    } catch {
+      setRouteMsg(t('map.routeError'))
+    } finally {
+      setRouteBusy(false)
+    }
+  }
 
   // Open a raid's dossier and fly to it, switching floor when it happens
   // somewhere else (Ferumbras and friends are all underground).
@@ -5605,6 +5656,39 @@ export function MapPage() {
               )}
             </button>
 
+            {/* Blessings — one click plans the whole pilgrimage: every shrine in
+                the cheapest order, from the city nearest to your view. */}
+            <HotbarGroup
+              icon={
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3v18M7 8h10" />
+                  <path d="M12 21c-3 0-5-1.5-5-3h10c0 1.5-2 3-5 3z" />
+                </svg>
+              }
+              label={t('map.blessTitle')}
+              accent="#c79a3f"
+              active={blessSet !== null}
+            >
+              <button
+                onClick={() => runPilgrimage('five')}
+                title={t('map.blessFive')}
+                aria-label={t('map.blessFive')}
+                aria-pressed={blessSet === 'five'}
+                className={`${SLOT} ${blessSet === 'five' ? SLOT_ON : SLOT_OFF}`}
+              >
+                <span className="text-sm font-bold">5</span>
+              </button>
+              <button
+                onClick={() => runPilgrimage('seven')}
+                title={t('map.blessSeven')}
+                aria-label={t('map.blessSeven')}
+                aria-pressed={blessSet === 'seven'}
+                className={`${SLOT} ${blessSet === 'seven' ? SLOT_ON : SLOT_OFF}`}
+              >
+                <span className="text-sm font-bold">7</span>
+              </button>
+            </HotbarGroup>
+
             {/* Hunt Finder — ranks the best hunting zones for your level/vocation/set. */}
             <button
               onClick={() => togglePanel('hunt', huntOpen)}
@@ -6040,6 +6124,73 @@ export function MapPage() {
           breakdown (what to hit it with, reward, danger). */}
       {lorePoi && <LorePanel poi={lorePoi} onClose={() => setLorePoi(null)} />}
       {raid && <RaidPanel raid={raid} onClose={() => setRaid(null)} onPlot={plotCreatureByName} />}
+      {/* Pilgrimage stop list — the order the route follows, and the two shrines
+          you cannot simply walk into. */}
+      {blessStops && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
+          <div className="scroll-atlas pointer-events-auto max-h-[60vh] w-[24rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-3 shadow-2xl backdrop-blur-md">
+            <div className="mb-2 flex items-center gap-1.5 text-[#c79a3f]">
+              <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 3v18M7 8h10" />
+              </svg>
+              <span className="text-[10px] font-bold uppercase tracking-widest">
+                {t(blessSet === 'seven' ? 'map.blessSeven' : 'map.blessFive')}
+              </span>
+              <button
+                onClick={() => {
+                  setBlessStops(null)
+                  setBlessSet(null)
+                  setRoutePlan(null)
+                }}
+                aria-label={t('common.close')}
+                className="ml-auto grid h-6 w-6 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:border-[#c79a3f] hover:text-[#c79a3f]"
+              >
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <ol className="space-y-1">
+              {blessStops.map((s, i) => {
+                const access = SHRINE_ACCESS[s.shrine.id]?.mode
+                return (
+                  <li key={s.shrine.id}>
+                    <button
+                      onClick={() => {
+                        floorRef.current = s.shrine.z
+                        setFloor(s.shrine.z)
+                        const m = mapRef.current
+                        if (m) m.flyTo(toLatLng(s.shrine.x, s.shrine.y), Math.max(m.getZoom(), 3), { duration: 0.5 })
+                      }}
+                      className="flex w-full items-baseline gap-2 rounded-md border border-line-2 bg-bg-3/40 px-2 py-1.5 text-left transition hover:border-[#c79a3f]/60"
+                    >
+                      <span className="shrink-0 text-[11px] font-bold text-[#c79a3f]">{i + 1}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-fg">{s.shrine.name}</span>
+                        <span className="block truncate text-[11px] text-fg-dim">
+                          {s.shrine.npc}
+                          {' · '}
+                          {t('map.blessFloor', { floor: s.shrine.z })}
+                          {access && (
+                            <span className="ml-1 font-semibold text-[#c79a3f]">
+                              · {t(access === 'boat' ? 'map.blessByBoat' : 'map.blessByLevitate')}
+                            </span>
+                          )}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-[11px] font-bold tabular-nums text-fg-mute">
+                        {s.reached ? t('map.blessTiles', { tiles: s.tiles }) : t('map.blessNoWalk')}
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ol>
+            <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">{t('map.blessNote')}</p>
+          </div>
+        </div>
+      )}
+
       {/* Rashid's reader: today's exact spot + re-trace of the route to him. */}
       {rashidOpen && (
         <RashidPanel
