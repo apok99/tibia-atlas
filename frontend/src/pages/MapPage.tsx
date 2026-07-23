@@ -1689,11 +1689,13 @@ function ZonePanel({
   const { t } = useTranslation()
   const elName = (el: string) => t(`elements.${el}`, { defaultValue: el.replace(/_/g, ' ') })
   const elColor = (el: string) => HUNT_ELEMENT_COLOR[el] ?? '#8a8578'
+  // Solid element-coloured chips with white text: the earlier translucent tint
+  // washed out against the map.
   const chip = (el: string, text: string, key?: string) => (
     <span
       key={key ?? el}
-      className="rounded-full px-2 py-0.5 text-[11px] font-bold"
-      style={{ background: `${elColor(el)}22`, color: elColor(el) }}
+      className="rounded-full px-2.5 py-0.5 text-[13px] font-bold text-white"
+      style={{ background: elColor(el) }}
     >
       {text}
     </span>
@@ -1701,13 +1703,13 @@ function ZonePanel({
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
-      <div className="scroll-atlas pointer-events-auto max-h-[70vh] w-[32rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-4 shadow-2xl backdrop-blur-md">
+      <div className="scroll-atlas pointer-events-auto max-h-[70vh] w-[32rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-[#15120e]/[.97] p-4 shadow-2xl backdrop-blur-md">
         <div className="mb-2 flex items-center gap-1.5 text-[#3fa7d6]">
           <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4" />
             <circle cx="12" cy="12" r="2.5" />
           </svg>
-          <span className="text-[10px] font-bold uppercase tracking-widest">{t('map.zoneTitle')}</span>
+          <span className="text-[11px] font-bold uppercase tracking-widest">{t('map.zoneTitle')}</span>
           <button
             onClick={onClose}
             aria-label={t('common.close')}
@@ -1722,27 +1724,38 @@ function ZonePanel({
         {loading && <Skeleton className="h-24 w-full" />}
 
         {!loading && data && data.species === 0 && (
-          <p className="text-sm text-fg-mute">{t('map.zoneEmpty')}</p>
+          <p className="text-[15px] text-fg-dim">{t('map.zoneEmpty')}</p>
         )}
 
         {!loading && data && data.species > 0 && (
           <>
-            <h3 className="font-serif text-lg font-bold leading-tight text-fg">
+            <h3 className="font-serif text-xl font-bold leading-tight text-fg">
               {data.name ?? t('map.zoneTitle')}
             </h3>
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-fg-mute">
+            <span className="text-[12px] font-semibold uppercase tracking-wide text-fg-dim">
               {t('map.zoneMeta', { species: data.species, points: data.spawn_points, z: floor })}
             </span>
 
             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
               {/* What you'll take: element share of the count-weighted burst. */}
               <div>
-                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-fg-mute">
+                <div className="mb-1.5 text-[11px] font-bold uppercase tracking-widest text-fg-dim">
                   {t('map.zoneIncoming')}
                 </div>
-                <div className="flex flex-col gap-1">
+                <div className="flex flex-col gap-1.5">
                   {data.incoming.slice(0, 5).map((i) => (
-                    <StatBar key={i.element} label={elName(i.element)} value={`${i.pct}%`} pct={i.pct} color={elColor(i.element)} />
+                    <div key={i.element} className="flex items-center gap-2">
+                      <span className="w-20 shrink-0 truncate text-[13px] font-semibold text-fg">{elName(i.element)}</span>
+                      <span className="relative h-3 min-w-0 flex-1 overflow-hidden rounded-full bg-black/50">
+                        <span
+                          className="absolute inset-y-0 left-0 rounded-full"
+                          style={{ width: `${Math.min(100, Math.max(5, i.pct))}%`, background: elColor(i.element) }}
+                        />
+                      </span>
+                      <span className="w-11 shrink-0 text-right text-[13px] font-bold" style={{ color: elColor(i.element) }}>
+                        {i.pct}%
+                      </span>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -1750,7 +1763,7 @@ function ZonePanel({
               <div className="flex flex-col gap-2">
                 {data.attack_with.length > 0 && (
                   <div>
-                    <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-fg-mute">
+                    <div className="mb-1 text-[11px] font-bold uppercase tracking-widest text-fg-dim">
                       {t('map.zoneAttackWith')}
                     </div>
                     <div className="flex flex-wrap gap-1">
@@ -1760,7 +1773,7 @@ function ZonePanel({
                 )}
                 {data.avoid.length > 0 && (
                   <div>
-                    <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-fg-mute">
+                    <div className="mb-1 text-[11px] font-bold uppercase tracking-widest text-fg-dim">
                       {t('map.zoneAvoid')}
                     </div>
                     <div className="flex flex-wrap gap-1">
@@ -1775,7 +1788,7 @@ function ZonePanel({
                     </div>
                   </div>
                 )}
-                <div className="flex items-center gap-1.5 text-xs text-fg-dim">
+                <div className="flex items-center gap-1.5 text-sm font-semibold text-fg">
                   <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-[#3fa7d6]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
                     <circle cx="12" cy="12" r="4" />
@@ -1787,7 +1800,7 @@ function ZonePanel({
 
             {/* Residents, deadliest first. */}
             <div className="mt-3 border-t border-line pt-2">
-              <div className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-fg-mute">
+              <div className="mb-1.5 text-[11px] font-bold uppercase tracking-widest text-fg-dim">
                 {t('map.zoneCreatures')}
               </div>
               <div className="flex flex-col">
@@ -1798,36 +1811,36 @@ function ZonePanel({
                     className="flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 transition hover:bg-surface"
                   >
                     {c.image ? (
-                      <img src={c.image} alt="" className="h-9 w-9 shrink-0 object-contain" style={{ imageRendering: 'pixelated' }} />
+                      <img src={c.image} alt="" className="h-10 w-10 shrink-0 object-contain" style={{ imageRendering: 'pixelated' }} />
                     ) : (
-                      <span className="h-9 w-9 shrink-0" />
+                      <span className="h-10 w-10 shrink-0" />
                     )}
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline gap-1.5">
-                        <span className="truncate text-sm font-bold text-fg">{c.name}</span>
-                        <span className="shrink-0 text-xs font-semibold text-fg-mute">×{c.count}</span>
+                        <span className="truncate text-[15px] font-bold text-fg">{c.name}</span>
+                        <span className="shrink-0 text-[13px] font-bold text-fg-dim">×{c.count}</span>
                         {c.boss && (
-                          <span className="shrink-0 rounded-full bg-[#d23d2f]/15 px-1.5 text-[10px] font-bold uppercase text-[#d23d2f]">
+                          <span className="shrink-0 rounded-full bg-[#d23d2f] px-2 text-[11px] font-bold uppercase text-white">
                             Boss
                           </span>
                         )}
                       </span>
-                      <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-fg-dim">
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] text-fg">
                         {c.burst > 0 && (
-                          <span title={t('map.zoneBurstHint')}>
+                          <span className="font-semibold" title={t('map.zoneBurstHint')}>
                             ⚔ {compact(c.burst)}
                           </span>
                         )}
-                        <span>{compact(c.hp)} hp</span>
+                        <span className="text-fg-dim">{compact(c.hp)} hp</span>
                         {c.damage_elements[0] && chip(c.damage_elements[0].element, elName(c.damage_elements[0].element), `dmg-${c.slug}`)}
                         {c.weak_to[0] && (
-                          <span className="font-semibold" style={{ color: '#2f9e5a' }}>
+                          <span className="font-bold" style={{ color: '#4fc57f' }}>
                             {t('map.zoneWeakTo')} {elName(c.weak_to[0].element)} +{c.weak_to[0].pct - 100}%
                           </span>
                         )}
                       </span>
                     </span>
-                    <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-fg-mute">
+                    <span className={`shrink-0 text-[12px] font-bold uppercase tracking-wide ${c.ranged ? 'text-[#5cc3f0]' : 'text-fg-dim'}`}>
                       {c.ranged ? t('map.zoneRanged') : t('map.zoneMelee')}
                     </span>
                   </Link>
