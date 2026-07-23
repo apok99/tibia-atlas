@@ -114,6 +114,7 @@ class EtlMonsterCombat extends Command
                 'dps' => $mon['dps'],
                 'burst_by_element' => $mon['burst_by_element'],
                 'ranged' => $mon['ranged'],
+                'run_health' => $mon['run_health'],
                 'armor' => $mon['armor'],
                 'defense' => $mon['defense'],
                 'mitigation' => $mon['mitigation'],
@@ -175,6 +176,7 @@ class EtlMonsterCombat extends Command
         arsort($burstByEl);
 
         $defenses = $this->pairs($this->block($src, 'monster.defenses'));
+        $flags = $this->pairs($this->block($src, 'monster.flags'));
 
         $mods = [];
         foreach ($this->tableEntries($this->block($src, 'monster.elements')) as $entry) {
@@ -194,6 +196,8 @@ class EtlMonsterCombat extends Command
             'dps' => round($dps, 1),
             'burst_by_element' => array_map(fn ($v) => (int) round($v), $burstByEl),
             'ranged' => $ranged,
+            // HP at which the monster turns and flees (flags.runHealth); 0 = fights to the death.
+            'run_health' => (int) ($flags['runHealth'] ?? 0),
             'armor' => (int) ($defenses['armor'] ?? 0),
             'defense' => (int) ($defenses['defense'] ?? 0),
             'mitigation' => (float) ($defenses['mitigation'] ?? 0),

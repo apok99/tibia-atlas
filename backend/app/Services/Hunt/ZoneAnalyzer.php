@@ -82,6 +82,9 @@ class ZoneAnalyzer
                 'dps' => (float) ($ot['dps'] ?? 0),
                 'stars' => $ot['stars'] ?? null,
                 'ranged' => (bool) ($ot['ranged'] ?? false),
+                // HP at which it turns and flees (0 = fights to the death) — the
+                // "chases wounded runners" nuisance factor of a spot.
+                'run_health' => (int) ($ot['run_health'] ?? 0),
                 'damage_elements' => $this->topDamageElements((array) ($ot['burst_by_element'] ?? [])),
                 'weak_to' => $this->modHints($mods, weak: true),
                 'resists' => $this->modHints($mods, weak: false),
@@ -97,6 +100,7 @@ class ZoneAnalyzer
             'species' => count($creatures),
             'spawn_points' => $totalPoints,
             'ranged_species' => count(array_filter($creatures, fn ($c) => $c['ranged'])),
+            'fleeing_species' => count(array_filter($creatures, fn ($c) => $c['run_health'] > 0)),
             'incoming' => $this->incomingShare($creatures),
             'attack_with' => $this->attackWith($creatures),
             'avoid' => $this->avoidElements($creatures),

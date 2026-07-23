@@ -24,6 +24,8 @@ export type ZoneCreature = {
   dps: number
   stars: number | null
   ranged: boolean
+  // HP at which it turns and flees; 0 = fights to the death.
+  run_health: number
   damage_elements: { element: string; burst: number }[]
   weak_to: { element: string; pct: number }[]
   resists: { element: string; pct: number }[]
@@ -42,6 +44,7 @@ export type ZoneSummary = {
   species: number
   spawn_points: number
   ranged_species: number
+  fleeing_species: number
   incoming: { element: string; pct: number }[]
   attack_with: { element: string; avg_pct: number }[]
   avoid: { element: string; avg_pct: number; immune_species: number }[]

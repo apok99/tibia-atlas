@@ -1861,6 +1861,16 @@ function ZonePanel({
                   </svg>
                   {t('map.zoneRangedLine', { ranged: data.ranged_species, total: data.species })}
                 </div>
+                {data.fleeing_species > 0 && (
+                  <div className="flex items-center gap-1.5 text-sm font-semibold text-fg">
+                    {/* footsteps running off — "these bolt when wounded" */}
+                    <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-[#d08a1e]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M13 4h6M11 12h6M9 20h6" />
+                      <path d="M19 4l2 0M17 12l2 0M15 20l2 0" strokeDasharray="1 3" />
+                    </svg>
+                    {t('map.zoneFleesLine', { fleeing: data.fleeing_species, total: data.species })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1902,6 +1912,11 @@ function ZonePanel({
                         {c.weak_to[0] && (
                           <span className="font-bold" style={{ color: '#1f7a44' }}>
                             {t('map.zoneWeakTo')} {elName(c.weak_to[0].element)} +{c.weak_to[0].pct - 100}%
+                          </span>
+                        )}
+                        {c.run_health > 0 && (
+                          <span className="font-bold" style={{ color: '#b06a10' }} title={t('map.zoneFleesHint')}>
+                            {t('map.zoneFlees', { hp: c.run_health })}
                           </span>
                         )}
                       </span>
@@ -3743,11 +3758,15 @@ export function MapPage() {
 
   // "Analyze zone" drawing mode: freeze map panning and rubber-band a rectangle
   // under the cursor; releasing fixes the box (which opens the summary panel).
-  // A plain click (no real drag) selects nothing.
+  // A plain click (no real drag) selects nothing. Drawing is only armed while
+  // there is NO box yet — once one is fixed the map pans normally again and the
+  // box is adjusted via its corner handles; closing the panel (or re-toggling
+  // the tool) re-arms the draw. Without this gate you couldn't move the map
+  // with the tool on, and a second drag left two rectangles on screen.
   useEffect(() => {
     analyzeModeRef.current = analyzeMode
     const map = mapRef.current
-    if (!map || !mapReady || !analyzeMode) return
+    if (!map || !mapReady || !analyzeMode || analyzeBox !== null) return
     map.dragging.disable()
     const container = map.getContainer()
     const prevCursor = container.style.cursor
@@ -3786,19 +3805,30 @@ export function MapPage() {
       if (box.x2 - box.x1 < 4 || box.y2 - box.y1 < 4) return
       setAnalyzeBox(box)
     }
+    // Releasing OUTSIDE the map (over a panel, the hotbar, the browser chrome)
+    // never reaches the map's mouseup — the band kept following the cursor and
+    // the next drag drew a second rectangle. The map handler runs first and
+    // clears `start`, so this only catches the escapes.
+    const cancel = () => {
+      start = null
+      rubber?.remove()
+      rubber = null
+    }
     map.on('mousedown', down)
     map.on('mousemove', move)
     map.on('mouseup', up)
+    document.addEventListener('mouseup', cancel)
     return () => {
       map.off('mousedown', down)
       map.off('mousemove', move)
       map.off('mouseup', up)
+      document.removeEventListener('mouseup', cancel)
       rubber?.remove()
       container.style.cursor = prevCursor
       map.dragging.enable()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [analyzeMode, mapReady])
+  }, [analyzeMode, analyzeBox, mapReady])
 
   // The fixed selection: the rectangle plus four draggable corner handles to
   // fine-tune it after release (each nudge re-queries). Drawn on every floor on
