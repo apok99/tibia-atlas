@@ -52,20 +52,6 @@ import {
   useRaids,
   type Raid,
 } from '../lib/raids'
-import {
-  cheapestFare,
-  connectedPlaces,
-  fareLabel,
-  useTravel,
-  type TravelFile,
-  type TravelNpc,
-} from '../lib/travel'
-import {
-  mappedMissions,
-  searchQuests,
-  useQuests,
-  type Quest,
-} from '../lib/quests'
 import { RASHID_ROTATION, rashidEffectiveDay, useRashidClock, type RashidStop } from '../lib/rashid'
 import { YASIR_DOCKS, type YasirDock } from '../lib/yasir'
 import { SKILL_LABELS, signed } from '../components/items/itemStats'
@@ -1961,281 +1947,6 @@ function RaidPanel({
   )
 }
 
-// The travel panel: what this captain sells, and a fare finder over the whole
-// network. The finder answers the question the game never does — the cheapest
-// chain of rides between two places, transfers included (Thais to Svargrond is
-// 160 gp via Kazordoon, not the 180 the direct ship asks for).
-function TravelPanel({
-  npc,
-  data,
-  onClose,
-  onGoTo,
-}: {
-  npc: TravelNpc
-  data: TravelFile
-  onClose: () => void
-  onGoTo: (x: number, y: number, z: number) => void
-}) {
-  const { t, i18n } = useTranslation()
-  const places = useMemo(() => connectedPlaces(data), [data])
-  const [from, setFrom] = useState<number>(npc.place)
-  const [to, setTo] = useState<number>(() => places.find((p) => p.id !== npc.place)?.id ?? npc.place)
-
-  // Re-anchor the origin when another captain is opened, so the finder always
-  // starts from where you are looking.
-  useEffect(() => setFrom(npc.place), [npc.place])
-
-  const fare = useMemo(() => cheapestFare(data, from, to), [data, from, to])
-  const placeName = (id: number) => data.places.find((p) => p.id === id)?.name ?? '?'
-
-  const SELECT =
-    'min-w-0 flex-1 rounded-md border border-line-2 bg-bg-3/60 px-2 py-1.5 text-[12px] font-semibold text-fg'
-
-  return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
-      <div className="scroll-atlas pointer-events-auto max-h-[70vh] w-[32rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-4 shadow-2xl backdrop-blur-md">
-        <div className="mb-2 flex items-center gap-1.5 text-[#3f9ec7]">
-          <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="5" r="2" />
-            <path d="M12 22V7M5 12H2a10 10 0 0 0 20 0h-3" />
-          </svg>
-          <span className="text-[10px] font-bold uppercase tracking-widest">{t('map.travelTitle')}</span>
-          <button
-            onClick={onClose}
-            aria-label={t('common.close')}
-            className="ml-auto grid h-6 w-6 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:border-[#3f9ec7] hover:text-[#3f9ec7]"
-          >
-            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <h3 className="font-serif text-lg font-bold leading-tight text-fg">{npc.name}</h3>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-fg-mute">
-          {placeName(npc.place)}
-        </p>
-
-        {/* Everything this NPC sells, cheapest first. */}
-        <h4 className="mt-4 text-[11px] font-bold uppercase tracking-widest text-fg-mute">
-          {t('map.travelSells')}
-        </h4>
-        <ul className="mt-1.5 space-y-1">
-          {[...npc.routes]
-            .sort((a, b) => a.cost - b.cost || a.to.localeCompare(b.to))
-            .map((r) => (
-              <li key={`${r.to}-${r.x}-${r.y}-${r.z}`}>
-                <button
-                  onClick={() => onGoTo(r.x, r.y, r.z)}
-                  title={t('map.travelGoToHint', { name: r.to })}
-                  className="flex w-full items-baseline gap-2 rounded-md border border-line-2 bg-bg-3/40 px-2 py-1.5 text-left text-sm transition hover:border-[#3f9ec7]/60 hover:bg-bg-3/70"
-                >
-                  <span className="min-w-0 flex-1 truncate font-semibold text-fg-dim">{r.to}</span>
-                  <span className={`shrink-0 text-[12px] font-bold ${r.cost ? 'text-[#c79a3f]' : 'text-[#4e8c39]'}`}>
-                    {fareLabel(r.cost, i18n.language)}
-                  </span>
-                </button>
-              </li>
-            ))}
-        </ul>
-
-        {/* Fare finder over the whole network. */}
-        <h4 className="mt-4 text-[11px] font-bold uppercase tracking-widest text-fg-mute">
-          {t('map.travelFareFinder')}
-        </h4>
-        <div className="mt-1.5 flex items-center gap-1.5">
-          <select value={from} onChange={(e) => setFrom(Number(e.target.value))} aria-label={t('map.travelFrom2')} className={SELECT}>
-            {places.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          <span className="shrink-0 text-fg-mute">→</span>
-          <select value={to} onChange={(e) => setTo(Number(e.target.value))} aria-label={t('map.travelTo')} className={SELECT}>
-            {places.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {fare === null && <p className="mt-2 text-sm text-fg-mute">{t('map.travelNoRoute')}</p>}
-        {fare && fare.legs.length === 0 && (
-          <p className="mt-2 text-sm text-fg-mute">{t('map.travelSamePlace')}</p>
-        )}
-        {fare && fare.legs.length > 0 && (
-          <>
-            <p className="mt-2 text-sm font-bold text-[#c79a3f]">
-              {t('map.travelTotal', { fare: fareLabel(fare.total, i18n.language), count: fare.legs.length })}
-            </p>
-            <ol className="mt-1.5 space-y-1 border-l border-line-2 pl-3">
-              {fare.legs.map((leg, i) => (
-                <li key={i} className="relative text-sm leading-snug text-fg-dim">
-                  <span className="absolute -left-[15px] top-1.5 h-1.5 w-1.5 rounded-full bg-[#3f9ec7]" />
-                  {placeName(leg.from)} → {placeName(leg.to)}
-                  <span className="ml-1 text-[11px] text-fg-mute">
-                    ({leg.npc}, {fareLabel(leg.cost, i18n.language)})
-                  </span>
-                </li>
-              ))}
-            </ol>
-          </>
-        )}
-
-        <p className="mt-3 text-[11px] leading-relaxed text-fg-mute">{t('map.travelSource')}</p>
-      </div>
-    </div>
-  )
-}
-
-// The quest atlas panel: pick a quest, then read its steps while the map plots
-// where each one happens. Mission texts are the server's own, kept in English —
-// they are what the questlog shows in game, so translating them would make the
-// walkthrough impossible to follow next to the client.
-function QuestPanel({
-  quests,
-  quest,
-  mission,
-  onPick,
-  onFocus,
-  onClose,
-}: {
-  quests: Quest[]
-  quest: Quest | null
-  mission: number | null
-  onPick: (q: Quest) => void
-  onFocus: (q: Quest, n: number | null) => void
-  onClose: () => void
-}) {
-  const { t } = useTranslation()
-  const [term, setTerm] = useState('')
-  const found = useMemo(() => searchQuests(quests, term), [quests, term])
-  const steps = quest ? mappedMissions(quest) : []
-  const loose = quest ? quest.points.filter((p) => p.mission === null).length : 0
-
-  return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
-      <div className="scroll-atlas pointer-events-auto max-h-[70vh] w-[32rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-4 shadow-2xl backdrop-blur-md">
-        <div className="mb-2 flex items-center gap-1.5 text-[#8a7fd4]">
-          <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-          </svg>
-          <span className="text-[10px] font-bold uppercase tracking-widest">{t('map.questTitle')}</span>
-          <button
-            onClick={onClose}
-            aria-label={t('common.close')}
-            className="ml-auto grid h-6 w-6 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:border-[#8a7fd4] hover:text-[#8a7fd4]"
-          >
-            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <input
-          value={term}
-          onChange={(e) => setTerm(e.target.value)}
-          placeholder={t('map.questSearch')}
-          aria-label={t('map.questSearch')}
-          className="w-full rounded-md border border-line-2 bg-bg-3/60 px-2.5 py-1.5 text-sm text-fg placeholder:text-fg-mute"
-        />
-
-        {/* Quest picker — collapses to a compact chip row once one is open. */}
-        <div className={`mt-2 flex flex-wrap gap-1.5 ${quest && !term ? 'max-h-24 overflow-y-auto' : ''}`}>
-          {found.map((q) => (
-            <button
-              key={q.id}
-              onClick={() => onPick(q)}
-              className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition ${
-                q.id === quest?.id
-                  ? 'border-[#8a7fd4] bg-[#8a7fd4]/20 text-[#b3a9f0]'
-                  : 'border-line-2 bg-bg-3/60 text-fg-dim hover:border-[#8a7fd4]/50 hover:text-fg'
-              }`}
-            >
-              {q.name}
-              <span className="ml-1 text-fg-mute">{q.points.length}</span>
-            </button>
-          ))}
-          {!found.length && <p className="text-sm text-fg-mute">{t('map.questNoMatch')}</p>}
-        </div>
-
-        {quest && (
-          <>
-            <h3 className="mt-4 font-serif text-lg font-bold leading-tight text-fg">{quest.name}</h3>
-            <div className="mt-1 flex flex-wrap gap-1.5">
-              <span className="rounded-md border border-line-2 bg-bg-3/60 px-2 py-1 text-[11px] font-semibold text-fg-dim">
-                {t('map.questPoints', { count: quest.points.length })}
-              </span>
-              <span className="rounded-md border border-line-2 bg-bg-3/60 px-2 py-1 text-[11px] font-semibold text-fg-dim">
-                {t('map.raidFloors', { floors: quest.floors.join(', ') })}
-              </span>
-              {quest.truncated > 0 && (
-                <span
-                  className="rounded-md border border-line-2 bg-bg-3/60 px-2 py-1 text-[11px] font-semibold text-fg-mute"
-                  title={t('map.questTruncatedHint')}
-                >
-                  {t('map.questTruncated', { total: quest.truncated })}
-                </span>
-              )}
-            </div>
-
-            {steps.length > 0 ? (
-              <>
-                <h4 className="mt-4 text-[11px] font-bold uppercase tracking-widest text-fg-mute">
-                  {t('map.questSteps')}
-                </h4>
-                <ol className="mt-1.5 space-y-1.5">
-                  {steps.map((m) => (
-                    <li key={m.n}>
-                      <button
-                        onClick={() => onFocus(quest, mission === m.n ? null : m.n)}
-                        className={`w-full rounded-md border px-2 py-1.5 text-left transition ${
-                          mission === m.n
-                            ? 'border-[#8a7fd4] bg-[#8a7fd4]/15'
-                            : 'border-line-2 bg-bg-3/40 hover:border-[#8a7fd4]/50'
-                        }`}
-                      >
-                        <span className="text-sm font-bold text-fg">
-                          {m.n}. {m.name}
-                        </span>
-                        {m.texts.map((txt, i) => (
-                          <span key={i} className="mt-0.5 block text-[12px] leading-snug text-fg-dim">
-                            {txt}
-                          </span>
-                        ))}
-                      </button>
-                    </li>
-                  ))}
-                </ol>
-              </>
-            ) : (
-              <p className="mt-3 text-sm text-fg-mute">{t('map.questNoSteps')}</p>
-            )}
-
-            {loose > 0 && (
-              <button
-                onClick={() => onFocus(quest, null)}
-                className={`mt-2 w-full rounded-md border px-2 py-1.5 text-left text-[12px] transition ${
-                  mission === null
-                    ? 'border-[#8a7fd4] bg-[#8a7fd4]/15 text-fg'
-                    : 'border-line-2 bg-bg-3/40 text-fg-dim hover:border-[#8a7fd4]/50'
-                }`}
-              >
-                {t('map.questShared', { count: loose })}
-              </button>
-            )}
-          </>
-        )}
-
-        <p className="mt-3 text-[11px] leading-relaxed text-fg-mute">{t('map.questSource')}</p>
-      </div>
-    </div>
-  )
-}
-
 // Breakpoint feed for the creature-bar page size (3 cards wide, 1 on phones).
 // useSyncExternalStore re-reads the snapshot on every render, so a missed
 // media-query event can never leave a stale page size behind.
@@ -2269,8 +1980,6 @@ export function MapPage() {
   const houseGroupRef = useRef<L.LayerGroup | null>(null)
   const loreGroupRef = useRef<L.LayerGroup | null>(null)
   const raidGroupRef = useRef<L.LayerGroup | null>(null)
-  const travelGroupRef = useRef<L.LayerGroup | null>(null)
-  const questGroupRef = useRef<L.LayerGroup | null>(null)
   const tradeGroupRef = useRef<L.LayerGroup | null>(null)
   const rashidGroupRef = useRef<L.LayerGroup | null>(null)
   // Highlight ring drawn over the hunting zone the user picked in the Hunt Finder.
@@ -2359,11 +2068,6 @@ export function MapPage() {
   const [lorePoi, setLorePoi] = useState<LorePoi | null>(null) // open lore reader
   const [showRaids, setShowRaids] = useState(false) // invasions / raids layer
   const [raid, setRaid] = useState<Raid | null>(null) // open raid dossier
-  const [showTravel, setShowTravel] = useState(false) // boats / carpets network layer
-  const [travelNpc, setTravelNpc] = useState<TravelNpc | null>(null) // open fare panel
-  const [showQuests, setShowQuests] = useState(false) // quest atlas layer + picker
-  const [questId, setQuestId] = useState<string | null>(null) // quest being plotted
-  const [questMission, setQuestMission] = useState<number | null>(null) // highlighted step
   const [rashidOpen, setRashidOpen] = useState(false) // Rashid reader panel
   const [yasirOpen, setYasirOpen] = useState(false) // Yasir reader panel
   // Rashid moves city at the 10:00 Europe/Berlin server save. The second-level
@@ -3409,8 +3113,6 @@ export function MapPage() {
     const cityGroup = L.layerGroup().addTo(map)
     const loreGroup = L.layerGroup().addTo(map)
     const raidGroup = L.layerGroup().addTo(map)
-    const travelGroup = L.layerGroup().addTo(map)
-    const questGroup = L.layerGroup().addTo(map)
     const tradeGroup = L.layerGroup().addTo(map)
     const rashidGroup = L.layerGroup().addTo(map)
     const markersGroup = L.layerGroup().addTo(map)
@@ -3435,8 +3137,6 @@ export function MapPage() {
     houseGroupRef.current = houseGroup
     loreGroupRef.current = loreGroup
     raidGroupRef.current = raidGroup
-    travelGroupRef.current = travelGroup
-    questGroupRef.current = questGroup
     tradeGroupRef.current = tradeGroup
     rashidGroupRef.current = rashidGroup
     routeGroupRef.current = routeGroup
@@ -3573,8 +3273,6 @@ export function MapPage() {
       houseGroupRef.current = null
       loreGroupRef.current = null
       raidGroupRef.current = null
-      travelGroupRef.current = null
-      questGroupRef.current = null
       tradeGroupRef.current = null
       rashidGroupRef.current = null
       routeGroupRef.current = null
@@ -4103,17 +3801,6 @@ export function MapPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [floor, mapReady, showRaids, raids, raid])
 
-  // Fly to a tile, switching floor when it sits on another one — used by the
-  // travel panel to show you where a passage actually drops you.
-  function goToTile(x: number, y: number, z: number) {
-    if (z !== floorRef.current) {
-      floorRef.current = z
-      setFloor(z)
-    }
-    const map = mapRef.current
-    if (map) map.flyTo(toLatLng(x, y), Math.max(map.getZoom(), 3), { duration: 0.5 })
-  }
-
   // Open a raid's dossier and fly to it, switching floor when it happens
   // somewhere else (Ferumbras and friends are all underground).
   function openRaid(r: Raid) {
@@ -4124,148 +3811,6 @@ export function MapPage() {
     }
     const map = mapRef.current
     if (map) map.flyTo(toLatLng(r.x, r.y), Math.max(map.getZoom(), 3), { duration: 0.5 })
-  }
-
-  // Travel network — every NPC that sells passage, with the real drop-off tile
-  // and price, baked from the OT's NPC scripts (see tools/gen-travel.mjs).
-  const { data: travel } = useTravel()
-
-  // Draw the travel layer for the floor in view: a pin on every captain, carpet
-  // operator and sled driver. Selecting one draws a line to each of its
-  // destinations, labelled with the fare — the network becomes visible instead of
-  // being buried in NPC dialogue.
-  useEffect(() => {
-    const grp = travelGroupRef.current
-    if (!grp) return
-    grp.clearLayers()
-    if (!showTravel || !travel) return
-
-    for (const npc of travel.npcs) {
-      const active = travelNpc?.name === npc.name && travelNpc?.place === npc.place
-
-      if (active) {
-        // Destination lines are drawn on every floor: a ride usually lands you on
-        // another level, and hiding the line there would make the ride look like
-        // it goes nowhere.
-        for (const r of npc.routes) {
-          const dock = npc.at[0]
-          L.polyline([toLatLng(dock.x, dock.y), toLatLng(r.x, r.y)], {
-            color: '#3f9ec7',
-            weight: 2,
-            opacity: 0.75,
-            dashArray: '6 5',
-          }).addTo(grp)
-          L.marker(toLatLng(r.x, r.y), {
-            icon: L.divIcon({
-              className: '',
-              html: `<div class="tm-fare">${escapeHtml(`${r.to} · ${fareLabel(r.cost, i18n.language)}`)}</div>`,
-              iconSize: [0, 0],
-            }),
-            interactive: false,
-            keyboard: false,
-            zIndexOffset: 540,
-          }).addTo(grp)
-        }
-      }
-
-      for (const dock of npc.at) {
-        if (dock.z !== floor) continue
-        const icon = L.divIcon({
-          className: '',
-          html:
-            `<div class="tm-travel${active ? ' is-active' : ''}">` +
-            (npc.kind === 'boat'
-              ? // anchor — a sailor
-                `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
-                `<circle cx="12" cy="5" r="2"/><path d="M12 22V7M5 12H2a10 10 0 0 0 20 0h-3"/></svg>`
-              : // compass — carpets, sleds, minecarts
-                `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
-                `<circle cx="12" cy="12" r="10"/><path d="m16.2 7.8-2.9 6.4-6.4 2.9 2.9-6.4z"/></svg>`) +
-            `</div>`,
-          iconSize: [0, 0],
-        })
-        const cheapest = Math.min(...npc.routes.map((r) => r.cost))
-        L.marker(toLatLng(dock.x, dock.y), { icon, interactive: true, keyboard: false, zIndexOffset: 530 })
-          .addTo(grp)
-          .bindTooltip(
-            escapeHtml(
-              `${npc.name} — ${t('map.travelDestinations', { count: npc.routes.length })} · ${t('map.travelFrom', { fare: fareLabel(cheapest, i18n.language) })}`
-            ),
-            { direction: 'top', offset: [0, -12] }
-          )
-          .on('click', () => {
-            setTravelNpc(npc)
-            const map = mapRef.current
-            if (map) map.flyTo(toLatLng(dock.x, dock.y), Math.max(map.getZoom(), 3), { duration: 0.5 })
-          })
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [floor, mapReady, showTravel, travel, travelNpc, i18n.language])
-
-  // Quest atlas — the questlog joined to the tiles its scripts actually touch.
-  // Only fetched once the layer is opened: it is the heaviest map asset and most
-  // sessions never ask for it.
-  const { data: questsFile } = useQuests(showQuests)
-  const quest = useMemo(
-    () => questsFile?.quests.find((q) => q.id === questId) ?? null,
-    [questsFile, questId]
-  )
-
-  // Plot the selected quest's tiles for the floor in view. Steps that belong to a
-  // known mission are numbered, so the map reads like the walkthrough: the pin
-  // marked 4 is where mission 4 happens. Highlighting a step dims the others
-  // instead of hiding them, so you keep the shape of the whole quest.
-  useEffect(() => {
-    const grp = questGroupRef.current
-    if (!grp) return
-    grp.clearLayers()
-    if (!showQuests || !quest) return
-
-    for (const p of quest.points) {
-      if (p.z !== floor) continue
-      const dim = questMission !== null && p.mission !== questMission
-      const icon = L.divIcon({
-        className: '',
-        html:
-          `<div class="tm-quest${dim ? ' is-dim' : ''}${p.mission ? '' : ' is-loose'}">` +
-          (p.mission
-            ? `<span>${p.mission}</span>`
-            : // scroll — a tile the scripts share between several steps
-              `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
-              `<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`) +
-          `</div>`,
-        iconSize: [0, 0],
-      })
-      const step = p.mission ? quest.missions.find((m) => m.n === p.mission) : null
-      L.marker(toLatLng(p.x, p.y), { icon, interactive: true, keyboard: false, zIndexOffset: 510 })
-        .addTo(grp)
-        .bindTooltip(escapeHtml(step ? `${p.mission}. ${step.name} — ${p.label}` : p.label), {
-          direction: 'top',
-          offset: [0, -12],
-        })
-        .on('click', () => setQuestMission(p.mission))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [floor, mapReady, showQuests, quest, questMission])
-
-  // Open a quest: plot it and fly to its first step, switching floor if needed.
-  function openQuest(q: Quest) {
-    setQuestId(q.id)
-    setQuestMission(null)
-    if (!q.floors.includes(floorRef.current)) {
-      floorRef.current = q.z
-      setFloor(q.z)
-    }
-    const map = mapRef.current
-    if (map) map.flyTo(toLatLng(q.x, q.y), Math.max(map.getZoom(), 2), { duration: 0.5 })
-  }
-
-  // Focus one step of the open quest: fly to its first tile on its own floor.
-  function focusMission(q: Quest, n: number | null) {
-    setQuestMission(n)
-    const first = q.points.find((p) => p.mission === n) ?? q.points[0]
-    if (first) goToTile(first.x, first.y, first.z)
   }
 
   // Rentable houses — a static asset baked from the world files (id, name,
@@ -6007,64 +5552,6 @@ export function MapPage() {
               </button>
             </div>
 
-            {/* Travel network — who sells passage where, and for how much.
-                Turning it off also closes any open fare panel. */}
-            <div className="relative flex items-center">
-              <button
-                onClick={() => {
-                  setShowTravel((v) => {
-                    if (v) setTravelNpc(null)
-                    return !v
-                  })
-                }}
-                title={t('map.travelLayer')}
-                aria-label={t('map.travelLayer')}
-                aria-pressed={showTravel}
-                className={`relative ${SLOT} ${showTravel ? 'border-[#3f9ec7] bg-[#3f9ec7]/15 text-[#3f9ec7]' : SLOT_OFF}`}
-              >
-                {/* anchor — boats, carpets and sleds you can pay to board */}
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="5" r="2" />
-                  <path d="M12 22V7M5 12H2a10 10 0 0 0 20 0h-3" />
-                </svg>
-                {showTravel && travel && (
-                  <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[#3f9ec7] px-1 text-[10px] font-bold leading-none text-white">
-                    {travel.npcs.length}
-                  </span>
-                )}
-              </button>
-            </div>
-
-            {/* Quest atlas — pick a quest and see where its steps happen. */}
-            <div className="relative flex items-center">
-              <button
-                onClick={() => {
-                  setShowQuests((v) => {
-                    if (v) {
-                      setQuestId(null)
-                      setQuestMission(null)
-                    }
-                    return !v
-                  })
-                }}
-                title={t('map.questLayer')}
-                aria-label={t('map.questLayer')}
-                aria-pressed={showQuests}
-                className={`relative ${SLOT} ${showQuests ? 'border-[#8a7fd4] bg-[#8a7fd4]/15 text-[#8a7fd4]' : SLOT_OFF}`}
-              >
-                {/* scroll — a quest walkthrough */}
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-                </svg>
-                {showQuests && questsFile && (
-                  <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[#8a7fd4] px-1 text-[10px] font-bold leading-none text-white">
-                    {questsFile.quests.length}
-                  </span>
-                )}
-              </button>
-            </div>
-
             {/* Profit / wealth legend — a framed chip with a gold coin so it
                 clearly reads as the "how rich is this spot" bar, not just a
                 swatch lost among the icon slots. Only meaningful while dots show. */}
@@ -6551,29 +6038,6 @@ export function MapPage() {
           breakdown (what to hit it with, reward, danger). */}
       {lorePoi && <LorePanel poi={lorePoi} onClose={() => setLorePoi(null)} />}
       {raid && <RaidPanel raid={raid} onClose={() => setRaid(null)} onPlot={plotCreatureByName} />}
-      {showQuests && questsFile && (
-        <QuestPanel
-          quests={questsFile.quests}
-          quest={quest}
-          mission={questMission}
-          onPick={openQuest}
-          onFocus={focusMission}
-          onClose={() => {
-            setShowQuests(false)
-            setQuestId(null)
-            setQuestMission(null)
-          }}
-        />
-      )}
-      {travelNpc && travel && (
-        <TravelPanel
-          npc={travelNpc}
-          data={travel}
-          onClose={() => setTravelNpc(null)}
-          onGoTo={goToTile}
-        />
-      )}
-
       {/* Rashid's reader: today's exact spot + re-trace of the route to him. */}
       {rashidOpen && (
         <RashidPanel

@@ -38,6 +38,34 @@ dominante Y lugar — además del alias curado y del nombre idéntico. `aliases.
 queda para lo que ninguna de las tres resuelve; el resto queda sin resolver a
 propósito.
 
+## Estado (2026-07-23)
+
+`php artisan tibia:hunt-calibrate --exp` sobre las 1036 filas:
+
+    cobertura 20.2% | recall 24.9% | elemento 72.4%
+    exp/h     error mediano 29%, sesgo  -5%
+    profit/h  error mediano 73%, sesgo -24%
+
+Contra el arranque del día (cobertura 17.0%, recall 25.4%, elemento 65.0%, y un
+profit con sesgo **+39%** que llegaba a +3200% en zonas de nivel bajo).
+
+Lo que movió cada cosa, medido:
+
+- **`gold_per_kill` inflado.** `EtlLootStats::itemWorth()` tomaba el `max()` de
+  cualquier número del campo `value` de la wiki. En Worm ese campo dice
+  "Backpack of worms: from 800 to 1600", así que cada worm valía 1600 gp: Hyaena
+  (suelta ~1 worm por kill, 20 exp) daba 1.608 gp/kill y su tumba era el mejor
+  spot del mapa para un knight 20 (1,28M gp/h). Ghoul 259 → 22, Troll → 9.
+- **Publicábamos loot BRUTO contra profit NETO.** No había modelo de supplies en
+  ningún lado, que es también por qué una hunt que PIERDE plata (Lava Lurkers,
+  Corym Black Market) no se podía ni expresar. El sesgo de profit pasó de +39% a
+  -24% al agregarlo.
+- **La curva de supplies es superlineal, no lineal.** El primer intento
+  (gp fijos por nivel) le cobraba ~20k/h a un nivel 8 y mandaba toda la franja
+  baja a números negativos: sesgo -123%. Con `100 · nivel^1.45` quedó en -24%.
+- **Punta del rango de precios.** Se probó el punto medio en vez del mínimo:
+  peor (mediana 80% vs 73%, mismo sesgo). El mínimo se queda.
+
 ## Límites conocidos
 
 - El tramo de 800+ (Raubritter, Norcferatu, Bloodfire Gorge, Bulltaur) **no
@@ -45,3 +73,15 @@ propósito.
   arregla desde esta fuente, así que esos spots nunca van a resolver.
 - La guía asume gear y habilidades de endgame para el nivel; el finder deriva su
   set con `GearRules`. Son supuestos distintos y explican parte del desacuerdo.
+- **El loot de endgame nos queda corto y es estructural.** Los peores misses de
+  profit son todos de arriba: Warzone 3 -98%, Cobra Bastion -130%, Azzilon
+  Catacombs -124%, Summer Court -80%. Ahí la plata no sale de ítems que un NPC
+  compre sino del mercado entre jugadores (tokens, materiales de imbuement), y
+  `itemWorth()` solo sabe de `npc_value`: lo que no tiene comprador NPC vale 0
+  para nosotros. No se arregla afinando pesos, hace falta una fuente de precios
+  de mercado.
+- **Cobertura ≠ scoring.** De 1036 filas seguimos sin saber nombrar 808. El
+  cuello no es el ranking (el exp/h ya coincide) sino que la guía distingue
+  spots que nuestro clustering no separa ("Ingol -3" vs nuestro "Ingol",
+  "Deeper Banuta -6" vs "-8"). Subir esto es trabajo de granularidad de zonas,
+  no de pesos.

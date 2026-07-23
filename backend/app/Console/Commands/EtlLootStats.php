@@ -153,10 +153,11 @@ class EtlLootStats extends Command
      *    chatter, not something you can sell for gp. Worth 0 — the creature's
      *    real income is its coins, and inventing a price for the unsellable is
      *    what inflated our profit/h against every hunting guide.
-     *  - A plain range ("5-15") is one item across different NPCs. Take the
-     *    MIDPOINT. The low end was the first guess and it read 24% under the
-     *    guide's profit across the calibration set — you don't systematically
-     *    sell to the worst buyer in the game.
+     *  - A plain range ("5-15") is one item across different NPCs. Take the LOW
+     *    end: it's what you get from whoever you actually walk to, and this
+     *    fallback is already the uncertain path. (The midpoint was tried against
+     *    the calibration set and was worse — median profit error 80% vs 73%,
+     *    same bias — so the range end is not where the remaining gap lives.)
      */
     private function itemWorth(array $meta): int
     {
@@ -175,7 +176,7 @@ class EtlLootStats extends Command
         }
         $nums = array_map('intval', preg_split('/\s*-\s*/', $clean) ?: []);
 
-        return $nums ? (int) round(array_sum($nums) / count($nums)) : 0;
+        return $nums ? min($nums) : 0;
     }
 
     /**
