@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { compact } from '../lib/format'
 
 // Items Cledwyn (Feyrist) recharges for silver tokens — straight from the OT
 // server data (npc/cledwyn.lua + items.xml): tokens per recharge and how long
@@ -28,17 +29,48 @@ const SILVER_TOKEN_DEFAULT = 50_000
 
 const STORE_KEY = 'atlas:map:huntProfit'
 
+type Tally = { name: string; count: number }
+
 type Parsed = {
   hours: number | null
   loot: number | null
   supplies: number | null
   balance: number | null
+  xpGain: number | null
+  xpPerHour: number | null
+  damage: number | null
+  damagePerHour: number | null
+  healing: number | null
+  healingPerHour: number | null
+  kills: Tally[]
+  items: Tally[]
 }
 
-// Pull the totals out of a pasted (party) hunt analyzer. Per-player sections
+// "667x candy horror 72x honey elemental …" → tallies. Works for one-per-line
+// pastes too (whitespace is normalised first). Names never start with a digit,
+// so the next "NNNx " marks the end of the previous name.
+function parseTallies(section: string): Tally[] {
+  const out: Tally[] = []
+  const flat = section.replace(/\s+/g, ' ').trim()
+  const re = /(\d+)x\s+(.+?)(?=\s+\d+x\s|$)/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(flat))) {
+    const count = parseInt(m[1], 10)
+    const name = m[2].replace(/^(?:a|an)\s+/i, '').trim()
+    if (name && Number.isFinite(count)) out.push({ name, count })
+  }
+  return out
+}
+
+// Pull the numbers out of a pasted (party) hunt analyzer. Per-player sections
 // repeat "Loot:/Supplies:/Balance:" below the totals, so the FIRST match of
-// each line is always the session total. Numbers keep their thousand
-// separators ("1,234,567" or "1.234.567") and Balance may be negative.
+// each label is always the session total. Numbers keep their thousand
+// separators ("1,234,567") and Balance may be negative. The paste often
+// arrives as ONE long line (the client strips newlines), so labels are matched
+// anywhere in the text — each number simply ends at the next space or word.
+// Word boundaries keep "Looted Items:" / "Loot Type:" from matching "Loot:",
+// and the lookbehinds keep "Raw XP Gain"/"Raw XP/h" from stealing the boosted
+// "XP Gain"/"XP/h" values.
 function parseAnalyzer(text: string): Parsed {
   const num = (re: RegExp): number | null => {
     const m = re.exec(text)
@@ -49,18 +81,36 @@ function parseAnalyzer(text: string): Parsed {
     return neg ? -v : v
   }
   let hours: number | null = null
-  const s = /Session:\s*(\d+):(\d{2})\s*h/i.exec(text)
+  const s = /\bSession:\s*(\d+):(\d{2})\s*h/i.exec(text)
   if (s) {
     const h = parseInt(s[1], 10) + parseInt(s[2], 10) / 60
     if (h > 0) hours = h
   }
+
+  // List sections: "Killed Monsters: …" runs until "Looted Items: …".
+  const km = /Killed Monsters:/i.exec(text)
+  const li = /Looted Items:/i.exec(text)
+  const kills = km ? parseTallies(text.slice(km.index + km[0].length, li ? li.index : undefined)) : []
+  const items = li ? parseTallies(text.slice(li.index + li[0].length)) : []
+
   return {
     hours,
-    loot: num(/^[ \t]*Loot:[ \t]*(-?[\d.,  ]+)[ \t]*$/im),
-    supplies: num(/^[ \t]*Supplies:[ \t]*(-?[\d.,  ]+)[ \t]*$/im),
-    balance: num(/^[ \t]*Balance:[ \t]*(-?[\d.,  ]+)[ \t]*$/im),
+    loot: num(/\bLoot:\s*(-?[\d.,]+)/i),
+    supplies: num(/\bSupplies:\s*(-?[\d.,]+)/i),
+    balance: num(/\bBalance:\s*(-?[\d.,]+)/i),
+    xpGain: num(/(?<!Raw )\bXP Gain:\s*(-?[\d.,]+)/i),
+    xpPerHour: num(/(?<!Raw )\bXP\/h:\s*(-?[\d.,]+)/i),
+    damage: num(/\bDamage:\s*(-?[\d.,]+)/i),
+    damagePerHour: num(/\bDamage\/h:\s*(-?[\d.,]+)/i),
+    healing: num(/\bHealing:\s*(-?[\d.,]+)/i),
+    healingPerHour: num(/\bHealing\/h:\s*(-?[\d.,]+)/i),
+    kills,
+    items,
   }
 }
+
+// Loose coins in the loot list, folded to raw gold.
+const COIN_VALUE: Record<string, number> = { 'gold coin': 1, 'platinum coin': 100, 'crystal coin': 10_000 }
 
 type Config = {
   imbueCount: number
@@ -122,6 +172,90 @@ function NumField({
         {suffix && <span className="shrink-0 text-[11px] font-semibold text-fg-mute">{suffix}</span>}
       </span>
     </label>
+  )
+}
+
+// Hero-number tile for the report's headline stats.
+function Tile({ label, value, tone }: { label: string; value: string; tone?: 'good' | 'bad' }) {
+  const color = tone === 'good' ? 'text-canon' : tone === 'bad' ? 'text-accent' : 'text-fg'
+  return (
+    <div className="rounded-lg border border-line bg-bg-2 px-2 py-1.5 text-center">
+      <div className={`text-base font-bold leading-tight ${color}`}>{value}</div>
+      <div className="text-[10px] font-bold uppercase tracking-wide text-fg-mute">{label}</div>
+    </div>
+  )
+}
+
+// One horizontal bar of a single-hue magnitude chart: label, thin track, count
+// (+ share when a total is given) directly labelled — identity lives in the
+// row text, never in the color.
+function BarRow({ name, count, max, total, color }: { name: string; count: number; max: number; total: number; color: string }) {
+  const share = total > 0 ? Math.round((count / total) * 100) : null
+  return (
+    <div className="flex items-center gap-2" title={share != null ? `${count.toLocaleString()} · ${share}%` : count.toLocaleString()}>
+      <span className="w-32 shrink-0 truncate text-xs capitalize text-fg-dim">{name}</span>
+      <span className="relative h-3 min-w-0 flex-1 overflow-hidden rounded-sm bg-line/40">
+        <span
+          className="absolute inset-y-0 left-0 rounded-r-[4px]"
+          style={{ width: `${Math.max(2, (count / max) * 100)}%`, background: color }}
+        />
+      </span>
+      <span className="w-24 shrink-0 text-right text-xs font-semibold text-fg">
+        {count.toLocaleString()}
+        {share != null && <span className="font-normal text-fg-mute"> · {share}%</span>}
+      </span>
+    </div>
+  )
+}
+
+// Waterfall from the analyzer's loot down to the real profit. Floating bars on
+// a shared scale; sign is triple-coded (position, +/− label, green/red).
+function Waterfall({ steps, realLabel }: { steps: { label: string; value: number }[]; realLabel: string }) {
+  const total = steps.reduce((s, x) => s + x.value, 0)
+  const cums: { label: string; from: number; to: number; value: number; final: boolean }[] = []
+  let run = 0
+  for (const s of steps) {
+    cums.push({ label: s.label, from: run, to: run + s.value, value: s.value, final: false })
+    run += s.value
+  }
+  cums.push({ label: realLabel, from: 0, to: total, value: total, final: true })
+  const top = Math.max(...cums.map((c) => Math.max(c.from, c.to, 0)))
+  const bottom = Math.min(...cums.map((c) => Math.min(c.from, c.to, 0)))
+  const span = Math.max(1, top - bottom)
+  // Bars top out at 85% so the value labels above them stay inside the chart.
+  const pct = (v: number) => ((v - bottom) / span) * 85
+  return (
+    <div className="flex items-stretch gap-1.5">
+      {cums.map((c) => {
+        const hi = Math.max(c.from, c.to)
+        const lo = Math.min(c.from, c.to)
+        const good = c.value >= 0
+        return (
+          <div key={c.label} className="flex min-w-0 flex-1 flex-col" title={`${c.label}: ${gp(c.value)}`}>
+            <div className="relative h-24">
+              <span
+                className="absolute inset-x-0 rounded-[4px]"
+                style={{
+                  bottom: `${pct(lo)}%`,
+                  height: `${Math.max(2, pct(hi) - pct(lo))}%`,
+                  background: good ? 'var(--color-canon)' : 'var(--color-accent)',
+                  opacity: c.final ? 1 : 0.85,
+                }}
+              />
+              <span
+                className="absolute inset-x-0 text-center text-[10px] font-bold text-fg"
+                style={{ bottom: `calc(${pct(hi)}% + 2px)` }}
+              >
+                {(good ? '+' : '−') + compact(Math.abs(c.value))}
+              </span>
+            </div>
+            <div className="mt-1 truncate text-center text-[10px] font-bold uppercase tracking-wide text-fg-mute">
+              {c.label}
+            </div>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
@@ -193,6 +327,30 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
   const realProfit = ready ? balance! - imbueTotal - tokenTotal : null
   const perHour = realProfit != null && hours != null ? realProfit / hours : null
 
+  // --- report data -----------------------------------------------------------
+  const kills = useMemo(() => [...parsed.kills].sort((a, b) => b.count - a.count), [parsed.kills])
+  const totalKills = kills.reduce((s, k) => s + k.count, 0)
+  const killRows = useMemo(() => {
+    const top = kills.slice(0, 8)
+    const rest = kills.slice(8).reduce((s, k) => s + k.count, 0)
+    return rest > 0 ? [...top, { name: t('map.hpOther'), count: rest }] : top
+  }, [kills, t])
+
+  const coinGold = parsed.items.reduce((s, i) => s + (COIN_VALUE[i.name.toLowerCase()] ?? 0) * i.count, 0)
+  const lootRows = useMemo(
+    () =>
+      parsed.items
+        .filter((i) => !(i.name.toLowerCase() in COIN_VALUE))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 8),
+    [parsed.items],
+  )
+
+  const xpH = parsed.xpPerHour ?? (parsed.xpGain != null && hours != null ? parsed.xpGain / hours : null)
+  const dmgH = parsed.damagePerHour ?? (parsed.damage != null && hours != null ? parsed.damage / hours : null)
+  const healH = parsed.healingPerHour ?? (parsed.healing != null && hours != null ? parsed.healing / hours : null)
+  const hasReport = kills.length > 0 || lootRows.length > 0 || xpH != null || dmgH != null
+
   const toggleItem = (id: string) =>
     setCfg((c) => ({
       ...c,
@@ -212,7 +370,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
       <div
         ref={cardRef}
         style={pos ? { position: 'absolute', left: pos.x, top: pos.y } : undefined}
-        className="scroll-atlas pointer-events-auto max-h-[78vh] w-[32rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-3.5 shadow-2xl backdrop-blur-md"
+        className={`scroll-atlas pointer-events-auto max-h-[78vh] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-3.5 shadow-2xl backdrop-blur-md ${hasReport ? 'w-[46rem]' : 'w-[32rem]'}`}
       >
         {/* Header doubles as the drag handle — grab it to move the card. */}
         <div
@@ -249,7 +407,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
           onChange={(e) => setText(e.target.value)}
           placeholder={t('map.hpPaste')}
           spellCheck={false}
-          rows={4}
+          rows={hasReport ? 3 : 4}
           className="w-full resize-y rounded-lg border border-line bg-bg-2 px-2.5 py-2 font-mono text-xs leading-relaxed outline-none transition placeholder:font-sans placeholder:text-sm placeholder:text-fg-mute focus:border-accent"
         />
 
@@ -276,44 +434,46 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
           </div>
         </div>
 
-        {/* Imbuements — slots x (cost / 20h) x session hours */}
-        <div className="mt-3 rounded-xl border border-line bg-bg-2 p-2.5">
-          <div className="mb-1.5 text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpImbues')}</div>
-          <div className="flex items-end gap-2">
-            <NumField label={t('map.hpImbueCount')} value={String(cfg.imbueCount)} onChange={(v) => setCfg((c) => ({ ...c, imbueCount: Math.max(0, parseInt(v, 10) || 0) }))} min={0} />
-            <NumField wide label={t('map.hpImbueCost')} value={String(cfg.imbueCost)} onChange={(v) => setCfg((c) => ({ ...c, imbueCost: Math.max(0, parseInt(v, 10) || 0) }))} suffix="gp" min={0} step={1000} />
-            <div className="pb-1 text-right text-sm font-bold text-fg">
-              {hours != null && imbueTotal > 0 ? '-' + gp(imbueTotal) : '—'}
+        <div className={hasReport ? 'mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2' : 'mt-3'}>
+          {/* Imbuements — slots x (cost / 20h) x session hours */}
+          <div className="rounded-xl border border-line bg-bg-2 p-2.5">
+            <div className="mb-1.5 text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpImbues')}</div>
+            <div className="flex items-end gap-2">
+              <NumField label={t('map.hpImbueCount')} value={String(cfg.imbueCount)} onChange={(v) => setCfg((c) => ({ ...c, imbueCount: Math.max(0, parseInt(v, 10) || 0) }))} min={0} />
+              <NumField wide label={t('map.hpImbueCost')} value={String(cfg.imbueCost)} onChange={(v) => setCfg((c) => ({ ...c, imbueCost: Math.max(0, parseInt(v, 10) || 0) }))} suffix="gp" min={0} step={1000} />
+              <div className="pb-1 text-right text-sm font-bold text-fg">
+                {hours != null && imbueTotal > 0 ? '-' + gp(imbueTotal) : '—'}
+              </div>
             </div>
+            <p className="mt-1.5 text-xs text-fg-mute">{t('map.hpImbueNote')}</p>
           </div>
-          <p className="mt-1.5 text-xs text-fg-mute">{t('map.hpImbueNote')}</p>
-        </div>
 
-        {/* Silver-token rechargeables — tick what you wore for the session */}
-        <div className="mt-2 rounded-xl border border-line bg-bg-2 p-2.5">
-          <div className="mb-1.5 flex items-end justify-between gap-2">
-            <div className="text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpTokens')}</div>
-            <NumField label={t('map.hpTokenPrice')} value={String(cfg.silverPrice)} onChange={(v) => setCfg((c) => ({ ...c, silverPrice: Math.max(0, parseInt(v, 10) || 0) }))} suffix="gp" min={0} step={1000} />
+          {/* Silver-token rechargeables — tick what you wore for the session */}
+          <div className={hasReport ? 'rounded-xl border border-line bg-bg-2 p-2.5' : 'mt-2 rounded-xl border border-line bg-bg-2 p-2.5'}>
+            <div className="mb-1.5 flex items-end justify-between gap-2">
+              <div className="text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpTokens')}</div>
+              <NumField label={t('map.hpTokenPrice')} value={String(cfg.silverPrice)} onChange={(v) => setCfg((c) => ({ ...c, silverPrice: Math.max(0, parseInt(v, 10) || 0) }))} suffix="gp" min={0} step={1000} />
+            </div>
+            <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+              {RECHARGEABLES.map((r) => {
+                const on = cfg.items.includes(r.id)
+                const cost = hours != null ? (hours / r.hours) * r.tokens * silverPrice : null
+                return (
+                  <label
+                    key={r.id}
+                    className={`flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-sm transition ${on ? 'bg-accent/10 text-fg' : 'text-fg-dim hover:bg-surface-2/60'}`}
+                  >
+                    <input type="checkbox" checked={on} onChange={() => toggleItem(r.id)} className="h-3.5 w-3.5 accent-accent" />
+                    <span className="min-w-0 flex-1 truncate">{r.name}</span>
+                    <span className="shrink-0 text-[11px] text-fg-mute">
+                      {on && cost != null ? '-' + gp(cost) : `${r.tokens}tk/${r.hours}h`}
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+            <p className="mt-1.5 text-xs text-fg-mute">{t('map.hpTokenNote')}</p>
           </div>
-          <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
-            {RECHARGEABLES.map((r) => {
-              const on = cfg.items.includes(r.id)
-              const cost = hours != null ? (hours / r.hours) * r.tokens * silverPrice : null
-              return (
-                <label
-                  key={r.id}
-                  className={`flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-sm transition ${on ? 'bg-accent/10 text-fg' : 'text-fg-dim hover:bg-surface-2/60'}`}
-                >
-                  <input type="checkbox" checked={on} onChange={() => toggleItem(r.id)} className="h-3.5 w-3.5 accent-accent" />
-                  <span className="min-w-0 flex-1 truncate">{r.name}</span>
-                  <span className="shrink-0 text-[11px] text-fg-mute">
-                    {on && cost != null ? '-' + gp(cost) : `${r.tokens}tk/${r.hours}h`}
-                  </span>
-                </label>
-              )
-            })}
-          </div>
-          <p className="mt-1.5 text-xs text-fg-mute">{t('map.hpTokenNote')}</p>
         </div>
 
         {/* The verdict */}
@@ -323,9 +483,9 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
               <dt className="text-fg-dim">{t('map.hpBalanceRow')}</dt>
               <dd className="text-right font-semibold text-fg">{gp(balance!)}</dd>
               <dt className="text-fg-dim">{t('map.hpCostImbues')}</dt>
-              <dd className="text-right font-semibold text-fg">-{gp(imbueTotal)}</dd>
+              <dd className="text-right font-semibold text-fg">{imbueTotal > 0 ? '-' + gp(imbueTotal) : '0'}</dd>
               <dt className="text-fg-dim">{t('map.hpCostTokens')}</dt>
-              <dd className="text-right font-semibold text-fg">-{gp(tokenTotal)}</dd>
+              <dd className="text-right font-semibold text-fg">{tokenTotal > 0 ? '-' + gp(tokenTotal) : '0'}</dd>
             </dl>
             <div className="mt-1.5 flex items-baseline justify-between border-t border-line pt-1.5">
               <span className="text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpReal')}</span>
@@ -337,6 +497,71 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
           </div>
         ) : (
           <p className="mt-2 text-sm text-fg-mute">{t('map.hpNoData')}</p>
+        )}
+
+        {/* --- session report: the "video wall" ------------------------------- */}
+        {hasReport && (
+          <div className="mt-3 border-t-2 border-line pt-2.5">
+            <div className="mb-2 text-xs font-bold uppercase tracking-widest text-accent">{t('map.hpReport')}</div>
+
+            {/* Headline tiles */}
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+              {xpH != null && <Tile label={t('map.hpXpH')} value={compact(xpH)} />}
+              {perHour != null && <Tile label={t('map.hpProfitH')} value={compact(perHour)} tone={perHour >= 0 ? 'good' : 'bad'} />}
+              {dmgH != null && <Tile label={t('map.hpDmgH')} value={compact(dmgH)} />}
+              {healH != null && <Tile label={t('map.hpHealH')} value={compact(healH)} />}
+            </div>
+
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {/* Kills per creature — single-hue magnitude bars */}
+              {killRows.length > 0 && (
+                <div className="rounded-xl border border-line bg-bg-2 p-2.5">
+                  <div className="mb-1.5 flex items-baseline justify-between">
+                    <span className="text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpKills')}</span>
+                    <span className="text-xs font-semibold text-fg-mute">{t('map.hpKillsTotal', { n: totalKills.toLocaleString() })}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {killRows.map((k) => (
+                      <BarRow key={k.name} name={k.name} count={k.count} max={Math.max(...killRows.map((r) => r.count))} total={totalKills} color="var(--color-accent)" />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Top looted items (coins folded into one raw-gold line) */}
+              {(lootRows.length > 0 || coinGold > 0) && (
+                <div className="rounded-xl border border-line bg-bg-2 p-2.5">
+                  <div className="mb-1.5 flex items-baseline justify-between">
+                    <span className="text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpLootTop')}</span>
+                    {coinGold > 0 && (
+                      <span className="text-xs font-semibold text-fg-mute">{t('map.hpCoins', { n: gp(coinGold) })}</span>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {lootRows.map((i) => (
+                      <BarRow key={i.name} name={i.name} count={i.count} max={lootRows[0].count} total={0} color="var(--color-gold)" />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Loot → real profit waterfall */}
+            {ready && parsed.loot != null && parsed.supplies != null && (
+              <div className="mt-2 rounded-xl border border-line bg-bg-2 p-2.5">
+                <div className="mb-1.5 text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpWaterfall')}</div>
+                <Waterfall
+                  steps={[
+                    { label: t('map.hpLoot'), value: parsed.loot },
+                    { label: t('map.hpSupplies'), value: -parsed.supplies },
+                    { label: t('map.hpImbues'), value: -imbueTotal },
+                    { label: t('map.hpCostTokensShort'), value: -tokenTotal },
+                  ]}
+                  realLabel={t('map.hpReal')}
+                />
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>

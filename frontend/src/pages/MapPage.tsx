@@ -5326,6 +5326,25 @@ export function MapPage() {
               </svg>
             </button>
 
+            {/* Hunt profit calculator — same tool the bottom-right quick-link
+                opens: paste an analyzer, get the profit after imbuement wear
+                and silver-token recharges. */}
+            <button
+              onClick={() => setProfitOpen((v) => !v)}
+              title={t('map.hpTitle')}
+              aria-label={t('map.hpTitle')}
+              aria-pressed={profitOpen}
+              className={`${SLOT} ${profitOpen ? SLOT_ON : SLOT_OFF}`}
+            >
+              {/* two coins — "count the money" */}
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="8" cy="8" r="6" />
+                <path d="M18.09 10.37A6 6 0 1 1 10.34 18" />
+                <path d="M7 6h1v4" />
+                <path d="m16.71 13.88.7.71-2.82 2.82" />
+              </svg>
+            </button>
+
             <span className="mx-0.5 h-6 w-px bg-line/50" />
 
             {/* Share this view */}
