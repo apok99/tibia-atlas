@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\MapRouteController;
 use App\Http\Controllers\Api\NpcController;
 use App\Http\Controllers\Api\RouteReportController;
 use App\Http\Controllers\Api\WordleController;
+use App\Http\Controllers\Api\ZoneController;
 use App\Http\Middleware\SetLocale;
 use Illuminate\Support\Facades\Route;
 
@@ -45,6 +46,8 @@ Route::middleware([SetLocale::class, 'throttle:public'])->group(function () {
         Route::get('/npcs', [NpcController::class, 'index']);
         // Hunt Finder: best hunting zones for a level + vocation + solo/team.
         Route::get('/hunts', [HuntController::class, 'index']);
+        // Map zone analysis: combat summary of a drag-selected rectangle.
+        Route::get('/zone-summary', [ZoneController::class, 'summary']);
         // Detail must come AFTER the literal item routes or it'd bind them as a slug.
         Route::get('/items/{slug}', [ItemController::class, 'show']);
     });

@@ -113,6 +113,7 @@ class EtlMonsterCombat extends Command
                 'burst' => $mon['burst'],
                 'dps' => $mon['dps'],
                 'burst_by_element' => $mon['burst_by_element'],
+                'ranged' => $mon['ranged'],
                 'armor' => $mon['armor'],
                 'defense' => $mon['defense'],
                 'mitigation' => $mon['mitigation'],
@@ -154,6 +155,7 @@ class EtlMonsterCombat extends Command
 
         $burstByEl = [];
         $dps = 0.0;
+        $ranged = false;
         foreach ($this->tableEntries($this->block($src, 'monster.attacks')) as $entry) {
             $kv = $this->pairs($entry);
             [$min, $max] = $this->attackDamage($kv);
@@ -164,6 +166,7 @@ class EtlMonsterCombat extends Command
             if ($el === null) {
                 continue;
             }
+            $ranged = $ranged || $this->attackIsRanged($kv);
             $burstByEl[$el] = ($burstByEl[$el] ?? 0) + $max;
             $chance = min(100, (int) ($kv['chance'] ?? 100));
             $interval = max(1000, (int) ($kv['interval'] ?? 2000));
@@ -190,6 +193,7 @@ class EtlMonsterCombat extends Command
             'burst' => (int) round(array_sum($burstByEl)),
             'dps' => round($dps, 1),
             'burst_by_element' => array_map(fn ($v) => (int) round($v), $burstByEl),
+            'ranged' => $ranged,
             'armor' => (int) ($defenses['armor'] ?? 0),
             'defense' => (int) ($defenses['defense'] ?? 0),
             'mitigation' => (float) ($defenses['mitigation'] ?? 0),
@@ -324,6 +328,19 @@ class EtlMonsterCombat extends Command
         }
 
         return [min($min, $max), max($min, $max)];
+    }
+
+    /**
+     * Whether a damaging attack can hit from afar: a real projectile range
+     * (range >= 2) or a beam (length >= 3). A shootEffect with range = 1
+     * (demon's energy strike) still requires melee distance, so it doesn't
+     * count; self-centered AoEs (radius only) don't either.
+     *
+     * @param  array<string, string>  $kv
+     */
+    private function attackIsRanged(array $kv): bool
+    {
+        return (int) ($kv['range'] ?? 0) >= 2 || (int) ($kv['length'] ?? 0) >= 3;
     }
 
     /**

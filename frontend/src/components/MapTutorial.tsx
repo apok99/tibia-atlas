@@ -36,8 +36,6 @@ const STEPS: Step[] = [
   { key: 'boss', icon: 'M9 12h.01M15 12h.01M8 20v2h8v-2M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20' },
   // house — houses layer
   { key: 'houses', icon: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 22V12h6v10' },
-  // sliders — filters
-  { key: 'filters', icon: 'M4 6h16M7 12h10M10 18h4' },
   // navigation arrow — directions
   { key: 'directions', icon: 'M3 11 22 2l-9 19-2-8z' },
   // shared route — create & share
@@ -49,7 +47,7 @@ const STEPS: Step[] = [
 ]
 
 /** Guided onboarding for the map: a step-by-step tour of search, spawns, bosses,
- *  filters, directions and route-building. Auto-opens on a first visit; the map's
+ *  houses, directions and route-building. Auto-opens on a first visit; the map's
  *  "?" button reopens it any time. */
 export function MapTutorial({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useTranslation()

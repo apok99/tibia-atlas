@@ -300,13 +300,25 @@ const FERRY_LINES: FerryLineDef[] = [
       { name: 'Yalahar', x: 32805, y: 31234 },
     ],
   },
-  // Buddel's raft between Svargrond's hunting islands (dock coords = his map markers).
+  // Buddel's raft to Svargrond's hunting islands. Only the islands he actually
+  // has a keyword for are stops — okolnir, helheim, tyrsung, camp in his
+  // npc/buddel.lua — and only those that have NO other way in.
+  //
+  // Grimlund is deliberately NOT a stop. Buddel has no "grimlund" keyword at all:
+  // it only appears in his `randomDestination` list, i.e. you land there when the
+  // drunk misses the island you asked for. Grimlund is walkable from Svargrond
+  // across the glacier stairs, so routing a raft hop there both invented a
+  // passage and hid the real path (this is how the blessing run to Nomad ended up
+  // prescribing a raft).
+  //
+  // Caveat kept in mind for the rest: the whole line is gated behind the Barbarian
+  // Test (`BarbarianTest.Questline ~= 8` → "Talk to the Jarl first!"), so these
+  // hops are not available to every character.
   {
     name: 'Buddel',
     icon: 'sailboat',
     stops: [
       { name: 'Svargrond', x: 32333, y: 31227 },
-      { name: 'Grimlund', x: 32021, y: 31294 },
       { name: 'Okolnir', x: 32224, y: 31382 },
       { name: 'Hrodmir', x: 32256, y: 31197 },
       { name: 'Tyrsung', x: 32464, y: 31173 },

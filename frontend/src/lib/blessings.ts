@@ -37,14 +37,19 @@ export type BlessingsFile = { generated: string; shrines: Shrine[]; tours: Bless
  * ferry; the client's minimap marker for the levitate spot), and the tour needs
  * to say so rather than pretend you can walk there.
  */
-export const SHRINE_ACCESS: Record<number, { mode: 'boat' | 'levitate'; exit?: { x: number; y: number; floor: number } }> = {
+export const SHRINE_ACCESS: Record<
+  number,
+  { mode: 'boat' | 'levitate'; via?: { x: number; y: number; floor: number } }
+> = {
   // Eremo's island — Pemaret sails there free from Cormaya. Modelled as a real
   // ferry line in routing.ts, so the router walks in and out on its own.
   2: { mode: 'boat' },
-  // Nomad's ledge — you levitate up from the spot below and drop back down the
-  // same way. The router has no levitate, so the leg AFTER this shrine has to
-  // resume from that spot, otherwise every later stop looks unreachable.
-  7: { mode: 'levitate', exit: { x: 31940, y: 31307, floor: 7 } },
+  // Nomad's ledge is a sealed 144-tile shelf: the only way up is the levitate
+  // spot directly below it (the client's own minimap marker there reads
+  // "Levitate spot (to NPC Nomad)"). `via` is that spot — the route walks TO it
+  // and resumes FROM it, so the last step is the one thing the router cannot do
+  // and the walk on either side is still planned properly.
+  7: { mode: 'levitate', via: { x: 31940, y: 31307, floor: 7 } },
 }
 
 export function useBlessings(enabled: boolean) {
@@ -104,17 +109,19 @@ export async function planPilgrimage(
   for (const id of tour.order) {
     const shrine = byId.get(id)
     if (!shrine) continue
-    const leg = await planRoute(cursor, { x: shrine.x, y: shrine.y, floor: shrine.z })
+    // Route to the tile you can actually stand on. For a levitate shelf that is
+    // the spot below it: asking for the shelf itself reports "no route" and
+    // throws away a perfectly good walk, and continuing FROM the shelf would
+    // strand every later stop.
+    const access = SHRINE_ACCESS[shrine.id]
+    const target = access?.via ?? { x: shrine.x, y: shrine.y, floor: shrine.z }
+    const leg = await planRoute(cursor, target)
     if (leg) {
       legs.push(...leg.legs)
       total += leg.totalTiles
     }
     stops.push({ shrine, tiles: leg?.totalTiles ?? 0, reached: Boolean(leg && !leg.partial) })
-    // Resume from where you actually stand once the shrine is done. For a
-    // levitate ledge that is the spot below it, not the ledge — continuing from
-    // ground the router cannot leave would make every later stop look unreachable.
-    const exit = SHRINE_ACCESS[shrine.id]?.exit
-    cursor = exit ?? { x: shrine.x, y: shrine.y, floor: shrine.z }
+    cursor = target
   }
 
   return { plan: { legs, totalTiles: total }, stops }

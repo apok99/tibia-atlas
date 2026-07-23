@@ -58,6 +58,7 @@ import { SKILL_LABELS, signed } from '../components/items/itemStats'
 import { useGlossary } from '../hooks/useGlossary'
 import { useBosses, useKillWorlds, type BossRow } from '../hooks/useKillStats'
 import { useHunts, type HuntZone } from '../hooks/useHunts'
+import { useZoneSummary, type ZoneBox, type ZoneSummary } from '../hooks/useZoneSummary'
 import { TypeIcon } from '../components/TypeIcon'
 import { Skeleton } from '../components/Skeleton'
 import { MapTutorial, mapTourSeen } from '../components/MapTutorial'
@@ -607,9 +608,6 @@ function poiStyle(desc: string): { color: string; icon: string } {
   return { color: '#9b8cff', icon: POI_ICONS.poi }
 }
 
-// Official Tibia Bestiary difficulty levels, easiest → hardest.
-const DIFFICULTIES = ['Harmless', 'Trivial', 'Easy', 'Medium', 'Hard', 'Challenging']
-
 // Core element accent colours (mirrors CreatureCombat's palette) for the Hunt
 // Finder's "hit with" / "resists" chips, so the two panels read as one system.
 const HUNT_ELEMENT_COLOR: Record<string, string> = {
@@ -666,10 +664,6 @@ function dangerBand(d: number): { key: 'huntDangerLow' | 'huntDangerMed' | 'hunt
   if (d < 0.7) return { key: 'huntDangerMed', color: '#d08a1e' }
   return { key: 'huntDangerHigh', color: '#c0392b' }
 }
-
-// Half-size (game tiles) of the square kept around a landmark for the "zone"
-// filter — roughly a city plus its immediate hunting outskirts.
-const ZONE_RADIUS = 200
 
 // Safety ceiling on how many creature sprites to draw at once (the screen-grid
 // de-duplication normally keeps it far below this).
@@ -1470,62 +1464,6 @@ function RouteCityPicker({
   )
 }
 
-// "Jump to a city" control for the bottom hotbar. Replaces the OS-native <select>
-// (its un-themable listbox looked out of place against the atlas) with a slot
-// icon that pops a themed menu of cities — opening upward, since the hotbar is
-// pinned to the bottom of the screen.
-function CityJumpPicker({ label, onGo }: { label: string; onGo: (name: string) => void }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
-  }, [open])
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        title={label}
-        aria-label={label}
-        className={`${SLOT} ${open ? SLOT_ON : SLOT_OFF}`}
-      >
-        <TypeIcon type="city" className="h-5 w-5" />
-      </button>
-      {open && (
-        <ul
-          role="listbox"
-          className="scroll-atlas absolute bottom-full left-1/2 z-[1100] mb-2 max-h-72 w-52 -translate-x-1/2 overflow-auto rounded-xl border-2 border-line bg-bg-2 py-1.5 shadow-2xl"
-        >
-          {LANDMARKS.map((l) => (
-            <li key={l.name}>
-              <button
-                type="button"
-                role="option"
-                aria-selected={false}
-                onClick={() => {
-                  onGo(l.name)
-                  setOpen(false)
-                }}
-                className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm font-medium text-fg transition hover:bg-surface-2"
-              >
-                <TypeIcon type="city" className="h-4 w-4 shrink-0 text-fg-mute" />
-                {l.name}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  )
-}
-
 // Global world switcher, rendered as a chip below the quick-links stack in the
 // bottom-right. Shows the active world by name (it drives both the Boss Watch's
 // per-world heat and the houses layer's live rent status) and pops a themed menu
@@ -1732,6 +1670,177 @@ function FloorStepper({
 // (overview → canon → interpretations) with the same auto-linking as the full
 // article page, plus a link out to that page. Floats bottom-centre like the
 // hunt/house panels so it never covers the map controls.
+// The "Analyze zone" verdict: what lives inside the drag-selected rectangle and
+// how it fights. Aggregate first — what the combined damage arrives as, which
+// elements to attack with / avoid, how many species shoot from range — then the
+// residents, deadliest (biggest real per-turn burst) first. Floats bottom-centre
+// like the lore/raid/hunt panels.
+function ZonePanel({
+  data,
+  loading,
+  floor,
+  onClose,
+}: {
+  data: ZoneSummary | undefined
+  loading: boolean
+  floor: number
+  onClose: () => void
+}) {
+  const { t } = useTranslation()
+  const elName = (el: string) => t(`elements.${el}`, { defaultValue: el.replace(/_/g, ' ') })
+  const elColor = (el: string) => HUNT_ELEMENT_COLOR[el] ?? '#8a8578'
+  const chip = (el: string, text: string, key?: string) => (
+    <span
+      key={key ?? el}
+      className="rounded-full px-2 py-0.5 text-[11px] font-bold"
+      style={{ background: `${elColor(el)}22`, color: elColor(el) }}
+    >
+      {text}
+    </span>
+  )
+
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
+      <div className="scroll-atlas pointer-events-auto max-h-[70vh] w-[32rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-4 shadow-2xl backdrop-blur-md">
+        <div className="mb-2 flex items-center gap-1.5 text-[#3fa7d6]">
+          <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4" />
+            <circle cx="12" cy="12" r="2.5" />
+          </svg>
+          <span className="text-[10px] font-bold uppercase tracking-widest">{t('map.zoneTitle')}</span>
+          <button
+            onClick={onClose}
+            aria-label={t('common.close')}
+            className="ml-auto grid h-6 w-6 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:border-[#3fa7d6] hover:text-[#3fa7d6]"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {loading && <Skeleton className="h-24 w-full" />}
+
+        {!loading && data && data.species === 0 && (
+          <p className="text-sm text-fg-mute">{t('map.zoneEmpty')}</p>
+        )}
+
+        {!loading && data && data.species > 0 && (
+          <>
+            <h3 className="font-serif text-lg font-bold leading-tight text-fg">
+              {data.name ?? t('map.zoneTitle')}
+            </h3>
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-fg-mute">
+              {t('map.zoneMeta', { species: data.species, points: data.spawn_points, z: floor })}
+            </span>
+
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {/* What you'll take: element share of the count-weighted burst. */}
+              <div>
+                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-fg-mute">
+                  {t('map.zoneIncoming')}
+                </div>
+                <div className="flex flex-col gap-1">
+                  {data.incoming.slice(0, 5).map((i) => (
+                    <StatBar key={i.element} label={elName(i.element)} value={`${i.pct}%`} pct={i.pct} color={elColor(i.element)} />
+                  ))}
+                </div>
+              </div>
+              {/* What works, what doesn't, who shoots. */}
+              <div className="flex flex-col gap-2">
+                {data.attack_with.length > 0 && (
+                  <div>
+                    <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-fg-mute">
+                      {t('map.zoneAttackWith')}
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {data.attack_with.map((a) => chip(a.element, `${elName(a.element)}${a.avg_pct > 100 ? ` +${a.avg_pct - 100}%` : ''}`))}
+                    </div>
+                  </div>
+                )}
+                {data.avoid.length > 0 && (
+                  <div>
+                    <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-fg-mute">
+                      {t('map.zoneAvoid')}
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {data.avoid.map((a) =>
+                        chip(
+                          a.element,
+                          a.immune_species > 0
+                            ? `${elName(a.element)} · ${t('map.zoneImmune', { count: a.immune_species })}`
+                            : `${elName(a.element)} −${100 - a.avg_pct}%`,
+                        ),
+                      )}
+                    </div>
+                  </div>
+                )}
+                <div className="flex items-center gap-1.5 text-xs text-fg-dim">
+                  <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-[#3fa7d6]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+                    <circle cx="12" cy="12" r="4" />
+                  </svg>
+                  {t('map.zoneRangedLine', { ranged: data.ranged_species, total: data.species })}
+                </div>
+              </div>
+            </div>
+
+            {/* Residents, deadliest first. */}
+            <div className="mt-3 border-t border-line pt-2">
+              <div className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-fg-mute">
+                {t('map.zoneCreatures')}
+              </div>
+              <div className="flex flex-col">
+                {data.creatures.map((c) => (
+                  <Link
+                    key={c.slug}
+                    to={`/entry/${c.slug}`}
+                    className="flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 transition hover:bg-surface"
+                  >
+                    {c.image ? (
+                      <img src={c.image} alt="" className="h-9 w-9 shrink-0 object-contain" style={{ imageRendering: 'pixelated' }} />
+                    ) : (
+                      <span className="h-9 w-9 shrink-0" />
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline gap-1.5">
+                        <span className="truncate text-sm font-bold text-fg">{c.name}</span>
+                        <span className="shrink-0 text-xs font-semibold text-fg-mute">×{c.count}</span>
+                        {c.boss && (
+                          <span className="shrink-0 rounded-full bg-[#d23d2f]/15 px-1.5 text-[10px] font-bold uppercase text-[#d23d2f]">
+                            Boss
+                          </span>
+                        )}
+                      </span>
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-fg-dim">
+                        {c.burst > 0 && (
+                          <span title={t('map.zoneBurstHint')}>
+                            ⚔ {compact(c.burst)}
+                          </span>
+                        )}
+                        <span>{compact(c.hp)} hp</span>
+                        {c.damage_elements[0] && chip(c.damage_elements[0].element, elName(c.damage_elements[0].element), `dmg-${c.slug}`)}
+                        {c.weak_to[0] && (
+                          <span className="font-semibold" style={{ color: '#2f9e5a' }}>
+                            {t('map.zoneWeakTo')} {elName(c.weak_to[0].element)} +{c.weak_to[0].pct - 100}%
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-fg-mute">
+                      {c.ranged ? t('map.zoneRanged') : t('map.zoneMelee')}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function LorePanel({ poi, onClose }: { poi: LorePoi; onClose: () => void }) {
   const { t } = useTranslation()
   const { data: entry, isLoading, isError } = useEntry(poi.slug)
@@ -1995,6 +2104,10 @@ export function MapPage() {
   // A dedicated SVG renderer for that ring, so it draws crisply above the canvas
   // spawn-dot layer (the map's default renderer is canvas).
   const huntSvgRef = useRef<L.SVG | null>(null)
+  // "Analyze zone" selection rectangle + its corner handles.
+  const analyzeGroupRef = useRef<L.LayerGroup | null>(null)
+  // Mirrored so the once-bound map click handler can tell the mode is on.
+  const analyzeModeRef = useRef(false)
   // Current-floor "all creatures" data kept for click-to-identify and the
   // viewport sprite renderer.
   const allPointsRef = useRef<{
@@ -2002,16 +2115,14 @@ export function MapPage() {
     names: string[]
     images: (string | null)[]
     slugs: string[]
-    classifications: (string | null)[]
-    difficulties: (string | null)[]
     bosses: boolean[]
     // Per-creature profit score (0..1): loot gold, log-normalised across the
     // floor's creatures. Empty when no loot data is present.
     scores: number[]
     // Per-creature raw loot worth (gp), summed per spawn for the money badge.
     lootValues: number[]
-  }>({ points: [], names: [], images: [], slugs: [], classifications: [], difficulties: [], bosses: [], scores: [], lootValues: [] })
-  // Points after applying the category/zone filters — what actually gets drawn.
+  }>({ points: [], names: [], images: [], slugs: [], bosses: [], scores: [], lootValues: [] })
+  // Points after the bosses-only narrowing — what actually gets drawn.
   const filteredRef = useRef<[number, number, number][]>([])
   // Per-filtered-point heat-palette index (aligned to filteredRef), or null when
   // there's no profit signal (dots then paint the classic uniform orange).
@@ -2067,15 +2178,16 @@ export function MapPage() {
   const tradeNavRef = useRef<{ side: 'buy' | 'sell'; i: number } | null>(null)
   const [itemBusy, setItemBusy] = useState(false)
   const [showAll, setShowAll] = useState(true)
-  const [catFilter, setCatFilter] = useState('') // '' = all classifications
-  const [zoneFilter, setZoneFilter] = useState('') // '' = whole map
-  const [levelFilter, setLevelFilter] = useState('') // '' = any difficulty
   const [bossOnly, setBossOnly] = useState(false) // show only bosses
   const [showPoi, setShowPoi] = useState(false) // imported minimap markers layer
   const [showLore, setShowLore] = useState(false) // curated lore / mystery POIs layer
   const [lorePoi, setLorePoi] = useState<LorePoi | null>(null) // open lore reader
   const [showRaids, setShowRaids] = useState(false) // invasions / raids layer
   const [raid, setRaid] = useState<Raid | null>(null) // open raid dossier
+  // "Analyze zone": drag-select a rectangle and get a combat summary of what
+  // spawns inside it. The box has no floor — the floor control picks the level.
+  const [analyzeMode, setAnalyzeMode] = useState(false)
+  const [analyzeBox, setAnalyzeBox] = useState<ZoneBox | null>(null)
   const [rashidOpen, setRashidOpen] = useState(false) // Rashid reader panel
   const [yasirOpen, setYasirOpen] = useState(false) // Yasir reader panel
   // Rashid moves city at the 10:00 Europe/Berlin server save. The second-level
@@ -2277,7 +2389,10 @@ export function MapPage() {
   // Picking a different vocation/level/mode invalidates the selected zone.
   const resetHuntSel = () => setHuntZoneId(null)
 
-  const [showFilters, setShowFilters] = useState(false) // collapsible refine panel
+  // "Analyze zone" summary for the fixed selection on the current floor —
+  // flipping floors with the box kept re-analyzes the same rectangle there.
+  const zoneQuery = useZoneSummary(analyzeMode ? analyzeBox : null, floor)
+
   const [showTour, setShowTour] = useState(false) // guided how-to overlay
   const [bossRailOpen, setBossRailOpen] = useState(false) // world-boss watch sidebar (starts minimized so it doesn't cover the map)
   const [bossQuery, setBossQuery] = useState('') // free-text filter for the boss watch rail
@@ -2434,9 +2549,6 @@ export function MapPage() {
   const placingRef = useRef(placing)
   const creaturesRef = useRef(creatures)
   const showAllRef = useRef(showAll)
-  const catFilterRef = useRef(catFilter)
-  const zoneFilterRef = useRef(zoneFilter)
-  const levelFilterRef = useRef(levelFilter)
   const bossOnlyRef = useRef(bossOnly)
   const showPoiRef = useRef(showPoi)
   const poiRef = useRef<Poi[]>([])
@@ -2742,21 +2854,12 @@ export function MapPage() {
   const floorLabel = (f: number) =>
     f === SURFACE ? '0' : f < SURFACE ? `+${SURFACE - f}` : `${SURFACE - f}`
 
-  // Recompute the filtered point set (category + zone) and redraw the overlay.
+  // Recompute the visible point set (bosses-only is the sole narrowing left; the
+  // refine panel's category/zone/level filters are gone — the search field and
+  // the hunt finder cover that ground) and redraw the overlay.
   rebuildOverlayRef.current = () => {
-    const { points, classifications, difficulties, bosses } = allPointsRef.current
-    const cat = catFilterRef.current
-    const zone = zoneFilterRef.current
-    const lvl = levelFilterRef.current
-    const zoneLm = zone ? LANDMARKS.find((l) => l.name === zone) : null
-    let f = points
-    if (bossOnlyRef.current) f = f.filter((p) => bosses[p[2]])
-    if (cat) f = f.filter((p) => classifications[p[2]] === cat)
-    if (zoneLm)
-      f = f.filter(
-        (p) => Math.abs(p[0] - zoneLm.x) <= ZONE_RADIUS && Math.abs(p[1] - zoneLm.y) <= ZONE_RADIUS,
-      )
-    if (lvl) f = f.filter((p) => difficulties[p[2]] === lvl)
+    const { points, bosses } = allPointsRef.current
+    const f = bossOnlyRef.current ? points.filter((p) => bosses[p[2]]) : points
     filteredRef.current = f
     filteredHeatRef.current = computeHeat(f, allPointsRef.current.scores)
     overlayGenRef.current++ // sprite representatives may change wholesale
@@ -3152,6 +3255,8 @@ export function MapPage() {
     rashidGroupRef.current = rashidGroup
     routeGroupRef.current = routeGroup
     buildGroupRef.current = buildGroup
+    // Fresh map: the analyze-selection group belongs to the previous map.
+    analyzeGroupRef.current = null
     // Fresh map, fresh layer groups: the diff caches hold markers bound to the
     // previous map (StrictMode remount), so they must start empty.
     spriteCacheRef.current = { epoch: '', markers: new Map() }
@@ -3163,6 +3268,10 @@ export function MapPage() {
     map.on('click', (e: L.LeafletMouseEvent) => {
       const x = Math.round(e.latlng.lng)
       const y = Math.round(-e.latlng.lat)
+
+      // "Analyze zone" mode owns the mouse: selection happens on drag
+      // (mousedown/up), so a plain click must not fire popups or markers.
+      if (analyzeModeRef.current) return
 
       // "Crear ruta" builder mode: each click appends an ordered waypoint on the
       // current floor.
@@ -3552,6 +3661,113 @@ export function MapPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [huntZoneId, hunt, floor, mapReady])
+
+  // "Analyze zone" drawing mode: freeze map panning and rubber-band a rectangle
+  // under the cursor; releasing fixes the box (which opens the summary panel).
+  // A plain click (no real drag) selects nothing.
+  useEffect(() => {
+    analyzeModeRef.current = analyzeMode
+    const map = mapRef.current
+    if (!map || !mapReady || !analyzeMode) return
+    map.dragging.disable()
+    const container = map.getContainer()
+    const prevCursor = container.style.cursor
+    container.style.cursor = 'crosshair'
+
+    let start: { x: number; y: number } | null = null
+    let rubber: L.Rectangle | null = null
+    const toXY = (e: L.LeafletMouseEvent) => ({ x: Math.round(e.latlng.lng), y: Math.round(-e.latlng.lat) })
+    const down = (e: L.LeafletMouseEvent) => {
+      // Grabbing a corner handle of the fixed box must not start a new band.
+      if ((e.originalEvent.target as HTMLElement | null)?.closest?.('.leaflet-marker-icon')) return
+      start = toXY(e)
+    }
+    const move = (e: L.LeafletMouseEvent) => {
+      if (!start) return
+      const cur = toXY(e)
+      const b = L.latLngBounds(toLatLng(start.x, start.y), toLatLng(cur.x, cur.y))
+      if (!rubber) {
+        rubber = L.rectangle(b, {
+          color: '#3fa7d6', weight: 2, dashArray: '6 4', fillColor: '#3fa7d6', fillOpacity: 0.08, interactive: false,
+        }).addTo(map)
+      } else {
+        rubber.setBounds(b)
+      }
+    }
+    const up = (e: L.LeafletMouseEvent) => {
+      if (!start) return
+      const end = toXY(e)
+      const box = {
+        x1: Math.min(start.x, end.x), y1: Math.min(start.y, end.y),
+        x2: Math.max(start.x, end.x), y2: Math.max(start.y, end.y),
+      }
+      start = null
+      rubber?.remove()
+      rubber = null
+      if (box.x2 - box.x1 < 4 || box.y2 - box.y1 < 4) return
+      setAnalyzeBox(box)
+    }
+    map.on('mousedown', down)
+    map.on('mousemove', move)
+    map.on('mouseup', up)
+    return () => {
+      map.off('mousedown', down)
+      map.off('mousemove', move)
+      map.off('mouseup', up)
+      rubber?.remove()
+      container.style.cursor = prevCursor
+      map.dragging.enable()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analyzeMode, mapReady])
+
+  // The fixed selection: the rectangle plus four draggable corner handles to
+  // fine-tune it after release (each nudge re-queries). Drawn on every floor on
+  // purpose — the box is a place; the floor control picks which level of it the
+  // summary describes.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    let grp = analyzeGroupRef.current
+    if (!grp) {
+      grp = L.layerGroup().addTo(map)
+      analyzeGroupRef.current = grp
+    }
+    grp.clearLayers()
+    if (!analyzeBox || !analyzeMode) return
+    const b = analyzeBox
+    const rect = L.rectangle(
+      L.latLngBounds(toLatLng(b.x1, b.y1), toLatLng(b.x2 + 1, b.y2 + 1)),
+      { color: '#3fa7d6', weight: 2, fillColor: '#3fa7d6', fillOpacity: 0.07, interactive: false },
+    )
+    grp.addLayer(rect)
+    const handleIcon = L.divIcon({
+      className: '',
+      iconSize: [12, 12],
+      iconAnchor: [6, 6],
+      html: '<div style="width:12px;height:12px;border-radius:3px;background:#3fa7d6;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5);cursor:nwse-resize"></div>',
+    })
+    for (const [cx, cy] of [[b.x1, b.y1], [b.x2, b.y1], [b.x1, b.y2], [b.x2, b.y2]] as const) {
+      const ox = cx === b.x1 ? b.x2 : b.x1
+      const oy = cy === b.y1 ? b.y2 : b.y1
+      const m = L.marker(toLatLng(cx, cy), { icon: handleIcon, draggable: true, keyboard: false, zIndexOffset: 800 })
+      // Live feedback while dragging; the box (and the query) commit on release.
+      m.on('drag', () => {
+        const ll = m.getLatLng()
+        const nx = Math.round(ll.lng)
+        const ny = Math.round(-ll.lat)
+        rect.setBounds(L.latLngBounds(toLatLng(Math.min(nx, ox), Math.min(ny, oy)), toLatLng(Math.max(nx, ox) + 1, Math.max(ny, oy) + 1)))
+      })
+      m.on('dragend', () => {
+        const ll = m.getLatLng()
+        const nx = Math.round(ll.lng)
+        const ny = Math.round(-ll.lat)
+        setAnalyzeBox({ x1: Math.min(nx, ox), y1: Math.min(ny, oy), x2: Math.max(nx, ox), y2: Math.max(ny, oy) })
+      })
+      grp.addLayer(m)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analyzeBox, analyzeMode, mapReady])
 
   // Draw the computed route + start/destination pins. The route belongs to the
   // start point's floor, so it only shows while that floor is selected.
@@ -4122,14 +4338,6 @@ export function MapPage() {
     return () => clearTimeout(id)
   }, [freedToast])
 
-  // Classifications present on the current floor, for the category filter.
-  const categories = useMemo(() => {
-    if (!allSpawns) return [] as string[]
-    const s = new Set<string>()
-    for (const c of allSpawns.creatures) if (c.classification) s.add(c.classification)
-    return [...s].sort((a, b) => a.localeCompare(b))
-  }, [allSpawns])
-
   useEffect(() => {
     showAllRef.current = showAll
     if (!showAll || !allSpawns) {
@@ -4138,8 +4346,6 @@ export function MapPage() {
         names: [],
         images: [],
         slugs: [],
-        classifications: [],
-        difficulties: [],
         bosses: [],
         scores: [],
         lootValues: [],
@@ -4160,8 +4366,6 @@ export function MapPage() {
         names: cs.map((c) => c.name),
         images: cs.map((c) => c.image),
         slugs: cs.map((c) => c.slug),
-        classifications: cs.map((c) => c.classification),
-        difficulties: cs.map((c) => c.difficulty),
         bosses: cs.map((c) => c.boss),
         scores,
         lootValues: cs.map((c) => c.loot_value ?? 0),
@@ -4171,19 +4375,16 @@ export function MapPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allSpawns, showAll, floor, mapReady])
 
-  // Re-apply category/zone/level filters and fit the map to the matches so the
-  // results are actually in view (filtered spawns are often far from where the
-  // user is currently looking).
+  // Re-apply the bosses-only narrowing and fit the map to the matches so the
+  // results are actually in view (they're often far from where the user is
+  // currently looking).
   useEffect(() => {
-    catFilterRef.current = catFilter
-    zoneFilterRef.current = zoneFilter
-    levelFilterRef.current = levelFilter
     bossOnlyRef.current = bossOnly
     rebuildOverlayRef.current()
 
     const map = mapRef.current
     const f = filteredRef.current
-    if (map && (catFilter || zoneFilter || levelFilter || bossOnly) && f.length) {
+    if (map && bossOnly && f.length) {
       let minLat = Infinity
       let maxLat = -Infinity
       let minLng = Infinity
@@ -4201,7 +4402,7 @@ export function MapPage() {
         { padding: [40, 40], maxZoom: 4, animate: false },
       )
     }
-  }, [catFilter, zoneFilter, levelFilter, bossOnly])
+  }, [bossOnly])
 
   // --- creature search (by name, via the published-names glossary) ---
   const debouncedQuery = useDebouncedValue(query, 250)
@@ -4550,7 +4751,6 @@ export function MapPage() {
   }
 
   const spawnsOnFloor = (cr: ActiveCreature) => cr.spawns.filter((s) => s.z === floor).length
-  const activeFilterCount = [catFilter, zoneFilter, levelFilter].filter(Boolean).length
 
   // The layer trees (markers, houses) sprout up out of the hotbar into the band
   // straight above it, and they're absolutely positioned — nothing in the bar's
@@ -5271,20 +5471,9 @@ export function MapPage() {
             </div>
           )}
 
-          {/* Go — everything about moving around the atlas: jump to a city, or
-              plan a route there. */}
+          {/* Go — everything about moving around the atlas. Jumping to a city is
+              the search field's job, so this pill is route planning only. */}
           <div className={PILL}>
-            {/* Jump to a city — custom themed dropdown (see CityJumpPicker). */}
-            <CityJumpPicker
-              label={t('map.goTo')}
-              onGo={(name) => {
-                const l = LANDMARKS.find((x) => x.name === name)
-                if (l) goTo(l)
-              }}
-            />
-
-            <span className="mx-0.5 h-6 w-px bg-line/50" />
-
             {/* Routes — directions, community gallery and the route builder all
                 sprout from one slot (same family as the Houses layer's tree). */}
             <HotbarGroup
@@ -5393,25 +5582,6 @@ export function MapPage() {
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 12h.01M15 12h.01M8 20v2h8v-2M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20" />
               </svg>
-            </button>
-
-            {/* Refine filters — sits with the creature toggles because that's
-                exactly what it narrows down (category / zone / level). */}
-            <button
-              onClick={() => setShowFilters((v) => !v)}
-              title={t('map.filters')}
-              aria-label={t('map.filters')}
-              aria-pressed={showFilters}
-              className={`relative ${SLOT} ${showFilters || activeFilterCount ? SLOT_ON : SLOT_OFF}`}
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 6h16M7 12h10M10 18h4" />
-              </svg>
-              {activeFilterCount > 0 && (
-                <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold text-white">
-                  {activeFilterCount}
-                </span>
-              )}
             </button>
 
             <span className="mx-0.5 h-6 w-px bg-line/50" />
@@ -5605,6 +5775,29 @@ export function MapPage() {
               </button>
             </div>
 
+            {/* Analyze zone — drag a rectangle, get a combat summary of what
+                spawns inside. Turning it off clears the selection + panel. */}
+            <div className="relative flex items-center">
+              <button
+                onClick={() => {
+                  setAnalyzeMode((v) => {
+                    if (v) setAnalyzeBox(null)
+                    return !v
+                  })
+                }}
+                title={t('map.zoneLayer')}
+                aria-label={t('map.zoneLayer')}
+                aria-pressed={analyzeMode}
+                className={`relative ${SLOT} ${analyzeMode ? 'border-[#3fa7d6] bg-[#3fa7d6]/15 text-[#3fa7d6]' : SLOT_OFF}`}
+              >
+                {/* crosshair-corners — "select an area" */}
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4" />
+                  <circle cx="12" cy="12" r="2.5" />
+                </svg>
+              </button>
+            </div>
+
             {/* Profit / wealth legend — a framed chip with a gold coin so it
                 clearly reads as the "how rich is this spot" bar, not just a
                 swatch lost among the icon slots. Only meaningful while dots show. */}
@@ -5656,73 +5849,91 @@ export function MapPage() {
               )}
             </button>
 
-            {/* Blessings — one click plans the whole pilgrimage: every shrine in
-                the cheapest order, from the city nearest to your view. */}
+            {/* Everything you run FOR a character, in one slot right beside it:
+                the blessing pilgrimages, the hunt finder that reads your level and
+                set, and the analyzer that counts what a session actually made.
+                They sprout up in that order, nearest slot first. */}
             <HotbarGroup
               icon={
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 3v18M7 8h10" />
-                  <path d="M12 21c-3 0-5-1.5-5-3h10c0 1.5-2 3-5 3z" />
+                  {/* toolbox — "your hunting kit" */}
+                  <path d="M3 8h18v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z" />
+                  <path d="M9 8V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+                  <path d="M3 13h18" />
                 </svg>
               }
-              label={t('map.blessTitle')}
+              label={t('map.toolsGroup')}
               accent="#c79a3f"
-              active={blessSet !== null}
+              active={blessSet !== null || huntOpen || profitOpen}
             >
+              {/* Blessings — one click plans the whole pilgrimage: every shrine in
+                  the cheapest order, from the city nearest to your view. */}
               <button
                 onClick={() => runPilgrimage('five')}
                 title={t('map.blessFive')}
                 aria-label={t('map.blessFive')}
                 aria-pressed={blessSet === 'five'}
-                className={`${SLOT} ${blessSet === 'five' ? SLOT_ON : SLOT_OFF}`}
+                className={`relative ${SLOT} ${blessSet === 'five' ? SLOT_ON : SLOT_OFF}`}
               >
-                <span className="text-sm font-bold">5</span>
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3v18M7 8h10" />
+                  <path d="M12 21c-3 0-5-1.5-5-3h10c0 1.5-2 3-5 3z" />
+                </svg>
+                <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[#c79a3f] px-1 text-[10px] font-bold leading-none text-white">
+                  5
+                </span>
               </button>
               <button
                 onClick={() => runPilgrimage('seven')}
                 title={t('map.blessSeven')}
                 aria-label={t('map.blessSeven')}
                 aria-pressed={blessSet === 'seven'}
-                className={`${SLOT} ${blessSet === 'seven' ? SLOT_ON : SLOT_OFF}`}
+                className={`relative ${SLOT} ${blessSet === 'seven' ? SLOT_ON : SLOT_OFF}`}
               >
-                <span className="text-sm font-bold">7</span>
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3v18M7 8h10" />
+                  <path d="M12 21c-3 0-5-1.5-5-3h10c0 1.5-2 3-5 3z" />
+                </svg>
+                <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[#c79a3f] px-1 text-[10px] font-bold leading-none text-white">
+                  7
+                </span>
+              </button>
+
+              {/* Hunt Finder — ranks the best hunting zones for your level/vocation/set. */}
+              <button
+                onClick={() => togglePanel('hunt', huntOpen)}
+                title={t('map.huntTitle')}
+                aria-label={t('map.huntTitle')}
+                aria-pressed={huntOpen}
+                className={`${SLOT} ${huntOpen ? SLOT_ON : SLOT_OFF}`}
+              >
+                {/* crosshair / target — "find a hunt" */}
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="9" />
+                  <circle cx="12" cy="12" r="3.5" />
+                  <path d="M12 1v4M12 19v4M1 12h4M19 12h4" />
+                </svg>
+              </button>
+
+              {/* Hunt profit calculator — same tool the bottom-right quick-link
+                  opens: paste an analyzer, get the profit after imbuement wear
+                  and silver-token recharges. */}
+              <button
+                onClick={() => togglePanel('profit', profitOpen)}
+                title={t('map.hpTitle')}
+                aria-label={t('map.hpTitle')}
+                aria-pressed={profitOpen}
+                className={`${SLOT} ${profitOpen ? SLOT_ON : SLOT_OFF}`}
+              >
+                {/* two coins — "count the money" */}
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="8" cy="8" r="6" />
+                  <path d="M18.09 10.37A6 6 0 1 1 10.34 18" />
+                  <path d="M7 6h1v4" />
+                  <path d="m16.71 13.88.7.71-2.82 2.82" />
+                </svg>
               </button>
             </HotbarGroup>
-
-            {/* Hunt Finder — ranks the best hunting zones for your level/vocation/set. */}
-            <button
-              onClick={() => togglePanel('hunt', huntOpen)}
-              title={t('map.huntTitle')}
-              aria-label={t('map.huntTitle')}
-              aria-pressed={huntOpen}
-              className={`${SLOT} ${huntOpen ? SLOT_ON : SLOT_OFF}`}
-            >
-              {/* crosshair / target — "find a hunt" */}
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="9" />
-                <circle cx="12" cy="12" r="3.5" />
-                <path d="M12 1v4M12 19v4M1 12h4M19 12h4" />
-              </svg>
-            </button>
-
-            {/* Hunt profit calculator — same tool the bottom-right quick-link
-                opens: paste an analyzer, get the profit after imbuement wear
-                and silver-token recharges. */}
-            <button
-              onClick={() => togglePanel('profit', profitOpen)}
-              title={t('map.hpTitle')}
-              aria-label={t('map.hpTitle')}
-              aria-pressed={profitOpen}
-              className={`${SLOT} ${profitOpen ? SLOT_ON : SLOT_OFF}`}
-            >
-              {/* two coins — "count the money" */}
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="8" cy="8" r="6" />
-                <path d="M18.09 10.37A6 6 0 1 1 10.34 18" />
-                <path d="M7 6h1v4" />
-                <path d="m16.71 13.88.7.71-2.82 2.82" />
-              </svg>
-            </button>
 
             <span className="mx-0.5 h-6 w-px bg-line/50" />
 
@@ -6123,6 +6334,23 @@ export function MapPage() {
           hunting zone you can click to fly to, expanding into its per-creature
           breakdown (what to hit it with, reward, danger). */}
       {lorePoi && <LorePanel poi={lorePoi} onClose={() => setLorePoi(null)} />}
+
+      {/* Analyze zone: the drag hint while no box is drawn, then the summary. */}
+      {analyzeMode && !analyzeBox && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
+          <div className="rounded-xl border border-[#3fa7d6]/50 bg-bg-2/95 px-4 py-2 text-sm font-semibold text-[#3fa7d6] shadow-lg backdrop-blur-md">
+            {t('map.zoneHint')}
+          </div>
+        </div>
+      )}
+      {analyzeMode && analyzeBox && (
+        <ZonePanel
+          data={zoneQuery.data}
+          loading={zoneQuery.isPending}
+          floor={floor}
+          onClose={() => setAnalyzeBox(null)}
+        />
+      )}
       {raid && <RaidPanel raid={raid} onClose={() => setRaid(null)} onPlot={plotCreatureByName} />}
       {/* Pilgrimage stop list — the order the route follows, and the two shrines
           you cannot simply walk into. */}
@@ -7465,76 +7693,6 @@ export function MapPage() {
             </>
           ) : (
             <span className="ml-auto text-fg-mute">{t('map.buildHint')}</span>
-          )}
-        </div>
-      )}
-
-      {/* Collapsible refine panel — hidden until "Filtros" is opened, so it
-          doesn't take a permanent row above the map. */}
-      {showFilters && (
-        <div className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-xl border border-line bg-bg-2/95 px-3 py-2.5 shadow-lg backdrop-blur-md">
-          <select
-            value={catFilter}
-            onChange={(e) => {
-              setCatFilter(e.target.value)
-              setShowAll(true)
-            }}
-            title={t('map.category')}
-            className="h-9 rounded-lg border border-line bg-bg-2 px-3 text-sm font-semibold text-fg-dim outline-none transition hover:border-line-2 focus:border-accent"
-          >
-            <option value="">{t('map.category')}</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={zoneFilter}
-            onChange={(e) => {
-              setZoneFilter(e.target.value)
-              setShowAll(true)
-            }}
-            title={t('map.zone')}
-            className="h-9 rounded-lg border border-line bg-bg-2 px-3 text-sm font-semibold text-fg-dim outline-none transition hover:border-line-2 focus:border-accent"
-          >
-            <option value="">{t('map.zone')}</option>
-            {LANDMARKS.map((l) => (
-              <option key={l.name} value={l.name}>
-                {l.name}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={levelFilter}
-            onChange={(e) => {
-              setLevelFilter(e.target.value)
-              setShowAll(true)
-            }}
-            title={t('map.level')}
-            className="h-9 rounded-lg border border-line bg-bg-2 px-3 text-sm font-semibold text-fg-dim outline-none transition hover:border-line-2 focus:border-accent"
-          >
-            <option value="">{t('map.level')}</option>
-            {DIFFICULTIES.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-
-          {activeFilterCount > 0 && (
-            <button
-              onClick={() => {
-                setCatFilter('')
-                setZoneFilter('')
-                setLevelFilter('')
-              }}
-              className="text-sm font-bold uppercase tracking-wider text-accent transition hover:text-accent-2"
-            >
-              ✕ {t('map.clearFilters')}
-            </button>
           )}
         </div>
       )}
