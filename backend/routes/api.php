@@ -127,6 +127,11 @@ Route::prefix('killstats')->middleware(['throttle:public', 'cache.headers:public
 Route::prefix('houses')->middleware(['throttle:public', 'cache.headers:public;max_age=120;s_maxage=600'])->group(function () {
     Route::get('/', [HouseController::class, 'index']);
     Route::get('/worlds', [HouseController::class, 'worlds']);
+    // Auction price history: the index across all houses, and one house's own
+    // bid trail. Both are append-only series built by tibia:etl-houses.
+    Route::get('/prices', [HouseController::class, 'prices']);
+    Route::get('/prices/towns', [HouseController::class, 'priceTowns']);
+    Route::get('/{world}/{house}/bids', [HouseController::class, 'bids'])->whereNumber('house');
 });
 
 /*

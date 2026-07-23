@@ -76,21 +76,43 @@ class EtlHouses extends Command
         $this->info(count($worlds).' world(s) × '.count(self::TOWNS).' towns to fetch.');
 
         $now = now();
-        $total = $failed = $eventsTotal = 0;
+        $total = $failed = $eventsTotal = $bidsTotal = $salesTotal = 0;
 
         foreach ($worlds as $world) {
             $this->line("World {$world} …");
             $rows = [];
             $events = [];
 
-            // Prior status per house on this world, so we can diff transitions
-            // into ticker events. Empty on the first-ever run for a world → we
-            // stay silent that run (no phantom "changed" events on a cold table).
-            $prior = DB::table('house_status')
+            // Prior status AND bid per house on this world. Status diffs become
+            // ticker events; bid diffs become price history, and the last bid a
+            // house carried before it flips to `rented` is its sale price.
+            // Empty on the first-ever run for a world → we stay silent that run
+            // (no phantom "changed" events on a cold table).
+            $priorRows = DB::table('house_status')
                 ->where('world', $world)
-                ->pluck('status', 'house_id')
-                ->all();
+                ->get(['house_id', 'status', 'bid']);
+            $prior = [];
+            $priorBid = [];
+            foreach ($priorRows as $r) {
+                $prior[$r->house_id] = $r->status;
+                $priorBid[$r->house_id] = (int) $r->bid;
+            }
             $hadPrior = $prior !== [];
+
+            // Houses that already have price history on this world. Without this,
+            // an auction that was already running when the feature shipped would
+            // never be charted: its bid matches the stored snapshot, so nothing
+            // "changes" until someone outbids it. Seeing a house with a live bid
+            // and no history at all means we seed its first point now.
+            $charted = DB::table('house_bids')
+                ->where('world', $world)
+                ->distinct()
+                ->pluck('house_id')
+                ->flip()
+                ->all();
+
+            $bids = [];
+            $sales = [];
 
             foreach (self::TOWNS as $town) {
                 $houses = $this->fetchTown($world, $town);
@@ -123,10 +145,42 @@ class EtlHouses extends Command
                         'updated_at' => $now,
                     ];
 
+                    // --- price history -------------------------------------
+                    // A bid row per CHANGE only. Auctions sit still for hours and
+                    // only ~270 houses carry a bid at any moment across every
+                    // world, so this stays tiny while capturing every movement.
+                    $oldBid = $priorBid[$id] ?? null;
+                    if ($bid > 0 && ($bid !== $oldBid || ! isset($charted[$id]))) {
+                        $charted[$id] = true;
+                        $bids[] = [
+                            'world' => $world,
+                            'house_id' => $id,
+                            'bid' => $bid,
+                            'time_left' => mb_substr((string) ($h['auction']['time_left'] ?? ''), 0, 24) ?: null,
+                            'observed_at' => $now,
+                        ];
+                    }
+
+                    // A house leaving an auction it had a bid on has been SOLD,
+                    // and the price is the last bid we saw — TibiaData clears the
+                    // auction block once the house is handed over, so the stored
+                    // value is the only record of what was paid.
+                    $old = $prior[$id] ?? null;
+                    if ($old === 'auctioned' && $status === 'rented' && ($oldBid ?? 0) > 0) {
+                        $sales[] = [
+                            'world' => $world,
+                            'house_id' => $id,
+                            'town' => $town,
+                            'size' => (int) ($h['size'] ?? 0),
+                            'rent' => (int) ($h['rent'] ?? 0),
+                            'price' => $oldBid,
+                            'sold_at' => $now,
+                        ];
+                    }
+
                     // A status change on a house we've seen before = one ticker
                     // event. A brand-new house id (old === null) is skipped —
                     // there's no transition to describe, only noise.
-                    $old = $prior[$id] ?? null;
                     if ($hadPrior && $old !== null && $old !== $status
                         && ($type = self::EVENT_TYPES[$status] ?? null) !== null) {
                         $events[] = [
@@ -162,9 +216,20 @@ class EtlHouses extends Command
             foreach (array_chunk($events, 500) as $chunk) {
                 DB::table('world_events')->insert($chunk);
             }
+            foreach (array_chunk($bids, 500) as $chunk) {
+                DB::table('house_bids')->insert($chunk);
+            }
+            // insertOrIgnore: the unique (world, house_id, sold_at) key makes a
+            // re-run within the same minute a no-op instead of a double sale.
+            foreach (array_chunk($sales, 500) as $chunk) {
+                DB::table('house_sales')->insertOrIgnore($chunk);
+            }
             $total += count($rows);
             $eventsTotal += count($events);
-            $this->info("  {$world}: ".count($rows).' houses upserted, '.count($events).' event(s).');
+            $bidsTotal += count($bids);
+            $salesTotal += count($sales);
+            $this->info("  {$world}: ".count($rows).' houses upserted, '.count($events).' event(s), '
+                .count($bids).' bid(s), '.count($sales).' sale(s).');
         }
 
         // Keep the feed bounded — a month of history is more than a ticker shows.
@@ -172,7 +237,7 @@ class EtlHouses extends Command
             ->where('occurred_at', '<', $now->copy()->subDays(30))
             ->delete();
 
-        $this->info("Done. {$total} rows, {$eventsTotal} event(s) across ".count($worlds)." world(s). Failed towns: {$failed}.");
+        $this->info("Done. {$total} rows, {$eventsTotal} event(s), {$bidsTotal} bid(s), {$salesTotal} sale(s) across ".count($worlds)." world(s). Failed towns: {$failed}.");
 
         return self::SUCCESS;
     }
