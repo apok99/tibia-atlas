@@ -1338,6 +1338,68 @@ function HotbarGroup({
   )
 }
 
+// Blessings live in ONE hotbar slot: a shrine icon that, when clicked, asks
+// which pilgrimage you mean — the five cheap blessings or the full seven. The
+// question unfolds sideways from the slot itself (the column above it is taken
+// by the other tools), and picking one folds it back. Kept inside the group's
+// children so collapsing the group forgets the question.
+function BlessPicker({
+  label,
+  fiveLabel,
+  sevenLabel,
+  value,
+  onPick,
+}: {
+  label: string
+  fiveLabel: string
+  sevenLabel: string
+  // Which pilgrimage is currently plotted, if any.
+  value: 'five' | 'seven' | null
+  onPick: (set: 'five' | 'seven') => void
+}) {
+  const [asking, setAsking] = useState(false)
+  const shrine = (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3v18M7 8h10" />
+      <path d="M12 21c-3 0-5-1.5-5-3h10c0 1.5-2 3-5 3z" />
+    </svg>
+  )
+  return (
+    <div className="flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => setAsking((v) => !v)}
+        title={label}
+        aria-label={label}
+        aria-expanded={asking}
+        className={`${SLOT} ${asking || value ? SLOT_ON : SLOT_OFF}`}
+      >
+        {shrine}
+      </button>
+      {asking &&
+        ([
+          { set: 'five' as const, n: '5', title: fiveLabel },
+          { set: 'seven' as const, n: '7', title: sevenLabel },
+        ]).map((o) => (
+          <button
+            key={o.set}
+            type="button"
+            onClick={() => {
+              onPick(o.set)
+              setAsking(false)
+            }}
+            title={o.title}
+            aria-label={o.title}
+            aria-pressed={value === o.set}
+            className={`${SLOT} ${value === o.set ? SLOT_ON : SLOT_OFF}`}
+          >
+            <span className="text-base font-black">{o.n}</span>
+          </button>
+        ))}
+    </div>
+  )
+}
+
 // Quick-launch "mini windows" floated on the map: shortcuts to the site's games
 // and stats. Titles/taglines reuse the existing nav + section-kicker i18n keys.
 const QUICK_LINKS: { to: string; title: string; kicker: string; icon: string }[] = [
@@ -1689,13 +1751,17 @@ function ZonePanel({
   const { t } = useTranslation()
   const elName = (el: string) => t(`elements.${el}`, { defaultValue: el.replace(/_/g, ' ') })
   const elColor = (el: string) => HUNT_ELEMENT_COLOR[el] ?? '#8a8578'
-  // Solid element-coloured chips with white text: the earlier translucent tint
-  // washed out against the map.
+  // The element palette is tuned for accents; darkened it holds AA contrast as
+  // TEXT on the panel's light parchment background.
+  const elDark = (el: string) => {
+    const hex = elColor(el)
+    return '#' + (hex.slice(1).match(/../g) ?? []).map((h) => Math.round(parseInt(h, 16) * 0.62).toString(16).padStart(2, '0')).join('')
+  }
   const chip = (el: string, text: string, key?: string) => (
     <span
       key={key ?? el}
-      className="rounded-full px-2.5 py-0.5 text-[13px] font-bold text-white"
-      style={{ background: elColor(el) }}
+      className="rounded-full px-2.5 py-0.5 text-[13px] font-bold"
+      style={{ background: `${elColor(el)}26`, color: elDark(el) }}
     >
       {text}
     </span>
@@ -1703,7 +1769,7 @@ function ZonePanel({
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
-      <div className="scroll-atlas pointer-events-auto max-h-[70vh] w-[32rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-[#15120e]/[.97] p-4 shadow-2xl backdrop-blur-md">
+      <div className="scroll-atlas pointer-events-auto max-h-[70vh] w-[32rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-4 shadow-2xl backdrop-blur-md">
         <div className="mb-2 flex items-center gap-1.5 text-[#3fa7d6]">
           <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4" />
@@ -1746,13 +1812,13 @@ function ZonePanel({
                   {data.incoming.slice(0, 5).map((i) => (
                     <div key={i.element} className="flex items-center gap-2">
                       <span className="w-20 shrink-0 truncate text-[13px] font-semibold text-fg">{elName(i.element)}</span>
-                      <span className="relative h-3 min-w-0 flex-1 overflow-hidden rounded-full bg-black/50">
+                      <span className="relative h-3 min-w-0 flex-1 overflow-hidden rounded-full bg-line/50">
                         <span
                           className="absolute inset-y-0 left-0 rounded-full"
                           style={{ width: `${Math.min(100, Math.max(5, i.pct))}%`, background: elColor(i.element) }}
                         />
                       </span>
-                      <span className="w-11 shrink-0 text-right text-[13px] font-bold" style={{ color: elColor(i.element) }}>
+                      <span className="w-11 shrink-0 text-right text-[13px] font-bold" style={{ color: elDark(i.element) }}>
                         {i.pct}%
                       </span>
                     </div>
@@ -1834,13 +1900,13 @@ function ZonePanel({
                         <span className="text-fg-dim">{compact(c.hp)} hp</span>
                         {c.damage_elements[0] && chip(c.damage_elements[0].element, elName(c.damage_elements[0].element), `dmg-${c.slug}`)}
                         {c.weak_to[0] && (
-                          <span className="font-bold" style={{ color: '#4fc57f' }}>
+                          <span className="font-bold" style={{ color: '#1f7a44' }}>
                             {t('map.zoneWeakTo')} {elName(c.weak_to[0].element)} +{c.weak_to[0].pct - 100}%
                           </span>
                         )}
                       </span>
                     </span>
-                    <span className={`shrink-0 text-[12px] font-bold uppercase tracking-wide ${c.ranged ? 'text-[#5cc3f0]' : 'text-fg-dim'}`}>
+                    <span className={`shrink-0 text-[12px] font-bold uppercase tracking-wide ${c.ranged ? 'text-[#22759e]' : 'text-fg-dim'}`}>
                       {c.ranged ? t('map.zoneRanged') : t('map.zoneMelee')}
                     </span>
                   </Link>
@@ -5879,38 +5945,16 @@ export function MapPage() {
               accent="#c79a3f"
               active={blessSet !== null || huntOpen || profitOpen}
             >
-              {/* Blessings — one click plans the whole pilgrimage: every shrine in
-                  the cheapest order, from the city nearest to your view. */}
-              <button
-                onClick={() => runPilgrimage('five')}
-                title={t('map.blessFive')}
-                aria-label={t('map.blessFive')}
-                aria-pressed={blessSet === 'five'}
-                className={`relative ${SLOT} ${blessSet === 'five' ? SLOT_ON : SLOT_OFF}`}
-              >
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 3v18M7 8h10" />
-                  <path d="M12 21c-3 0-5-1.5-5-3h10c0 1.5-2 3-5 3z" />
-                </svg>
-                <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[#c79a3f] px-1 text-[10px] font-bold leading-none text-white">
-                  5
-                </span>
-              </button>
-              <button
-                onClick={() => runPilgrimage('seven')}
-                title={t('map.blessSeven')}
-                aria-label={t('map.blessSeven')}
-                aria-pressed={blessSet === 'seven'}
-                className={`relative ${SLOT} ${blessSet === 'seven' ? SLOT_ON : SLOT_OFF}`}
-              >
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 3v18M7 8h10" />
-                  <path d="M12 21c-3 0-5-1.5-5-3h10c0 1.5-2 3-5 3z" />
-                </svg>
-                <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[#c79a3f] px-1 text-[10px] font-bold leading-none text-white">
-                  7
-                </span>
-              </button>
+              {/* Blessings — one slot that asks 5 or 7, then plans the whole
+                  pilgrimage: every shrine in the cheapest order, from the city
+                  nearest to your view. */}
+              <BlessPicker
+                label={t('map.blessTitle')}
+                fiveLabel={t('map.blessFive')}
+                sevenLabel={t('map.blessSeven')}
+                value={blessSet}
+                onPick={runPilgrimage}
+              />
 
               {/* Hunt Finder — ranks the best hunting zones for your level/vocation/set. */}
               <button
