@@ -23,12 +23,17 @@ export type HuntCreature = {
   count: number
 }
 
-// A ranked hunting zone: a spawn cluster labelled by its nearest named area,
-// scored for the player (`match` is 0-100 relative to the best zone), with the
-// creatures you'll meet there.
+// A ranked hunting zone: a spawn cluster labelled the way hunting guides label
+// them — by its dominant resident and the area ("Rotworms — Edron") — scored for
+// the player (`match` is 0-100 relative to the best zone), with the creatures
+// you'll meet there. `place` is the bare area behind that label and `resident`
+// the creature it was qualified with; both are null-safe extras for callers that
+// need the dungeon itself rather than the display name.
 export type HuntZone = {
   id: number
   name: string | null
+  place: string | null
+  resident: string | null
   x: number
   y: number
   z: number
@@ -38,6 +43,12 @@ export type HuntZone = {
   access: 'quest' | null
   exp_avg: number
   profit_avg: number
+  // Per hour at this player's kill speed. `profit_h` is NET (loot_h - supply_h)
+  // and may be negative — plenty of strong exp spots lose money.
+  exp_h: number
+  profit_h: number
+  loot_h: number
+  supply_h: number
   spawn_count: number
   creatures: HuntCreature[]
 }

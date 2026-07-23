@@ -123,7 +123,9 @@ class HuntCalibrate extends Command
                         // Solo comparamos contra números que la guía trae. El
                         // profit de la guía es NETO y puede ser negativo, así
                         // que el error relativo se mide contra su magnitud.
-                        if ($row[$field] === null || $zone[$field] === 0) {
+                        // Un 0 de la guía ("0k profit") no admite error relativo
+                        // — dividir por él es ruido infinito, no información.
+                        if (empty($row[$field]) || $zone[$field] === 0) {
                             continue;
                         }
                         $errors[$field][] = [
@@ -256,18 +258,61 @@ class HuntCalibrate extends Command
 
         foreach ($zones as $zone) {
             if ($target !== null) {
-                if ($zone['name'] !== null && $zone['name'] === $target) {
+                if ($this->loose($zone['place']) === $this->loose($target)) {
                     return $zone;
                 }
 
                 continue;
             }
-            if ($zone['name'] !== null && $this->loose($zone['name']) === $this->loose($guideName)) {
+            if ($zone['place'] !== null && $this->loose($zone['place']) === $this->loose($guideName)) {
+                return $zone;
+            }
+        }
+        if ($target !== null) {
+            return null;
+        }
+
+        // La guía casi nunca nombra el sitio: nombra AL BICHO Y LA CIUDAD
+        // ("Edron Rotworm Cave", "Darashia Dragon Lair", "Tarantulas Port
+        // Hope"). Eso son dos hechos verificables, no un substring suelto:
+        // exigimos que la fila mencione al residente dominante de la zona Y al
+        // lugar. Las dos condiciones juntas distinguen la cueva de rotworms de
+        // Edron de la de Darashia, que es justo lo que un match por substring
+        // no sabía hacer.
+        foreach ($zones as $zone) {
+            if (empty($zone['resident']) || $zone['place'] === null) {
+                continue;
+            }
+            if ($this->mentions($guideName, (string) $zone['resident'])
+                && $this->mentions($guideName, (string) $zone['place'])) {
                 return $zone;
             }
         }
 
         return null;
+    }
+
+    /**
+     * ¿La fila de la guía nombra esta cosa? Compara por palabras normalizadas y
+     * tolera el plural de la guía ("Rotworms" por "Rotworm", "Minotaurs" por
+     * "Minotaur Mage"): basta con que TODAS las palabras significativas del
+     * nombre aparezcan en la fila.
+     */
+    private function mentions(string $haystack, string $needle): bool
+    {
+        $words = array_filter(explode(' ', $this->loose($needle)), fn ($w) => mb_strlen($w) > 2);
+        if ($words === []) {
+            return false;
+        }
+        $hay = ' '.$this->loose($haystack).' ';
+        foreach ($words as $w) {
+            $stem = (string) preg_replace('/(es|s)$/', '', $w);
+            if (! preg_match('/\b'.preg_quote($stem, '/').'(e?s)?\b/', $hay)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

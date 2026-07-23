@@ -7,6 +7,13 @@
 // off the OT server's own `raids/*.xml`. Regenerate after updating the OT tree.
 import { useQuery } from '@tanstack/react-query'
 
+/**
+ * An item a raid-only variant carries that the ordinary creature never does.
+ * `chance` is already a percentage. This is how the Amazon set shows up: three
+ * otherwise identical Orc Warlords in the Thais raid, one per piece.
+ */
+export type RaidDrop = { item: string; chance: number }
+
 /** A creature dropped on one exact tile (bosses, and 1x1 "areas"). */
 export type RaidSpawn = {
   name: string
@@ -17,6 +24,7 @@ export type RaidSpawn = {
   delay: number
   /** >1 only for stacked single-tile spawns */
   amount?: number
+  drops?: RaidDrop[]
 }
 
 /** A rectangle the raid floods with monsters. */
@@ -27,7 +35,7 @@ export type RaidArea = {
   y2: number
   z: number
   delay: number
-  monsters: { name: string; amount: number }[]
+  monsters: { name: string; amount: number; drops?: RaidDrop[] }[]
 }
 
 export type Raid = {
@@ -88,19 +96,39 @@ export function useRaids() {
   })
 }
 
+/** Stable identity for grouping: same creature AND same special drop. */
+const dropKey = (drops?: RaidDrop[]) =>
+  drops?.length ? drops.map((d) => `${d.item}@${d.chance}`).join('+') : ''
+
 /**
  * Every creature the raid spawns with its total count, biggest first. Areas and
  * single tiles are merged because a player only cares what shows up, not which
- * XML element produced it.
+ * XML element produced it — but special-drop variants stay SEPARATE, otherwise
+ * the three Amazon-set Orc Warlords in Thais collapse into an indistinguishable
+ * "3x Orc Warlord" and the whole reason to run that raid disappears.
  */
-export function raidRoster(raid: Raid): { name: string; amount: number }[] {
-  const totals = new Map<string, number>()
-  const add = (name: string, n: number) => totals.set(name, (totals.get(name) ?? 0) + n)
-  for (const s of raid.spawns) add(s.name, s.amount ?? 1)
-  for (const a of raid.areas) for (const m of a.monsters) add(m.name, m.amount)
-  return [...totals]
-    .map(([name, amount]) => ({ name, amount }))
-    .sort((p, q) => q.amount - p.amount || p.name.localeCompare(q.name))
+export function raidRoster(raid: Raid): { name: string; amount: number; drops?: RaidDrop[] }[] {
+  const totals = new Map<string, { name: string; amount: number; drops?: RaidDrop[] }>()
+  const add = (name: string, n: number, drops?: RaidDrop[]) => {
+    const key = `${name}|${dropKey(drops)}`
+    const cur = totals.get(key)
+    if (cur) cur.amount += n
+    else totals.set(key, { name, amount: n, drops: drops?.length ? drops : undefined })
+  }
+  for (const s of raid.spawns) add(s.name, s.amount ?? 1, s.drops)
+  for (const a of raid.areas) for (const m of a.monsters) add(m.name, m.amount, m.drops)
+  // Carriers first — they are what the raid is worth running for.
+  return [...totals.values()].sort(
+    (p, q) =>
+      Number(Boolean(q.drops)) - Number(Boolean(p.drops)) ||
+      q.amount - p.amount ||
+      p.name.localeCompare(q.name)
+  )
+}
+
+/** "amazon helmet 5%" — the label for a variant's special drop. */
+export function dropLabel(drops: RaidDrop[]): string {
+  return drops.map((d) => `${d.item} ${d.chance}%`).join(', ')
 }
 
 /**
@@ -118,25 +146,33 @@ export function raidTimeline(raid: Raid): RaidStep[] {
     message: a.message,
   }))
 
-  // Waves that fire at the same moment are one beat for the reader.
-  const waves = new Map<number, Map<string, number>>()
-  const push = (at: number, name: string, n: number) => {
-    const w = waves.get(at) ?? new Map<string, number>()
-    w.set(name, (w.get(name) ?? 0) + n)
+  // Waves that fire at the same moment are one beat for the reader — but, as in
+  // the roster, a special-drop variant is never merged into its plain twin.
+  type Wave = { name: string; n: number; drops?: RaidDrop[] }
+  const waves = new Map<number, Map<string, Wave>>()
+  const push = (at: number, name: string, n: number, drops?: RaidDrop[]) => {
+    const w = waves.get(at) ?? new Map<string, Wave>()
+    const key = `${name}|${dropKey(drops)}`
+    const cur = w.get(key)
+    if (cur) cur.n += n
+    else w.set(key, { name, n, drops: drops?.length ? drops : undefined })
     waves.set(at, w)
   }
-  for (const s of raid.spawns) push(s.delay, s.name, s.amount ?? 1)
-  for (const a of raid.areas) for (const m of a.monsters) push(a.delay, m.name, m.amount)
+  for (const s of raid.spawns) push(s.delay, s.name, s.amount ?? 1, s.drops)
+  for (const a of raid.areas) for (const m of a.monsters) push(a.delay, m.name, m.amount, m.drops)
 
   for (const [at, w] of waves) {
-    const parts = [...w]
-      .sort((p, q) => q[1] - p[1])
-      .map(([name, n]) => (n > 1 ? `${n}× ${name}` : name))
+    const parts = [...w.values()]
+      .sort((p, q) => q.n - p.n)
+      .map((e) => {
+        const base = e.n > 1 ? `${e.n}× ${e.name}` : e.name
+        return e.drops ? `${base} (${dropLabel(e.drops)})` : base
+      })
     steps.push({
       at,
       kind: 'spawn',
       label: parts.join(', '),
-      count: [...w.values()].reduce((n, k) => n + k, 0),
+      count: [...w.values()].reduce((n, e) => n + e.n, 0),
     })
   }
 

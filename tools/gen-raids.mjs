@@ -23,32 +23,76 @@ const otDir = path.join(root, 'ot', 'data-otservbr-global')
 const raidsDir = path.join(otDir, 'raids')
 const outFile = path.join(root, 'frontend', 'public', 'raids.json')
 
-// Raids spawn creatures by monster-TYPE key, which is not always the creature's
-// name. `monster/raids/` holds guaranteed-drop variants whose key describes the
-// loot: createMonsterType("Orc Helmet") is really an Orc Warlord that always
-// drops a helmet. Map every type key to the name players actually see, so the
-// layer never claims "Orc Helmet" is a boss.
-function monsterNames(dir) {
-  const byKey = new Map()
+/**
+ * Loot entries of one monster lua, as `{ item, chance }`. Items are written two
+ * ways — `name = "amazon helmet"` or `id = 3393` with the name in a trailing
+ * comment — so both are normalised to the lowercase item name, which is what
+ * makes variants comparable to their base monster.
+ */
+function parseLoot(src) {
+  const block = src.match(/monster\.loot\s*=\s*\{([\s\S]*?)\n\}/)
+  if (!block) return []
+  const out = []
+  for (const line of block[1].split('\n')) {
+    if (!line.includes('chance')) continue
+    const named = line.match(/name\s*=\s*"([^"]+)"/)
+    const comment = line.match(/--\s*(.+?)\s*$/)
+    const id = line.match(/id\s*=\s*(\d+)/)
+    const item = named?.[1] ?? comment?.[1] ?? (id ? `#${id[1]}` : null)
+    const chance = line.match(/chance\s*=\s*(\d+)/)
+    if (item && chance) out.push({ item: item.toLowerCase(), chance: Number(chance[1]) })
+  }
+  return out
+}
+
+/**
+ * Raids spawn creatures by monster-TYPE key, which is not always the creature's
+ * name. `monster/raids/` holds special-drop variants whose key describes the
+ * intent: createMonsterType("Orc Helmet") is really an Orc Warlord carrying an
+ * extra item. Two things fall out of that and both matter to the layer:
+ *
+ *  - the display name, so it never claims "Orc Helmet" is a boss;
+ *  - what the variant carries that its BASE monster does not. Diffing the two
+ *    loot tables is what surfaces the Amazon set (helmet/shield/armour at 5%,
+ *    only obtainable from the Thais orc raid) and Venore's guaranteed backpack.
+ */
+function monsterIndex(dir) {
+  const files = []
   const walk = (p) => {
     for (const e of fs.readdirSync(p, { withFileTypes: true })) {
       const f = path.join(p, e.name)
-      if (e.isDirectory()) {
-        walk(f)
-        continue
-      }
-      if (!f.endsWith('.lua')) continue
-      const src = fs.readFileSync(f, 'utf8')
-      const key = src.match(/createMonsterType\("([^"]+)"\)/)
-      if (!key) continue
-      const display = src.match(/^\s*monster\.name\s*=\s*"([^"]+)"/m)
-      byKey.set(key[1].toLowerCase(), display ? display[1] : key[1])
+      if (e.isDirectory()) walk(f)
+      else if (f.endsWith('.lua')) files.push(f)
     }
   }
   walk(dir)
+
+  const byKey = new Map()
+  for (const f of files) {
+    const src = fs.readFileSync(f, 'utf8')
+    const key = src.match(/createMonsterType\("([^"]+)"\)/)
+    if (!key) continue
+    const display = src.match(/^\s*monster\.name\s*=\s*"([^"]+)"/m)
+    byKey.set(key[1].toLowerCase(), {
+      name: display ? display[1] : key[1],
+      loot: parseLoot(src),
+      drops: [],
+    })
+  }
+
+  // A variant is any type whose key is not its creature's name. What it adds on
+  // top of the base creature's loot is the reason the raid exists.
+  for (const [key, m] of byKey) {
+    if (key === m.name.toLowerCase()) continue
+    const base = byKey.get(m.name.toLowerCase())
+    if (!base) continue
+    const had = new Set(base.loot.map((l) => l.item))
+    m.drops = m.loot.filter((l) => !had.has(l.item)).map((l) => ({ item: l.item, chance: l.chance }))
+  }
+
   return byKey
 }
-const MONSTERS = monsterNames(path.join(otDir, 'monster'))
+const MONSTERS = monsterIndex(path.join(otDir, 'monster'))
 
 // Coordinates outside the real world map are script artefacts (test rooms).
 const X_MIN = 30000, X_MAX = 34500, Y_MIN = 30500, Y_MAX = 33500, Z_MAX = 15
@@ -107,7 +151,16 @@ const properName = (s) =>
  * Raid monster-type key -> the creature name the codex knows. OT capitalisation
  * is inconsistent too ("the Horned Fox", "Minotaur mage"), so normalise both.
  */
-const creatureName = (raw) => properName(MONSTERS.get(raw.toLowerCase()) ?? raw)
+const creatureName = (raw) => properName(MONSTERS.get(raw.toLowerCase())?.name ?? raw)
+
+/**
+ * What this raid variant carries beyond its ordinary self, as `{ item, chance }`
+ * with chance already in percent. Empty for a plain creature.
+ */
+function creatureDrops(raw) {
+  const drops = MONSTERS.get(raw.toLowerCase())?.drops ?? []
+  return drops.map((d) => ({ item: d.item, chance: d.chance / 1000 }))
+}
 
 /** Read one raid file into { announcements, spawns, areas }. */
 function parseRaidFile(file) {
@@ -126,7 +179,15 @@ function parseRaidFile(file) {
     const a = attrs(m[0])
     const [x, y, z] = [num(a.x), num(a.y), num(a.z)]
     if (!a.name || !inWorld(x, y, z)) continue
-    spawns.push({ name: creatureName(a.name), x, y, z, delay: num(a.delay) ?? 0 })
+    const drops = creatureDrops(a.name)
+    spawns.push({
+      name: creatureName(a.name),
+      x,
+      y,
+      z,
+      delay: num(a.delay) ?? 0,
+      ...(drops.length ? { drops } : {}),
+    })
   }
 
   // <areaspawn ...> ... <monster/> ... </areaspawn> — the monsters belong to the
@@ -143,14 +204,28 @@ function parseRaidFile(file) {
     const monsters = []
     for (const mm of m[2].matchAll(/<monster\b[^>]*\/?>/g)) {
       const ma = attrs(mm[0])
-      if (ma.name) monsters.push({ name: creatureName(ma.name), amount: num(ma.amount) ?? 1 })
+      if (!ma.name) continue
+      const drops = creatureDrops(ma.name)
+      monsters.push({
+        name: creatureName(ma.name),
+        amount: num(ma.amount) ?? 1,
+        ...(drops.length ? { drops } : {}),
+      })
     }
     // Plenty of raids express a named spawn as a 1x1 "area" (Munster, Apprentice
     // Sheng, Rottie the Rotworm…). Fold those back into point spawns so they are
     // pinned — and named — like the singlespawn bosses they really are.
     if (x1 === x2 && y1 === y2) {
       for (const mo of monsters) {
-        spawns.push({ name: mo.name, x: x1, y: y1, z, delay: num(a.delay) ?? 0, amount: mo.amount })
+        spawns.push({
+          name: mo.name,
+          x: x1,
+          y: y1,
+          z,
+          delay: num(a.delay) ?? 0,
+          amount: mo.amount,
+          ...(mo.drops ? { drops: mo.drops } : {}),
+        })
       }
       continue
     }

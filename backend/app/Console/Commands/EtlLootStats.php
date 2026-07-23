@@ -30,6 +30,7 @@ class EtlLootStats extends Command
     protected $signature = 'tibia:etl-loot-stats
         {--limit=0 : Max creatures to process (0 = all)}
         {--sleep=150 : Delay between wiki requests in milliseconds}
+        {--refresh : Re-fetch the wiki pages instead of using the on-disk cache}
         {--dry-run : Report what would change without writing}';
 
     protected $description = 'Derive realistic expected gold-per-kill for creatures from TibiaWiki Loot Statistics';
@@ -138,7 +139,25 @@ class EtlLootStats extends Command
         return $map;
     }
 
-    /** Best gp estimate for one item: NPC sell price, else top of the wiki range. */
+    /**
+     * Best gp estimate for one item.
+     *
+     * `npc_value` (what an NPC actually pays) is authoritative. The wiki's free-
+     * text `value` is the fallback, and it has to be read carefully:
+     *
+     *  - Prose is not a price. "Backpack of worms: from 800 to 1600" describes a
+     *    BACKPACK of worms, and reading 1600 off it priced a single worm at 1600
+     *    gp — which put Hyaena (drops ~1 worm/kill, 20 exp) at 1,608 gp/kill and
+     *    made a hyaena den the richest spot on the map for a level-20 knight.
+     *    Same shape in "Negotiable. 35,000,000+" and "500kk+": player-market
+     *    chatter, not something you can sell for gp. Worth 0 — the creature's
+     *    real income is its coins, and inventing a price for the unsellable is
+     *    what inflated our profit/h against every hunting guide.
+     *  - A plain range ("5-15") is one item across different NPCs. Take the
+     *    MIDPOINT. The low end was the first guess and it read 24% under the
+     *    guide's profit across the calibration set — you don't systematically
+     *    sell to the worst buyer in the game.
+     */
     private function itemWorth(array $meta): int
     {
         $npc = data_get($meta, 'npc_value');
@@ -146,13 +165,17 @@ class EtlLootStats extends Command
             return (int) $npc;
         }
         $value = data_get($meta, 'value');
-        if (is_string($value) && preg_match_all('/\d[\d,]*/', $value, $m)) {
-            $nums = array_map(fn ($n) => (int) str_replace(',', '', $n), $m[0]);
-
-            return $nums ? max($nums) : 0;
+        if (! is_string($value)) {
+            return 0;
         }
+        // Only a bare number or a bare range counts; "gp" is allowed as a unit.
+        $clean = trim(preg_replace('/\bgp\b|[.,]/i', ' ', $value) ?? '');
+        if ($clean === '' || ! preg_match('/^\d+(\s*-\s*\d+)?$/', $clean)) {
+            return 0;
+        }
+        $nums = array_map('intval', preg_split('/\s*-\s*/', $clean) ?: []);
 
-        return 0;
+        return $nums ? (int) round(array_sum($nums) / count($nums)) : 0;
     }
 
     /**
@@ -160,11 +183,23 @@ class EtlLootStats extends Command
      * there's no such page (many creatures lack sampled stats). Uses system curl
      * with the mirror UA — the same call the image mirror relies on to pass the
      * fandom CDN, which rejects PHP/Guzzle's TLS fingerprint.
+     *
+     * The pages are cached on disk. The wikitext is the raw material; the gp
+     * figure we derive from it is a MODEL (which item is worth what), and tuning
+     * that model shouldn't mean crawling a thousand fandom pages again. `--refresh`
+     * re-fetches; the daily job should use it, local tuning shouldn't.
      */
     private function fetchLootStats(string $enName): ?string
     {
         $title = 'Loot_Statistics:'.str_replace(' ', '_', $enName);
         $url = 'https://tibia.fandom.com/wiki/'.rawurlencode($title).'?action=raw';
+
+        $cacheFile = $this->cacheDir().'/'.md5($title).'.wiki';
+        if (! $this->option('refresh') && is_file($cacheFile)) {
+            $body = (string) file_get_contents($cacheFile);
+
+            return str_contains($body, '{{Loot2') ? $body : null;
+        }
 
         try {
             $res = Process::timeout(40)->run([
@@ -177,11 +212,28 @@ class EtlLootStats extends Command
         }
 
         if (! $res->successful()) {
+            // Cache the miss too: "no stats page" is a stable fact, and without
+            // this every re-run pays the full crawl for the creatures that have
+            // no page — which is most of the misses.
+            file_put_contents($cacheFile, '');
+
             return null;
         }
         $body = $res->output();
+        file_put_contents($cacheFile, $body);
 
         return str_contains($body, '{{Loot2') ? $body : null;
+    }
+
+    /** Where the raw wiki pages live. Created on first use. */
+    private function cacheDir(): string
+    {
+        $dir = storage_path('app/loot-stats');
+        if (! is_dir($dir)) {
+            mkdir($dir, 0775, true);
+        }
+
+        return $dir;
     }
 
     /**

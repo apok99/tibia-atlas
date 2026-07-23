@@ -68,6 +68,31 @@ class HuntFinder
     private const KILL_OVERHEAD = 3.0;
 
     /**
+     * Gold burnt on supplies per hour: `SUPPLY_COEF · level^SUPPLY_EXP`.
+     *
+     * Without a supply cost at all our loot figure was GROSS haul value while
+     * every hunting guide publishes NET profit, so we read +39% high overall
+     * and absurd at the bottom (a gargoyle cave "paying" 330k/h to a level 20
+     * the guide prices at 10k). A hunt that loses money — Lava Lurkers, Corym
+     * Black Market — cannot even be expressed without it.
+     *
+     * The curve is SUPERLINEAR, fitted to the guide rather than assumed: a
+     * flat gp-per-level charged a level-8 rotworm hunter ~20k/h, which is more
+     * gold than that character has, and the whole low-level list went negative.
+     * Consumption ramps instead — you barely potion at 20, you burn supremes
+     * nonstop at 600. Two anchors from the guide pin it: ~2k/h at level 8 and
+     * ~390k/h at level 300 (Asura Palace's 550k net against our gross), which
+     * gives exponent 1.45 — and that then predicts ~1.05kk/h at level 600,
+     * matching what the endgame rows imply. Vocation only tilts it: a paladin's
+     * ammunition costs about what a knight's potions do.
+     */
+    private const SUPPLY_EXP = 1.45;
+
+    private const SUPPLY_COEF = [
+        'knight' => 100, 'paladin' => 105, 'monk' => 98, 'sorcerer' => 95, 'druid' => 92, '' => 100,
+    ];
+
+    /**
      * Zones returned to the UI. `tibia:hunt-calibrate` passes a huge limit
      * instead: it has to tell "this zone isn't in our data" apart from "it's in
      * our data but ranks 40th", and a truncated list makes both look identical.
@@ -121,7 +146,7 @@ class HuntFinder
         $set = $gearIds !== [] ? $this->setFromGear($gearIds, $vocation) : null;
         $set ??= $this->deriveSet($level, $vocation);
         $creatures = $this->scoreCreatures($set, $level, $vocation, $team, $locale);
-        $zones = $this->buildZones($creatures, $team, $limit);
+        $zones = $this->buildZones($creatures, $team, $limit, $this->supplyPerHour($level, $vocation));
 
         return [
             'level' => $level,
@@ -595,7 +620,7 @@ class HuntFinder
      * @param  array<int, array<string, mixed>>  $creatures  keyed by creature id
      * @return list<array<string, mixed>>
      */
-    private function buildZones(array $creatures, bool $team, int $limit = self::DEFAULT_LIMIT): array
+    private function buildZones(array $creatures, bool $team, int $limit, float $supplyPerHour): array
     {
         // Bucket spawn points by floor, tagged with their creature id.
         $byFloor = [];
@@ -615,7 +640,7 @@ class HuntFinder
                 if ($cluster['count'] < self::MIN_CLUSTER_POINTS) {
                     continue;
                 }
-                $zone = $this->scoreZone($cluster, $z, $creatures, $team);
+                $zone = $this->scoreZone($cluster, $z, $creatures, $team, $supplyPerHour);
                 if ($zone !== null) {
                     $zones[] = $zone;
                 }
@@ -627,11 +652,15 @@ class HuntFinder
         // A multi-floor dungeon clusters once per floor and would flood the
         // list with five "Iksupan" rows — keep the two best per name so the
         // advice stays varied.
+        // Cap on the bare PLACE, not the display name: now that labels carry the
+        // dominant resident, five Edron clusters would read as five different
+        // names and slip the cap the rule exists to enforce.
         $perName = [];
         $zones = array_values(array_filter($zones, function ($z) use (&$perName) {
-            $perName[$z['name']] = ($perName[$z['name']] ?? 0) + 1;
+            $key = $z['place'] ?? $z['name'];
+            $perName[$key] = ($perName[$key] ?? 0) + 1;
 
-            return $perName[$z['name']] <= 2;
+            return $perName[$key] <= 2;
         }));
 
         // Cap the list and give each a stable id + a 0-100 "match" relative to
@@ -706,7 +735,7 @@ class HuntFinder
      * @param  array{x:int,y:int,count:int,spread:int,members:array<int,int>}  $cluster
      * @param  array<int, array<string, mixed>>  $creatures
      */
-    private function scoreZone(array $cluster, int $z, array $creatures, bool $team): ?array
+    private function scoreZone(array $cluster, int $z, array $creatures, bool $team, float $supplyPerHour): ?array
     {
         $members = [];
         $totalCount = 0;
@@ -721,6 +750,7 @@ class HuntFinder
 
         $areaWeight = [];
         $placeWeight = [];
+        $placeLabel = [];
         foreach ($cluster['members'] as $id => $count) {
             $c = $creatures[$id] ?? null;
             if ($c === null) {
@@ -731,7 +761,15 @@ class HuntFinder
             }
             if (! empty($c['place']) && ! preg_match(self::VAGUE_PLACE, $c['place'])) {
                 $place = $this->normalizePlace($c['place']);
-                $placeWeight[$place] = ($placeWeight[$place] ?? 0) + $count;
+                if ($place !== '' && ! preg_match(self::VAGUE_PLACE, $place)) {
+                    $key = $this->placeKey($place);
+                    $placeWeight[$key] = ($placeWeight[$key] ?? 0) + $count;
+                    // Shortest spelling wins the label: "Hero Cave" over
+                    // "Edron Hero Cave", "Hive" over "The Hive".
+                    if (! isset($placeLabel[$key]) || mb_strlen($place) < mb_strlen($placeLabel[$key])) {
+                        $placeLabel[$key] = $place;
+                    }
+                }
             }
             $totalCount += $count;
             $weightedScore += $c['score'] * $count;
@@ -796,21 +834,36 @@ class HuntFinder
         // name beats the nearest overland landmark, which is plain wrong for
         // deep-floor dungeons (the Secret Library labelled "Port Hope"). The
         // wide-radius nearest() is the last resort so no zone goes nameless.
-        $name = $this->dominant($placeWeight, $totalCount)
-            ?? $this->plurality($placeWeight, $totalCount)
+        $placeKey = $this->dominant($placeWeight, $totalCount)
+            ?? $this->plurality($placeWeight, $totalCount);
+        $name = ($placeKey !== null ? ($placeLabel[$placeKey] ?? null) : null)
             ?? $this->questAreaName($this->dominant($areaWeight, $totalCount))
             ?? HuntZones::nearest($cluster['x'], $cluster['y'])
             ?? HuntZones::nearest($cluster['x'], $cluster['y'], 2000);
 
         // Quest-gated complexes: team-oriented ones are no solo advice at all;
-        // the rest stay but carry the access badge.
+        // the rest stay but carry the access badge. Gate on the raw place name,
+        // before the display name gets qualified below.
         $access = self::GATED_PLACES[$name] ?? null;
         if ($access === 'quest_team' && ! $team) {
             return null;
         }
 
+        // A bare city or region is not a hunting spot — "Edron" covers a rotworm
+        // cave, a dragon lair and a hero fortress, and told the player nothing
+        // about which one this is. Every hunting guide names these the same way,
+        // by what lives there: qualify the landmark with the cluster's dominant
+        // resident ("Rotworms — Edron").
+        $resident = $this->dominantResident($cluster['members'], $creatures, $totalCount);
+        $supply = $this->zoneSupply($supplyPerHour, $risk, $team);
+
         return [
-            'name' => $name,
+            'name' => $this->qualifyLandmark($name, $resident),
+            // The bare place, kept for anything that has to reason about the
+            // dungeon itself (gating, aliases, the calibration report) rather
+            // than about what to show the player.
+            'place' => $name,
+            'resident' => $resident,
             'x' => $cluster['x'],
             'y' => $cluster['y'],
             'z' => $z,
@@ -824,7 +877,12 @@ class HuntFinder
             // of their individual rates — that overweights the fast trash you'd
             // only meet occasionally.
             'exp_h' => $totalSeconds > 0 ? (int) round(3600 * $weightedExp / $totalSeconds) : 0,
-            'profit_h' => $totalSeconds > 0 ? (int) round(3600 * $weightedGold / $totalSeconds) : 0,
+            // NET, the way hunting guides quote it: the haul minus what the hour
+            // costs in supplies. Negative is a real answer — plenty of good exp
+            // spots lose money — so it is not floored.
+            'profit_h' => $totalSeconds > 0 ? (int) round(3600 * $weightedGold / $totalSeconds - $supply) : 0,
+            'loot_h' => $totalSeconds > 0 ? (int) round(3600 * $weightedGold / $totalSeconds) : 0,
+            'supply_h' => (int) round($supply),
             'spawn_count' => $cluster['count'],
             'creatures' => $members,
         ];
@@ -835,17 +893,152 @@ class HuntFinder
      * "Secret Library (fire section)", "The Secret Library (energy section)",
      * "Secret Library earth", even an unclosed "Secret Library (earth" — and
      * the split vote left those clusters mislabelled with far-away landmarks
-     * (and dodging the gated-place rule). Strip the article, anything from an
-     * opening paren on, and trailing section qualifiers.
+     * (and dodging the gated-place rule).
+     *
+     * They are also written as SENTENCES, not names: "In Hero Cave in Edron",
+     * "Deep under Drefia", "South-east of Venore", "Cyclopolis second floor and
+     * below". Those went straight into the ranking as zone titles, and worse,
+     * they split the vote against the clean spelling of the same dungeon
+     * ("Hero Cave" vs "In Hero Cave in Edron" vs "Edron Hero Cave" were three
+     * different places to us). Peel the prose off so a dungeon gets one key.
      */
     private function normalizePlace(string $place): string
     {
-        $p = (string) preg_replace('/^The\s+/i', '', trim($place));
-        $p = (string) preg_replace('/\s*\(.*$/', '', $p);
+        // Anything from a parenthesis, a colon or a "/" alternative on is a
+        // qualifier: "The Hive: east tower (beyond gates)" is the Hive.
+        $p = (string) preg_replace('/\s*[(\/:].*$/', '', trim($place));
+
+        // Leading locative wrappers, peeled repeatedly: "In the jungle of
+        // Tiquanda" → "Tiquanda", "Deep under Drefia" → "Drefia".
+        $prev = null;
+        while ($prev !== $p) {
+            $prev = $p;
+            $p = (string) preg_replace('/^(?:the|a|an|in|on|at|near|around|inside|below|beneath|deep|under|underneath|throughout|within|all)\s+/i', '', $p);
+            $p = (string) preg_replace('/^(?:north|south|east|west)(?:[-\s](?:east|west))?\s+of\s+/i', '', $p);
+            $p = (string) preg_replace('/^(?:jungle|forest|streets|caves?|mines?|area|surroundings|outskirts|dungeons?)\s+of\s+/i', '', $p);
+        }
+
+        // Trailing qualifiers — a floor, a section, a side. Deliberately a
+        // closed list: a blanket "drop everything after a preposition" would
+        // turn "Pits of Inferno" into "Pits".
         $p = (string) preg_replace('/\s+\w+\s+section$/i', '', $p);
         $p = (string) preg_replace('/\s+(fire|energy|ice|earth|holy|death)$/i', '', $p);
+        $p = (string) preg_replace('/\s+(?:on\s+the\s+)?(surface|underground)$/i', '', $p);
+        $p = (string) preg_replace('/\s+(?:second|third|lower|upper|a\s+few)\s+floors?.*$/i', '', $p);
+        // "Caves of the Lost and Lower Spike", "Warzone 4 and Warzone 6": a
+        // second place bolted on. The list of tails is closed on purpose —
+        // "Ebb and Flow" is one place and must survive.
+        $p = (string) preg_replace('/\s+and\s+(?:mainland|below|warzones?|lower|upper|middle|nibelor|north|south|east|west|\d)\b.*$/i', '', $p);
+        // "…in the Skeleton area", "Hero Cave in Edron": the head is the place,
+        // the tail says where the place is. Only strips a trailing "in", so
+        // "Pits of Inferno" and "Court of Winter" are untouched.
+        $p = (string) preg_replace('/\s+in\s+(?:the\s+)?\S.*$/i', '', $p);
 
+        // "Kha'zeel" and "Khazeel" are the same mountain; so are "First
+        // Dragon's Lair" and "First Dragons Lair". Fold punctuation and case
+        // for the vote, but keep the tidiest spelling seen for display.
         return trim($p);
+    }
+
+    /**
+     * The creature that actually defines this cluster: the most common resident,
+     * but only when it's common enough to speak for the spot (≥30% of the spawn
+     * points). A five-way mix of trash has no headline resident and shouldn't
+     * get one invented.
+     *
+     * @param  array<int,int>  $memberCounts  creature id => spawn points here
+     * @param  array<int, array<string, mixed>>  $creatures
+     */
+    private function dominantResident(array $memberCounts, array $creatures, int $totalCount): ?string
+    {
+        arsort($memberCounts);
+        foreach ($memberCounts as $id => $count) {
+            $c = $creatures[$id] ?? null;
+            if ($c === null) {
+                continue;
+            }
+
+            return $count >= 0.3 * $totalCount ? (string) $c['name'] : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * "Edron" + Rotworm → "Rotworms — Edron". Only bare cities and regions get
+     * qualified: a place that already names a specific dungeon ("Hero Cave",
+     * "Pits of Inferno") is precise enough, and bolting the resident onto it
+     * just makes the label long.
+     */
+    private function qualifyLandmark(?string $name, ?string $resident): ?string
+    {
+        if ($name === null || $resident === null) {
+            return $name;
+        }
+        $isLandmark = false;
+        foreach ([HuntZones::LANDMARKS, HuntZones::REGIONS] as $tier) {
+            foreach ($tier as [$place]) {
+                if ($place === $name) {
+                    $isLandmark = true;
+                    break 2;
+                }
+            }
+        }
+        if (! $isLandmark) {
+            return $name;
+        }
+
+        return $this->pluralize($resident).' — '.$name;
+    }
+
+    /** Creature names are singular in the bestiary; a hunting spot is a crowd. */
+    private function pluralize(string $name): string
+    {
+        if (preg_match('/(s|x|z|ch|sh)$/i', $name)) {
+            return $name.'es';
+        }
+        if (preg_match('/[^aeiou]y$/i', $name)) {
+            return substr($name, 0, -1).'ies';
+        }
+        if (preg_match('/(man|men)$/i', $name)) {
+            return (string) preg_replace('/man$/i', 'men', $name);
+        }
+
+        return $name.'s';
+    }
+
+    /**
+     * Gold per hour this hunter burns on supplies, before the per-zone risk
+     * adjustment. Level drives it; vocation only tilts it (a paladin's ammo
+     * costs about what a knight's potions do).
+     */
+    private function supplyPerHour(int $level, string $vocation): float
+    {
+        return (self::SUPPLY_COEF[$vocation] ?? self::SUPPLY_COEF['']) * $level ** self::SUPPLY_EXP;
+    }
+
+    /**
+     * Same hunter, different spot: a zone that barely scratches you costs about
+     * half the baseline, one that hits for a third of your HP per bad turn costs
+     * about half again more. Clamped so no zone reads as free.
+     */
+    private function zoneSupply(float $supplyPerHour, float $risk, bool $team): float
+    {
+        $mult = 0.7 + 0.6 * min(1.2, $risk / 0.35);
+        // In a team you take fewer hits each but still pay for your own share of
+        // the healing; the danger relief already applied to `risk` would
+        // otherwise make a party hunt look nearly supply-free.
+        if ($team) {
+            $mult *= 1.25;
+        }
+
+        return $supplyPerHour * $mult;
+    }
+
+    /** Vote key: normalized place folded to letters, so spelling variants merge. */
+    private function placeKey(string $place): string
+    {
+        return (string) preg_replace('/[^a-z0-9]/', '', mb_strtolower($place));
     }
 
     /** The key holding ≥60% of the cluster's weight, or null if none dominates. */
