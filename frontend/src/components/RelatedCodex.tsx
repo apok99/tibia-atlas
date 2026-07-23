@@ -24,6 +24,49 @@ const orderOf = (t: EntryType) => {
 }
 
 /**
+ * Wiki pages that are about the game rather than about the world: they get
+ * auto-linked from lore text but are never a lore cross-reference.
+ */
+const NOT_LORE = new Set(['tibia', 'retargeting'])
+
+/**
+ * The importer types every auto-linked wiki page as `concept` regardless of
+ * what it really is, so a creature's "concepts" are usually its spawn areas.
+ * The group is still worth showing — it's where the article points — but it
+ * must not claim to be a taxonomy it isn't, hence its own neutral rubric.
+ */
+const isMention = (type: EntryType) => type === 'concept'
+
+/** A quill nib: these are passages the article points at, not a kind of thing. */
+function MentionIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M4 20l4-1 9.5-9.5a2.1 2.1 0 0 0-3-3L5 16zM14.5 6.5l3 3" />
+    </svg>
+  )
+}
+
+/** Drop cross-references that carry nothing a reader can use. */
+function usable(r: EntryListItem): boolean {
+  const name = r.name ?? r.slug ?? ''
+  // Wiki sub-pages ("Forsaken Mine/Cyclopes") duplicate their parent article.
+  if (name.includes('/')) return false
+  if (NOT_LORE.has(r.slug)) return false
+  // Empty auto-stubs: no blurb and no sprite means an empty page behind the link.
+  if (!r.overview && !r.primary_image) return false
+  return true
+}
+
+/**
  * "Véase también" — the entry sidebar's cross-reference plate, styled like the
  * index of an old atlas: one framed panel, entries grouped under small-caps
  * type rubrics, each reference a round sprite medallion with its name in
@@ -31,14 +74,15 @@ const orderOf = (t: EntryType) => {
  */
 export function RelatedCodex({ items }: { items: EntryListItem[] }) {
   const { t } = useTranslation()
-  if (items.length === 0) return null
+  const shown = items.filter(usable)
+  if (shown.length === 0) return null
 
   const types: EntryType[] = []
-  for (const r of items) if (!types.includes(r.type)) types.push(r.type)
+  for (const r of shown) if (!types.includes(r.type)) types.push(r.type)
   types.sort((a, b) => orderOf(a) - orderOf(b))
   const groups = types.map((type) => ({
     type,
-    entries: items.filter((r) => r.type === type),
+    entries: shown.filter((r) => r.type === type),
   }))
 
   return (
@@ -60,9 +104,15 @@ export function RelatedCodex({ items }: { items: EntryListItem[] }) {
         {groups.map(({ type, entries }) => (
           <div key={type} className="py-1.5">
             <div className="flex items-center gap-2 px-4 py-1.5">
-              <TypeIcon type={type} className="h-3.5 w-3.5 text-accent" />
+              {isMention(type) ? (
+                <MentionIcon className="h-3.5 w-3.5 text-accent" />
+              ) : (
+                <TypeIcon type={type} className="h-3.5 w-3.5 text-accent" />
+              )}
               <span className="small-caps text-fg-dim">
-                {t(`types.${type}`, { defaultValue: type })}
+                {isMention(type)
+                  ? t('entry.seeAlsoMentions')
+                  : t(`types.${type}`, { defaultValue: type })}
               </span>
               <span className="h-px flex-1 bg-line" />
               <span className="font-title text-[10px] font-semibold tabular-nums text-fg-mute">
@@ -92,6 +142,8 @@ export function RelatedCodex({ items }: { items: EntryListItem[] }) {
                         loading="lazy"
                         className="sprite max-h-9 max-w-9 object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] transition duration-200 group-hover:scale-110"
                       />
+                    ) : isMention(r.type) ? (
+                      <MentionIcon className="h-5 w-5 text-fg-mute" />
                     ) : (
                       <TypeIcon type={r.type} className="h-5 w-5 text-fg-mute" />
                     )}

@@ -705,6 +705,38 @@ html[data-theme='dark'] .ks-raid-badge {
   transform: translate(-50%, -50%) scale(1.12);
 }
 
+/* Raid pins — where a scripted invasion drops its named creatures. Ember red so
+   they read as a threat against the gilded lore books and the house rings. */
+.tm-raid {
+  width: 30px;
+  height: 30px;
+  transform: translate(-50%, -50%);
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: linear-gradient(160deg, #e0563f, #8c2418);
+  border: 2.5px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.8);
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.15s;
+}
+.tm-raid svg {
+  width: 17px;
+  height: 17px;
+  display: block;
+}
+.tm-raid:hover {
+  transform: translate(-50%, -50%) scale(1.15);
+  filter: brightness(1.12);
+  z-index: 500;
+}
+.tm-raid.is-active {
+  box-shadow: 0 0 0 3px rgba(212, 72, 59, 0.55), 0 2px 8px rgba(0, 0, 0, 0.8);
+  transform: translate(-50%, -50%) scale(1.12);
+}
+
 /* Item trade pins — merchants that buy/sell the searched item. Gold = sells it
    to you, green = pays you for it, split when both; dimmed on other floors. */
 .tm-trade {

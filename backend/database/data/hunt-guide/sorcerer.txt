@@ -1,169 +1,197 @@
 1000|Forsaken Crypt|-|-|Death
-800|True Asuras|-|-|Energy
-800|Podzilla Quaras|-|-|Energy
+800|Azzilon Catacombs|-|-|Death
 800|Bloodfire Gorge|-|-|Fire
-800|Ingol -3|-|-|Fire
+800|Bulltaur Lair|-|-|Death
 800|Feru Juggernauts|-|-|Energy
 800|Feru Mazoran|-|-|Energy
-800|Feru Undead Dragons|-|-|Energy
 800|Feru Pumin Boss Floor|-|-|Energy
-800|Ingol -2|-|-|Death
+800|Feru Undead Dragons|-|-|Energy
 800|Ingol -1|-|-|Death
+800|Ingol -2|-|-|Death
+800|Ingol -3|-|-|Fire
 800|Ingol Surface|-|-|Death
+800|Podzilla Quaras|-|-|Energy
+800|True Asuras|-|-|Energy
 800|Warzone 9|-|-|Death
-800|Azzilon Catacombs|-|-|Death
-800|Bulltaur Lair|-|-|Death
-600|Warzone 8|-|-|Energy
-600|Warzone 7|-|-|Fire
-600|Oramond Mountain Hideout -1/-2|-|-|Energy
-600|Norcferatu Dungeons East|-|-|Fire
-600|Norcferatu Dungeons West|-|-|Fire
 600|Nimmersatt's Boss Floor (-6)|-|-|Energy
 600|Nimmersatt's Bottom Floor (-7)|-|-|Energy
-500|Floating Savants MoTA|-|-|Energy
-500|Deep Desert|-|-|Energy
+600|Norcferatu Dungeons East|-|-|Fire
+600|Norcferatu Dungeons West|-|-|Fire
+600|Oramond Mountain Hideout -1/-2|-|-|Energy
+600|Warzone 7|-|-|Fire
+600|Warzone 8|-|-|Energy
 500|Azzilon Castle|-|-|Energy
-500|Carnisylvans|-|-|Fire
-500|Girtablilu|-|-|Energy
-500|Warzone 3|-|-|Energy
-500|Otherworld|3.4kk|1.6kk|Fire
 500|Bashmu|3.5kk|2.4kk|Death
-500|Issavi Ogre Mountain|4.6kk|1.5kk|Energy
-500|Warzone 2|5.0kk|2.0kk|Energy
-500|Usurpers|5.6kk|2.0kk|Death
-500|Issavi Goannas|6.0kk|1.8kk|Energy
-500|Norcferatu Fortress|6.5kk|1.4kk|Fire
-500|Upper Rosh|6.7kk|1.7kk|Energy
-500|Issavi Sphinxes & Crypt Wardens|7.0kk|1.4kk|Death
+500|Carnisylvans|-|-|Fire
 500|Cobra Basement -1|7.1kk|1.5kk|Death
 500|Cobra Bastion|7.2kk|1.4kk|Death
+500|Crypt Warriors|6.0kk|700k|Fire/Energy
+500|Deep Desert|-|-|Energy
+500|Flimsy Port Hope|5.5kk|600k|-
 500|Flimsy Port Hope (-1/-2)|7.5kk|1.1kk|Fire
 500|Flimsy Venore|8.0kk|1.3kk|Fire
+500|Floating Savants MoTA|-|-|Energy
+500|Girtablilu|-|-|Energy
+500|Issavi Goannas|5.5kk|700k|Energy
+500|Issavi Ogre Mountain|4.6kk|1.5kk|Energy
+500|Issavi Sphinxes & Crypt Wardens|7.0kk|1.4kk|Death
+500|Marapur Nagas|5.5kk|400k|Energy
+500|Norcferatu Fortress|6.5kk|1.4kk|Fire
+500|Oramond Catacombs|5.0kk|500k|-
+500|Otherworld|3.4kk|1.6kk|Fire
+500|Upper Rosh|6.7kk|1.7kk|Energy
+500|Usurpers|5.6kk|2.0kk|Death
+500|Warzone 2|5.0kk|2.0kk|Energy
+500|Warzone 3|-|-|Energy
+400|Cobras|5.0kk|1.0kk|-
+400|Deathlings|5.5kk|1.3kk|Energy
+400|Falcons|5.5kk|1.3kk|Energy
+400|Flimsy Port Hope (-1 only)|6.8kk|900k|Fire
+400|Iksupan Last Stand|5.0kk|1.0kk|Energy
+400|Nightmare Isles|-|-|Energy
+400|Oskayaat Werecrocodiles|4.7kk|1kk|-
+400|Ripper Spectres|5.0kk|1.0kk|Fire
 400|Rosha West|-|-|Energy
 400|Roshamuul Terrosleep Mines|-|-|Energy
-400|Nightmare Isles|-|-|Energy
+400|Summer Court|4.5kk|900k|Death
 400|Warzone 1|4.0kk|1.6kk|Fire
-400|Crypt Warriors|5.5kk|800k|Fire/Energy
-400|Deathlings|5.5kk|1.3kk|Energy
-400|Falcons|6.5kk|1.4kk|Energy
-400|Flimsy Port Hope (-1 only)|6.8kk|900k|Fire
-300|Marapur Turtles|-|-|Death
-300|Marapur Nagas|-|-|Energy
-300|Iksupan Occupied Sanctuary|-|-|Energy
-300|Iksupan Last Stand|-|-|Energy
-300|Werecrocodiles -1|-|-|Energy
-300|Weretigers -2|-|-|Fire
-300|Weretigers -1|-|-|Fire
-300|Warzone 6|-|-|Fire
-300|Warzone 5|-|-|Fire
-300|Warzone 4|-|-|Fire
-300|Ripper Spectres|-|-|Fire
-300|Oramond Fury|-|-|Energy
-300|Summer Court|-|-|Death
-300|Winter Court|-|-|Fire
-300|Werelions|-|-|Energy
-300|Gazer Spectre|-|-|Death
-300|Oramond Wildlife Raid|-|-|Fire
-300|Burster Spectres|-|-|Fire
-300|Candia Nibblemaws|-|-|Energy
+400|Winter Court|4.5kk|900k|Fire
 300|Asura Mirror|-|-|Energy
 300|Asura Palace|-|-|Energy
-300|Diremaw Task Area|-|-|Fire
+300|Book World: Chapter III|3.5kk|800k|Death
+300|Book World: Chapter IV|3.5kk|800k|Death
+300|Burster Spectres|-|-|Fire
+300|Candia Nibblemaws|3.2kk|600k|Energy
 300|Deeper Banuta -8|-|-|Energy
-300|Book World: Chapter IV|-|-|Death
-275|Winter Court Surface|-|-|Fire
+300|Diremaw Task Area|-|-|Fire
+300|Gazer Spectre|-|-|Death
+300|Iksupan Occupied Sanctuary|-|-|Energy
+300|Lower Spike|3.5kk|300k|Death
+300|Marapur Turtles|-|-|Death
+300|Oramond Fury|-|-|Energy
+300|Oramond Wildlife Raid|-|-|Fire
+300|Warzone 4|-|-|Fire
+300|Warzone 5|-|-|Fire
+300|Warzone 6|-|-|Fire
+300|Werecrocodiles -1|-|-|Energy
+300|Werelions|3.0kk|800k|Energy
+300|Weretigers -1|-|-|Fire
+300|Weretigers -2|-|-|Fire
 275|Werehyaenas South (T1 DE)|-|-|Death
-250|Draken Walls|-|-|Energy
-250|Lower Spike|-|-|Death
-250|INQ Hellfires + Spectres|-|-|Energy
+275|Winter Court Surface|-|-|Fire
 250|Carnivora's Rocks|-|-|Fire
-250|Medusa Tower|-|-|Fire
-250|Deeper Banuta -6|-|-|Energy
-250|Book World: Chapter III|-|-|Death
+250|Carnivors|2.0kk|800k|-
 250|Crumbling Caverns|-|-|Death/Energy
+250|Deeper Banuta -6|-|-|Energy
+250|Draken Walls|-|-|Energy
+250|INQ Hellfires + Spectres|-|-|Energy
+250|Medusa Tower|-|-|Fire
 250|Otherworld (Edron)|1.5kk|200k|Fire
-200|Seacrest Serpents|-|-|Energy
-200|Pirats Ship (The Wreckoning)|-|-|Fire/Death
-200|Mini Rosha Feyrist|1.3kk|300k|Energy
-200|Werehyaenas North|2.25kk|400k|Death
+250|Werehyaenas North|2.2kk|600k|Death
+250|Yalahar Grim Reapers|3.5kk|300k|Fire
 200|Barkless|2.3kk|-150k|Fire
 200|Book World: Chapter II|2.5kk|600k|Fire/Death
+200|Mini Rosha Feyrist|1.3kk|300k|Energy
+200|Pirats Ship (The Wreckoning)|-|-|Fire/Death
+200|Seacrest Serpents|-|-|Energy
 200|Werehyaenas South|2.6kk|400k|Death
-200|Yalahar Grim Reapers|3.2kk|-50k|Fire
-150|Otherworld (Kazo)|1.1kk|400k|Death
-150|Deeplings Library|1.5kk|800k|Energy
+150|Deeplings Library|1.3kk|100k|Energy
+150|Oramond West|2.0kk|-100k|-
 150|Oramond West (No Quara Raid)|1.9kk|200k|Fire
 150|Oramond West (Quara Raid)|2.2kk|300k|Energy
+150|Otherworld (Kazo)|1.1kk|400k|Death
 130|Behemoths Cyclopolis|900k|150k|Death
 130|Dark Faun Cave Feyrist|1.1kk|400k|Energy/Fire
 130|Okolnir|1.3kk|10k|Energy
-120|Orc Cults|1.05kk|150k|Death
-120|Misguided|1.1kk|-50k|Death
-120|Lizard Chosens|1.2kk|200k|Death
 120|Brimstone Bugs WOTE|1.2kk|400k|Energy
-120|Holy Portal|1.3kk|900k|Fire
-120|Lizard City|1.35kk|1.0kk|Energy
-120|Elder Wyrms Drefia|1.4kk|-50k|Death
-120|Carlin Cults|1.6kk|50k|Death
+120|Carlin Cults|1.2kk|-100k|Death
 120|Edron Old Fortress Heroes -2/-3|1.75kk|150k|Death
+120|Elder Wyrms Drefia|1.4kk|-50k|Death
 120|Glooth Bandits|1.75kk|400k|Fire
-100|Putrid Mummy|700k|500k|Fire
+120|Holy Portal|1.3kk|900k|Fire
+120|Lizard Chosens|1.2kk|200k|Death
+120|Lizard City|1.35kk|1.0kk|Energy
+120|Misguided|1.1kk|-50k|Death
+120|Orc Cults|1.05kk|150k|Death
+110|Edron Were South|1.4kk|100k|Fire
+110|Exotic Cave|1.2kk|300k|Fire
 100|Askarak Demons|750k|50k|Fire
-100|Desecrated Glade|850k|100k|Energy
 100|Calassa|850k|200k|Energy
+100|Desecrated Glade|850k|100k|Energy
+100|Edron Vampire Crypt|850k|400k|Fire
+100|Glooth Bandits East|1.1kk|150k|-
 100|Grimvale -4|1.0kk|500k|Fire
+100|Putrid Mummy|700k|500k|Fire
+100|Ravenous Lava Lurkers|1.8kk|-100k|Energy
 100|Souleater Mountain|1.15kk|350k|Fire
-100|Sunken Quarter|1.25kk|300k|Energy
-100|Edron Were South|1.4kk|550k|Fire
-100|Exotic Cave|1.5kk|200k|Fire
-100|Ravenous Lava Lurkers|1.6kk|-200k|Energy
-80|Hive Surface|550k|500k|Fire
-80|Giant Spiders Port Hope|600k|20k|Fire
-80|Krailos Bug Cave|600k|300k|Fire
+100|Sunken Quarter|1.3kk|0k|Energy
+90|Old Fortress (Hero Cave)|600k|10k|-
+90|Putrid Mummies|450k|200k|-
+80|Ankrahmun Stone Tomb|220k|20k|-
+80|Edron Lycanthropes Cave|700k|50k|-
 80|Feyrist Surface|625k|600k|Fire
+80|Giant Spiders Port Hope|600k|20k|Fire
+80|Hive Surface|550k|500k|Fire
+80|Iksupan|1.05kk|400k|Energy
+80|Issavi Sphinxes Surface (SD)|830k|20k|Death
+80|Krailos Bug Cave|600k|300k|Fire
 80|Muggy Plains|750k|500k|Energy
 80|Old Masonry (Death portal)|825k|80k|Fire
-80|Edron Vampire Crypt|825k|300k|Fire
-80|Issavi Sphinxes Surface (SD)|830k|20k|Death
-80|Yielothaxes|850k|40k|Energy
+80|Oramond Marshes Minos (SD)|500k|-50k|-
 80|Quaras Liberty Bay|975k|300k|Energy
-80|Iksupan|1.05kk|400k|Energy
+80|Yielothaxes|850k|40k|Energy
+70|Fenrock Dragon Lords|350k|30k|-
 70|Krailos Ogres Surface|420k|450k|Energy
 66|Liberty Bay Wyrms|550k|-125k|Death
-55|Peninsula Tomb|420k|20k|Energy
-55|Nibelor Crystal Spiders|450k|20k|Energy
-55|Lion's Rock|470k|-15k|Energy
+65|Vandura Wyrm Cave|300k|-25k|-
+60|Drefia Wyrm Lair|300k|-20k|-
+60|Middle Spike|800k|-20k|Fire
 55|Ice Witch Temple (Zushuka)|550k|30k|Energy
+55|Lion's Rock|470k|-15k|Energy
 55|Water Elementals Port Hope|670k|100k|Energy
-50|Yalahar Cults|380k|400k|Energy
+50|LB Wyrms SD|600k|-150k|-
+50|Lion's Rock Lions|440k|-20k|-
 50|MoSL -4 (Ancient Scarabs)|650k|200k|Fire
-50|Middle Spike|750k|150k|Fire
+50|Mother of Scarabs Lair|680k|-10k|-
+50|Nibelor Crystal Spiders|450k|-10k|Energy
+50|Peninsula Tomb|440k|60k|Energy
+50|Yalahar Cults|290k|500k|Energy
+45|Port Hope Giant Spiders|150k|10k|-
+45|Ramoa Bonebeasts|350k|5k|-
+40|Darashia Dragon Lair|110k|0k|-
+40|Magician Quarter Cults|300k|400k|-
+35|Cyclopolis Edron|180k|40k|-
 31|Zombies Treasure Island|200k|300k|Fire
+30|Ankrahmun Tombs (-3)|150k|20k|-
 30|Apes Banuta|200k|350k|Energy
-30|Laguna Islands|210k|500k|Fire
-30|Dryad Gardens|220k|400k|Fire
-30|Stonerefiners|270k|240k|Fire
-30|MoSL -3 (Mummy/Bonebeasts)|270k|400k|Fire
-30|Upper Spike|290k|250k|Energy
+30|Apes Banuta (Profit)|210k|200k|-
+30|Chor|290k|-20k|Fire
 30|Coryms Port Hope|300k|300k|Fire
-30|Chor|325k|-10k|Fire
-28|Gargoyle Cave Meriana|210k|300k|Fire
-20|Mutated Humans Yala|120k|-5k|Fire
+30|Dryad Gardens|220k|400k|Fire
+30|Laguna Islands|210k|500k|Fire
+30|Laguna Islands (Profit)|200k|400k|-
+30|MoSL -3 (Mummy/Bonebeasts)|270k|400k|Fire
+30|Stonerefiners|270k|240k|Fire
+28|Gargoyle Cave Meriana|220k|50k|Fire
+28|Upper Spike|320k|75k|Energy
+25|Mistrock Cyclops|130k|30k|-
 20|Edron Earth Elementals|150k|10k|Fire
+20|Mutated Humans Yala|120k|-5k|Fire
 15|Elves Yalahar|80k|150k|N/A
+15|Stonerefiners (Stealth Ring)|135k|40k|N/A
+14|Coryms Port Hope (Stealth Ring)|100k|-5k|N/A
 13|Cyclops Mistrock|75k|15k|N/A
+12|Drefia Surface|75k|50k|-
+12|Edron Forgotten Tomb|75k|50k|N/A
 12|Targuna Infernoids|90k|35k|N/A
 10|Targuna Pirates|70k|50k|N/A
-8|Swamp Trolls Port Hope/Venore|30k|50k|N/A
-8|Larvas|35k|-4k|N/A
-8|Crocodiles Port Hope|40k|-4k|N/A
-8|Rotworms Liberty Bay/Darashia|40k|0k|N/A
 8|Amazon Camp|45k|125k|N/A
 8|Cormaya Dwarf Mines|55k|-5k|N/A
-8|Targuna Lizards|55k|50k|N/A
-8|Tarantulas Port Hope|60k|-10k|N/A
-8|Terramites Darashia|60k|120k|N/A
-8|Edron Forgotten Tomb|75k|50k|N/A
+8|Crocodiles Port Hope|40k|-4k|N/A
+8|Larvas|35k|-4k|N/A
 8|Minotaurs Darashia (Stealth Ring)|95k|-10k|N/A
-8|Coryms Port Hope (Stealth Ring)|100k|0k|N/A
-8|Stonerefiners (Stealth Ring)|135k|40k|N/A
+8|Rotworms Liberty Bay/Darashia|40k|0k|N/A
+8|Swamp Trolls Port Hope/Venore|30k|50k|N/A
+8|Tarantulas Port Hope|60k|-10k|N/A
+8|Targuna Lizards|55k|50k|N/A
+8|Terramites Darashia|60k|120k|N/A

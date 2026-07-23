@@ -97,6 +97,16 @@ class HuntFinder
     ];
 
     /**
+     * Bestiary "Locations" strings that describe a DISTRIBUTION, not a place:
+     * "Almost everywhere", "In many dungeons around Tibia", "Various locations".
+     * They named real clusters in the ranking ("Almost everywhere in tibia" was
+     * the 6th best spot for a level-20 knight), which is both useless advice and
+     * unmatchable against any hunting guide. Rejected as names so the cluster
+     * falls through to its quest area or nearest landmark.
+     */
+    private const VAGUE_PLACE = '/\b(almost )?every(where|thing)|many (dungeons|parts)|various locations|all (over|around|grass)|most grass|several spawns|throughout the|it raids\b/i';
+
+    /**
      * @param  list<int>  $gearIds  entry ids of the player's REAL equipment (the
      *                              map's character gear); when they resolve to
      *                              wearable items the ranking runs against that
@@ -719,7 +729,7 @@ class HuntFinder
             if (! empty($c['quest_area'])) {
                 $areaWeight[$c['quest_area']] = ($areaWeight[$c['quest_area']] ?? 0) + $count;
             }
-            if (! empty($c['place'])) {
+            if (! empty($c['place']) && ! preg_match(self::VAGUE_PLACE, $c['place'])) {
                 $place = $this->normalizePlace($c['place']);
                 $placeWeight[$place] = ($placeWeight[$place] ?? 0) + $count;
             }

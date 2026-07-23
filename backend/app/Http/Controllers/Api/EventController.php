@@ -14,6 +14,9 @@ use Illuminate\Http\Request;
  */
 class EventController extends Controller
 {
+    /** How far back the ticker looks; older rows stay in the table but aren't news. */
+    private const MAX_AGE_DAYS = 7;
+
     /**
      * GET /api/events?world=Antica&limit=40
      * → { world, events: [{id, type, ref_id, title, town, meta, occurred_at}] }
@@ -25,6 +28,10 @@ class EventController extends Controller
 
         $events = WorldEvent::query()
             ->where('world', $world)
+            // A ticker is for news, not history: anything older than a week is
+            // stale even though the rows live 30 days (pruned by tibia:etl-houses).
+            // On a quiet world the ticker simply shows the daily digest, or nothing.
+            ->where('occurred_at', '>=', now()->subDays(self::MAX_AGE_DAYS))
             ->orderByDesc('occurred_at')
             ->orderByDesc('id')
             ->limit($limit)

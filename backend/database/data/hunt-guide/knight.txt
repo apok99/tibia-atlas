@@ -1,154 +1,177 @@
-1000|True Asuras|-|-|Energy
+1000|True Asuras|5.8kk|1.8kk|Energy
 800|Bloodfire Gorge|-|-|Physical
-800|Raubritters Castle|-|-|Physical
+800|Bulltaurs|7.0kk|1.6kk|Earth
+800|Cobra Bastion|9.0kk|1.5kk|Ice, Fire, Energy, Death
+800|Feru DT seal|6.0kk|1.5kk|Ice
+800|Feru Infernatil Seal|7.0kk|1.6kk|Ice
+800|Feru Pumin Seal|7.0kk|1.8kk|Energy
+800|Feru Way|6.5kk|1.5kk|Ice
 800|Norcferatu Dungeons East|-|-|Ice, Earth, Fire
 800|Norcferatu Dungeons West|-|-|Ice, Earth, Fire
-800|Feru DT seal|-|-|Ice
-800|Feru Way|-|-|Ice
-800|Feru Infernatil Seal|-|-|Ice
-800|Feru Pumin Seal|-|-|Energy
-800|Cobra Bastion|-|-|Ice, Fire, Energy, Death
-800|Bulltaurs|-|-|Earth
-700|Feru Plague seal|-|-|Energy
-700|Wardragons|-|-|Earth
-700|Azzilon Castle|-|-|Ice, Energy
+800|Raubritters Castle|-|-|Physical
+700|Azzilon Castle|7.0kk|1.2kk|Ice, Energy
+700|Feru Plague seal|5.5kk|1.5kk|Energy
+700|Wardragons|7.0kk|1.0kk|Earth
+600|Azzilon Walls|6.0kk|1.0kk|Ice, Energy
+600|Girtablilus|3.7kk|1.4kk|Energy
+600|Issavi Sewers|5.5kk|1.0kk|Ice
+600|Issavi Surface (East)|6.0kk|350k|Ice
 600|Norcferatu Fortress|-|-|Ice, Earth
-600|Girtablilus|-|-|Energy
-600|Oramond Mountain Hideout -1/-2|-|-|Energy
-600|Temple of the Sun and Sea|-|-|Ice
-600|Issavi Sewers|-|-|Ice
-600|Warzone 3|-|-|Energy
-600|Issavi Surface (East)|-|-|Ice
-600|Azzilon Walls|-|-|Ice, Energy
-550|Bashmu|-|-|Ice
-550|Flimsy Port Hope|-|-|Fire
-550|Flimsy Venore -1|-|-|Fire
-550|Cobra Bastion -1|-|-|Ice, Fire, Energy, Death
-500|Warzone 7|-|-|Fire
-500|Otherworld|-|-|Earth
-500|Carnisylvans|-|-|Fire
-500|Warzone 1|-|-|Fire
-500|Warzone 8|-|-|Ice
-500|Floating Savants MoTA|-|-|Ice
-500|INQ Dark Torturer Seal|-|-|Physical
-500|Nightmare Isles|-|-|Energy
-500|Warzone 2|-|-|Ice
-500|Oramond Catacombs|-|-|Physical
-500|Deathlings|-|-|Earth, Energy
-500|Oskayaat Werecrocodiles|-|-|Ice
-500|Oskayaat Weretigers|-|-|Earth
-500|Cobra Bastion for Beginners|-|-|Ice, Fire, Energy, Death
-500|Summer Court full boxing|-|-|Ice
-500|Issavi Crypts (Sphinx, Wardens)|-|-|Death
-450|Prison -2|-|-|Physical, Energy
-450|Roshamuul Shockheads|-|-|Physical
-450|Summer Court for first timers (half boxes)|-|-|Ice
-450|Nagas|-|-|Earth, Energy
-400|POI Infernatil + DT Seals|-|-|Ice
-400|Marapur Turtles and Foam Stalkers|-|-|Earth
-400|POI Verminor Seal|-|-|Physical
-400|Warzone 6|-|-|Ice
-400|Winter Court|-|-|Fire
-400|Prison -1|-|-|Physical, Energy
-400|Rosha West|-|-|Physical, Ice
-400|Roshamuul Mines|-|-|Energy
-400|Haunted House|-|-|Fire
-400|Burster Spectre|-|-|Fire
-400|Buried Cathedral -1|-|-|Ice
-350|POI Dark Torturer Seal|-|-|Ice
-350|POI Infernatil Seal (Fire)|-|-|Ice
-350|Winter Court behind TP/Portal|-|-|Fire
-350|Lower Rosha|-|-|Physical, Ice
-350|Gazer Spectre|-|-|Ice
-350|Oramond Wildlife Raid|-|-|Ice
-350|Warzone 5|-|-|Ice, Fire
-350|Asura Mirror -1|-|-|Energy, Ice
-300|Book World: IV|-|-|Earth
-300|Book World: III|-|-|Earth
+600|Oramond Mountain Hideout -1/-2|4.0kk|800k|Energy
+600|Temple of the Sun and Sea|5.2kk|650k|Ice
+600|Warzone 3|5.5kk|2.0kk|Energy
+550|Bashmu|3.2kk|1.3kk|Ice
+550|Cobra Bastion -1|6.5kk|400k|Ice, Fire, Energy, Death
+550|Flimsy Port Hope|5.0kk|550k|Fire
+550|Flimsy Venore -1|5.1kk|1.0kk|Fire
+500|Carnisylvans|3.2kk|1.5kk|Fire
+500|Cobra Bastion for Beginners|5.5kk|700k|Ice, Fire, Energy, Death
+500|Deathlings|4.9kk|700k|Earth, Energy
+500|Floating Savants MoTA|4.0kk|1.0kk|Ice
+500|INQ Dark Torturer Seal|4.0kk|1.1kk|Physical
+500|Issavi Crypts (Sphinx, Wardens)|6.2kk|500k|Death
+500|Nightmare Isles|4.2kk|800k|Energy
+500|Oramond Catacombs|4.4kk|900k|Physical
+500|Oskayaat Werecrocodiles|4.9kk|800k|Ice
+500|Oskayaat Weretigers|5.1kk|900k|Earth
+500|Otherworld|3.0kk|1.1kk|Earth
+500|Summer Court full boxing|6.0kk|1.0kk|Ice
+500|Warzone 1|3.5kk|1.0kk|Fire
+500|Warzone 2|4.3kk|900k|Ice
+500|Warzone 7|2.4kk|1.1kk|Fire
+500|Warzone 8|3.7kk|1.6kk|Ice
+450|Nagas|5.0kk|500k|Earth, Energy
+450|Prison -2|4.0kk|850k|Physical, Energy
+450|Roshamuul Shockheads|4.3kk|1.0kk|Physical
+450|Summer Court for first timers (half boxes)|4.8kk|900k|Ice
+400|Buried Cathedral -1|4.5kk|750k|Ice
+400|Burster Spectre|4.5kk|400k|Fire
+400|Haunted House|4.4kk|800k|Fire
+400|Marapur Turtles and Foam Stalkers|2.6kk|1.2kk|Earth
+400|POI Infernatil + DT Seals|2.2kk|900k|Ice
+400|POI Verminor Seal|3.0kk|650k|Physical
+400|Prison -1|4.1kk|850k|Physical, Energy
+400|Rosha West|4.3kk|1.0kk|Physical, Ice
+400|Roshamuul Mines|4.4kk|600k|Energy
+400|Warzone 6|3.0kk|750k|Ice
+400|Winter Court|4.0kk|750k|Fire
+350|Asura Mirror -1|5.7kk|800k|Energy, Ice
+350|Gazer Spectre|3.7kk|700k|Ice
+350|Lower Rosha|3.5kk|750k|Physical, Ice
+350|Oramond Wildlife Raid|3.8kk|600k|Ice
+350|POI Dark Torturer Seal|1.5kk|550k|Ice
+350|POI Infernatil Seal (Fire)|1.5kk|700k|Ice
+350|Warzone 5|3.9kk|800k|Ice, Fire
+350|Winter Court behind TP/Portal|3.3kk|600k|Fire
+300|Asura Palace|3.4kk|550k|Energy
 300|Book World: II|-|-|Fire, Death
-300|Diremaw Task Area|-|-|Ice
-300|Oramond Fury Dungeon|-|-|Energy
-300|Wote 8 Drakens|-|-|Ice
-300|Werelions -2|-|-|Ice
-300|Drefia Grim Reapers|-|-|Fire
-300|Candia Nibblemaws|-|-|Energy
-300|Werelions -1|-|-|Ice
-300|Deeper Banuta (Bottom Floor)|-|-|Energy
-300|Asura Palace|-|-|Energy
-300|Warzone 4|-|-|Fire
-250|Carnivora's Rock|-|-|Fire, Ice
-250|Medusa Tower|-|-|Energy
-200|Minotaur Cults|-|-|Ice
-200|Pirats|-|-|Earth
-200|Glooth Bandits|-|-|Fire
-200|Otherworld (Edron)|-|-|Physical
-200|Hive Stage3|-|-|Ice
-200|Glooth Tower|-|-|Physical, Energy
-200|Draken Walls|-|-|Physical, Ice, Energy
-200|Seacrest Serpents|-|-|Physical, Energy
-200|Werehyaenas North|-|-|Ice
-200|Werehyaenas South|-|-|Ice
-200|Yalahar Grim Reapers|-|-|Fire, Energy
-185|Deeplings Library|-|-|Physical
-150|Iksupan|-|-|Physical
-150|Otherworld (Kazo)|-|-|Physical
-150|Oramond Minos|-|-|Physical
-150|Edron South Werecreatures|-|-|Physical
-150|Elder Wyrms Drefia|-|-|Physical
-150|Lower Spike|-|-|Physical
-150|Barkless Ab Cults|-|-|Physical
+300|Book World: III|-|-|Earth
+300|Book World: IV|-|-|Earth
+300|Candia Nibblemaws|2.8kk|450k|Energy
+300|Deeper Banuta (Bottom Floor)|3.0kk|800k|Energy
+300|Diremaw Task Area|2.4kk|700k|Ice
+300|Drefia Grim Reapers|2.8kk|200k|Fire
+300|Oramond Fury Dungeon|2.5kk|500k|Energy
+300|Warzone 4|3.5kk|600k|Fire
+300|Werelions -1|2.9kk|800k|Ice
+300|Werelions -2|2.7kk|700k|Ice
+300|Wote 8 Drakens|2.7kk|700k|Ice
+250|Carnivora's Rock|2.0kk|800k|Fire, Ice
+250|Medusa Tower|2.2kk|400k|Energy
+200|Draken Walls|2.1kk|350k|Physical, Ice, Energy
+200|Glooth Bandits|1.8kk|500k|Fire
+200|Glooth Tower|2.05kk|250k|Physical, Energy
+200|Hive Stage3|2.0kk|300k|Ice
+200|Minotaur Cults|1.0kk|550k|Ice
+200|Otherworld (Edron)|1.9kk|250k|Physical
+200|Pirats|1.7kk|500k|Earth
+200|Seacrest Serpents|2.1kk|400k|Physical, Energy
+200|Werehyaenas North|2.2kk|250k|Ice
+200|Werehyaenas South|2.6kk|250k|Ice
+200|Yalahar Grim Reapers|3.5kk|0k|Fire, Energy
+185|Deeplings Library|1.6kk|100k|Physical
+150|Barkless Ab Cults|2.2kk|-250k|Physical
+150|Edron South Werecreatures|1.7kk|100k|Physical
+150|Elder Wyrms Drefia|1.8kk|0|Physical
+150|Iksupan|1.1kk|150k|Physical
+150|Lower Spike|1.9kk|100k|Physical
+150|Oramond Minos|1.5kk|150k|Physical
+150|Otherworld (Kazo)|1.2kk|100k|Physical
+130|Dark Faun Cave|1.1kk|150k|Physical
 130|Desecrated Glade|-|-|Physical
+130|Edron Orc Cults|1.15kk|200k|Physical
+130|Grimvale -4|1.4kk|100k|Physical
+130|Hydras Oramond|1.2kk|150k|Physical
 130|Lizard Chosens|-|-|Physical
+130|Mini Rosha|1.15kk|350k|Physical
+130|Okolnir|1.55kk|-75k|Physical
+130|Oramond West|1.9kk|50k|Physical
+130|Ravenous Lava Lurkers|2.1kk|-200k|Physical
 130|Replica Dungeon|-|-|Physical
-130|Dark Faun Cave|-|-|Physical
-130|Edron Orc Cults|-|-|Physical
-130|Mini Rosha|-|-|Physical
-130|Hydras Oramond|-|-|Physical
-130|Grimvale -4|-|-|Physical
-130|Okolnir|-|-|Physical
-130|Yalahar Sunken Quarter|-|-|Physical
-130|Oramond West|-|-|Physical
-130|Ravenous Lava Lurkers|-|-|Physical
+130|Yalahar Sunken Quarter|1.6kk|150k|Physical
 100|Exotic Cave|-|-|Physical
-90|Yielothax|-|-|Physical
+90|Carlin Cults|1.3kk|75k|Physical
+90|Edron Heroes -2/-3|1.2kk|150k|Physical
+90|Edron Vampire Crypt|800k|200k|Physical
+90|Fenrock Dragon Lords|950k|0k|Physical
+90|Inner Hive Stage2 East|750k|300k|Physical
+90|Krailos Bug Cave|600k|150k|Physical
+90|Nightmare Scions Krailos|1.25kk|0k|Physical
 90|Sea Serpents|-|-|Physical
-90|Krailos Bug Cave|-|-|Physical
-90|Inner Hive Stage2 East|-|-|Physical
-90|Edron Vampire Crypt|-|-|Physical
-90|Fenrock Dragon Lords|-|-|Physical
-90|Edron Heroes -2/-3|-|-|Physical
-90|Nightmare Scions Krailos|-|-|Physical
-90|Carlin Cults|-|-|Physical
-80|Giant Spiders PH|-|-|Physical
-70|Wyrms LB -1|-|-|Physical
+90|Yielothax|-|-|Physical
+80|Giant Spiders PH|500k|25k|Physical
+70|Hive Surface|450k|100k|Physical
 70|Middle Spike|-|-|Physical
-70|Hive Surface|-|-|Physical
-70|Yalahar Alchemist Outskirts|-|-|Physical
-70|Yalahar Bog Raiders Central|-|-|Physical
-70|Mother of Scarabs Lair -4/-5|-|-|Physical
-50|Yalahar Dragons|-|-|Physical
-50|Mutated Rats Alchemist Quarter|-|-|Physical
-50|Darashia Dragon Lair|-|-|Physical
-50|Old Fortress -1 (Bonebeasts)|-|-|Physical
-50|Vengoth Haunted Treelings|-|-|Physical
-50|Nibelor Crystal Spiders|-|-|Physical
-50|Lion's Rock|-|-|Physical
-35|Laguna Islands|-|-|Physical
-35|Blood Crabs Laguna Islands|-|-|Physical
-35|Mutated Humans Yalahar (Exori)|-|-|Physical
-35|Pirates Yalahar|-|-|Physical
-35|Mother of Scarabs Lair -3|-|-|Physical
-30|Zombies Treasure Island|-|-|Physical
-30|Coryms Port Hope|-|-|Physical
-20|Mutated Humans Yalahar (Single target)|-|-|Physical
-20|Stonerefiners (Stealth Ring)|-|-|Physical
-16|Yalahar/Darashia Minotaurs (Stealth Ring)|-|-|Physical
-16|Elves Yalahar|-|-|Physical
-16|Tarantulas Port Hope|-|-|Physical
+70|Mother of Scarabs Lair -4/-5|600k|20k|Physical
+70|Wyrms LB -1|-|-|Physical
+70|Yalahar Alchemist Outskirts|470k|75k|Physical
+70|Yalahar Bog Raiders Central|600k|20k|Physical
+50|Darashia Dragon Lair|250k|20k|Physical
+50|Lion's Rock|500k|65k|Physical
+50|Mutated Rats Alchemist Quarter|240k|-10k|Physical
+50|Nibelor Crystal Spiders|400k|90k|Physical
+50|Old Fortress -1 (Bonebeasts)|300k|10k|Physical
+50|Vengoth Haunted Treelings|360k|15k|Physical
+50|Yalahar Dragons|180k|0k|Physical
+50|Yalahar Mutated Tigers|200k|30k|Earth
+45|Orc Fortress Surface|60k|15k|Physical
+45|Peninsula Tomb -2/-3|100k|50k|Physical
+35|Blood Crabs Laguna Islands|100k|150k|Physical
+35|Corym Black Market|100k|-20k|Physical
+35|Dark Cathedral|50k|10k|Physical
+35|Laguna Islands|90k|50k|Physical
+35|Mother of Scarabs Lair -3|200k|150k|Physical
+35|Mutated Humans Yalahar (Exori)|135k|20k|Physical
+35|Pirates Yalahar|180k|90k|Physical
+35|Shadowthorn|55k|5k|Physical
+35|Venore Dragon Lair (East)|60k|5k|Physical
+30|Ankrahmun Stone Tomb -3|80k|30k|Physical
+30|Coryms Port Hope|150k|-30k|Physical
+30|Zombies Treasure Island|120k|50k|Physical
+25|Cyclops Camp Edron|40k|5k|Physical
+25|Meriana Gargoyle Cave|45k|10k|Physical
+25|Venore Amazon Camp|40k|60k|Physical
+20|Dworcs Port Hope|30k|15k|Physical
+20|Krimhorn Barbarian Camp|100k|3k|Physical
+20|Mount Sternum Undead|60k|20k|Physical
+20|Mutated Humans Yalahar (Single target)|85k|5k|Physical
+20|Stonerefiners (Stealth Ring)|100k|20k|Physical
+20|Venore Salamander Cave|35k|45k|Physical
+16|Elves Yalahar|50k|75k|Physical
+16|Tarantulas Port Hope|55k|10k|Physical
+16|Yalahar/Darashia Minotaurs (Stealth Ring)|50k|-5k|Physical
+15|Mintwallin Minotaurs|25k|10k|Physical
+13|Fenrock Tortoises & Crocodiles|30k|50k|Physical
 12|Targuna Infernoids|-|-|Physical
+10|Darashia Rotworm Cave|15k|4k|Physical
+10|Edron Rotworm Cave|14k|4k|Physical
 10|Targuna Pirates|-|-|Physical
-8|Crocodiles Port Hope|-|-|Physical
-8|Swamp Trolls Port Hope/Venore|-|-|Physical
-8|Larva Ankrahmun|-|-|Physical
-8|Rotworms Liberty Bay/Darashia|-|-|Physical
+8|Amazon Camp Venore|5k|15k|Physical
+8|Crocodiles Port Hope|25k|4k|Physical
+8|Edron Troll-Goblin Peninsula|10k|5k|Physical
+8|Fibula Rotworm Cave|12k|3k|Physical
+8|Larva Ankrahmun|30k|3k|Physical
+8|Mistrock Cyclops (Stealth Ring)|80k|5k|Physical
+8|Rotworms Liberty Bay/Darashia|35k|5k|Physical
+8|Swamp Trolls Port Hope/Venore|25k|50k|Physical
 8|Targuna Lizards|-|-|Physical

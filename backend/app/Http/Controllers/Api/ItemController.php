@@ -71,6 +71,9 @@ class ItemController extends Controller
      */
     public function index(Request $request): AnonymousResourceCollection
     {
+        $raw = trim((string) $request->string('q'));
+        $term = '%'.addcslashes($raw, '%_\\').'%';
+
         $items = Entry::query()
             ->ofType('item')
             // The album lists every locale it has; the picker only renders one
@@ -92,9 +95,7 @@ class ItemController extends Controller
                 "(meta->'vocations' = '[]'::jsonb or meta->'vocations' @> ?::jsonb)",
                 [json_encode([(string) $request->string('vocation')])]
             ))
-            ->when($request->filled('q'), function ($q) use ($request) {
-                $raw = trim((string) $request->string('q'));
-                $term = '%'.addcslashes($raw, '%_\\').'%';
+            ->when($raw !== '', function ($q) use ($term, $raw) {
                 // Substring match, plus trigram similarity (pg_trgm %) so a
                 // typo — "soulshedder" — still finds Soulshredder. Similarity
                 // only kicks in from 4 chars: shorter terms would flood the
@@ -114,7 +115,25 @@ class ItemController extends Controller
             ->when(
                 (string) $request->string('sort') === 'power',
                 fn ($q) => $q->orderByRaw("coalesce((meta->>'power')::numeric, 0) desc")->orderBy('id'),
-                fn ($q) => $q->orderBy('id'),
+                // Free-text searches rank by match quality (exact name, then
+                // prefix, then substring, then trigram-only) — a trigram net
+                // over 'silver token' also catches every 'silver *' and
+                // '* token', and by-id order buried the literal hit past the
+                // page cut. The id tiebreaker keeps pagination stable.
+                fn ($q) => $q->when(
+                    $raw !== '',
+                    fn ($s) => $s->orderByRaw(
+                        '(select min(case
+                            when lower(et.name) = lower(?) then 0
+                            when et.name ilike ? then 1
+                            when et.name ilike ? then 2
+                            else 3 end)
+                          from entry_translations et
+                          where et.entry_id = entries.id)',
+                        [$raw, addcslashes($raw, '%_\\').'%', $term]
+                    )->orderBy('id'),
+                    fn ($s) => $s->orderBy('id'),
+                ),
             )
             ->paginate($this->clamp($request, 'per_page', 60, 1, 200))
             ->withQueryString();

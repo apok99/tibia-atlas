@@ -57,7 +57,7 @@ class HuntCalibrate extends Command
             : ['knight', 'paladin', 'monk', 'sorcerer', 'druid'];
 
         $totals = ['rows' => 0, 'unmappable' => 0, 'unresolved' => 0, 'hit' => 0, 'miss' => 0, 'elOk' => 0, 'elCmp' => 0];
-        $expErrors = [];
+        $errors = ['exp_h' => [], 'profit_h' => []];
 
         foreach ($vocations as $vocation) {
             $rows = $this->load($vocation);
@@ -118,12 +118,20 @@ class HuntCalibrate extends Command
                     }
                 }
 
-                if ($this->option('exp') && $row['exp_h'] !== null && $zone['exp_h'] > 0) {
-                    $expErrors[] = [
-                        'voc' => $vocation, 'lvl' => $row['level'], 'zone' => $row['zone'],
-                        'real' => $row['exp_h'], 'ours' => $zone['exp_h'],
-                        'err' => ($zone['exp_h'] - $row['exp_h']) / $row['exp_h'],
-                    ];
+                if ($this->option('exp')) {
+                    foreach (['exp_h', 'profit_h'] as $field) {
+                        // Solo comparamos contra números que la guía trae. El
+                        // profit de la guía es NETO y puede ser negativo, así
+                        // que el error relativo se mide contra su magnitud.
+                        if ($row[$field] === null || $zone[$field] === 0) {
+                            continue;
+                        }
+                        $errors[$field][] = [
+                            'voc' => $vocation, 'lvl' => $row['level'], 'zone' => $row['zone'],
+                            'real' => $row[$field], 'ours' => $zone[$field],
+                            'err' => ($zone[$field] - $row[$field]) / max(1, abs($row[$field])),
+                        ];
+                    }
                 }
             }
 
@@ -146,8 +154,10 @@ class HuntCalibrate extends Command
         $this->newLine();
         $this->report('TOTAL', $totals);
 
-        if ($expErrors !== []) {
-            $this->expReport($expErrors);
+        foreach ($errors as $field => $rows) {
+            if ($rows !== []) {
+                $this->rewardReport($field, $rows);
+            }
         }
 
         return self::SUCCESS;
@@ -328,22 +338,32 @@ class HuntCalibrate extends Command
         ));
     }
 
-    private function expReport(array $errors): void
+    /**
+     * Error de una magnitud por hora (exp o profit) contra los números reales de
+     * la guía. Además del error mediano reporta el SESGO (mediana con signo):
+     * un error grande y simétrico es ruido de la fuente, uno grande y con signo
+     * es un modelo mal calibrado, y son problemas distintos.
+     */
+    private function rewardReport(string $field, array $errors): void
     {
         usort($errors, fn ($a, $b) => abs($a['err']) <=> abs($b['err']));
         $abs = array_map(fn ($e) => abs($e['err']), $errors);
         $median = $abs[intdiv(count($abs), 2)];
         $within30 = count(array_filter($abs, fn ($e) => $e <= 0.30));
 
+        $signed = array_map(fn ($e) => $e['err'], $errors);
+        sort($signed);
+        $bias = $signed[intdiv(count($signed), 2)];
+
         $this->newLine();
         $this->info(sprintf(
-            'exp/h contra %d números reales: error mediano %.0f%%, dentro de ±30%% %d (%.0f%%)',
-            count($errors), 100 * $median, $within30, 100 * $within30 / count($errors)
+            '%s contra %d números reales: error mediano %.0f%%, sesgo %+.0f%%, dentro de ±30%% %d (%.0f%%)',
+            $field, count($errors), 100 * $median, 100 * $bias, $within30, 100 * $within30 / count($errors)
         ));
-        $this->line(sprintf('%-9s %-34s %10s %10s %8s', 'voc', 'zona', 'real', 'nuestro', 'error'));
+        $this->line(sprintf('%-9s %-34s %12s %12s %8s', 'voc', 'zona', 'real', 'nuestro', 'error'));
         foreach ($errors as $e) {
             $this->line(sprintf(
-                '%-9s %-34s %10s %10s %+7.0f%%',
+                '%-9s %-34s %12s %12s %+7.0f%%',
                 $e['voc'], mb_substr($e['zone'], 0, 34),
                 number_format($e['real']), number_format($e['ours']), 100 * $e['err']
             ));

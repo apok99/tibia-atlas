@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Link } from 'react-router-dom'
+import { useQueries } from '@tanstack/react-query'
+import { api } from '../lib/api'
+import type { SearchResult } from '../types'
 import { compact } from '../lib/format'
 
 // Items Cledwyn (Feyrist) recharges for silver tokens — straight from the OT
@@ -112,6 +116,30 @@ function parseAnalyzer(text: string): Parsed {
 // Loose coins in the loot list, folded to raw gold.
 const COIN_VALUE: Record<string, number> = { 'gold coin': 1, 'platinum coin': 100, 'crystal coin': 10_000 }
 
+// Resolve analyzer names (creatures or items) against the site's own /search,
+// so each report row gets its sprite and a link to its page. One tiny cached
+// request per unique name; only an exact name match of the right type counts —
+// a wrong link is worse than no link.
+function useResolvedRows(names: string[], type: 'creature' | 'item') {
+  const results = useQueries({
+    queries: names.map((n) => ({
+      queryKey: ['hp-resolve', type, n.toLowerCase()],
+      staleTime: 24 * 60 * 60 * 1000,
+      enabled: n.trim().length >= 2,
+      queryFn: async (): Promise<SearchResult | null> => {
+        const { data } = await api.get<{ data: SearchResult[] }>('/search', { params: { q: n } })
+        const lower = n.trim().toLowerCase()
+        return data.data.find((r) => r.type === type && (r.name ?? '').toLowerCase() === lower) ?? null
+      },
+    })),
+  })
+  const map: Record<string, SearchResult | null> = {}
+  names.forEach((n, i) => {
+    map[n.toLowerCase()] = results[i]?.data ?? null
+  })
+  return map
+}
+
 type Config = {
   imbueCount: number
   imbueCost: number
@@ -186,14 +214,38 @@ function Tile({ label, value, tone }: { label: string; value: string; tone?: 'go
   )
 }
 
-// One horizontal bar of a single-hue magnitude chart: label, thin track, count
-// (+ share when a total is given) directly labelled — identity lives in the
-// row text, never in the color.
-function BarRow({ name, count, max, total, color }: { name: string; count: number; max: number; total: number; color: string }) {
+// One horizontal bar of a single-hue magnitude chart: sprite, label, thin
+// track, count (+ share when a total is given) directly labelled — identity
+// lives in the row text, never in the color. With a resolved entry the whole
+// row links to the creature/item page.
+function BarRow({
+  name,
+  count,
+  max,
+  total,
+  color,
+  entry,
+}: {
+  name: string
+  count: number
+  max: number
+  total: number
+  color: string
+  entry?: SearchResult | null
+}) {
   const share = total > 0 ? Math.round((count / total) * 100) : null
-  return (
-    <div className="flex items-center gap-2" title={share != null ? `${count.toLocaleString()} · ${share}%` : count.toLocaleString()}>
-      <span className="w-32 shrink-0 truncate text-xs capitalize text-fg-dim">{name}</span>
+  const body = (
+    <>
+      <span className="grid h-7 w-7 shrink-0 place-items-center">
+        {entry?.image ? (
+          <img src={entry.image} alt="" loading="lazy" className="max-h-7 max-w-7 object-contain" />
+        ) : (
+          <span className="h-1.5 w-1.5 rounded-full bg-line-2" />
+        )}
+      </span>
+      <span className={`w-32 shrink-0 truncate text-xs capitalize ${entry ? 'text-fg underline decoration-line-2 underline-offset-2' : 'text-fg-dim'}`}>
+        {name}
+      </span>
       <span className="relative h-3 min-w-0 flex-1 overflow-hidden rounded-sm bg-line/40">
         <span
           className="absolute inset-y-0 left-0 rounded-r-[4px]"
@@ -204,6 +256,20 @@ function BarRow({ name, count, max, total, color }: { name: string; count: numbe
         {count.toLocaleString()}
         {share != null && <span className="font-normal text-fg-mute"> · {share}%</span>}
       </span>
+    </>
+  )
+  const tip = share != null ? `${count.toLocaleString()} · ${share}%` : count.toLocaleString()
+  return entry ? (
+    <Link
+      to={entry.type === 'item' ? `/items/${entry.slug}` : `/entry/${entry.slug}`}
+      title={tip}
+      className="-mx-1 flex items-center gap-2 rounded-md px-1 py-0.5 transition hover:bg-surface-2/60"
+    >
+      {body}
+    </Link>
+  ) : (
+    <div className="flex items-center gap-2 px-0 py-0.5" title={tip}>
+      {body}
     </div>
   )
 }
@@ -351,6 +417,16 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
   const healH = parsed.healingPerHour ?? (parsed.healing != null && hours != null ? parsed.healing / hours : null)
   const hasReport = kills.length > 0 || lootRows.length > 0 || xpH != null || dmgH != null
 
+  // Sprite + page link for each visible row ("Others" is a label, not a name).
+  const creatureLinks = useResolvedRows(
+    kills.slice(0, 8).map((k) => k.name),
+    'creature',
+  )
+  const itemLinks = useResolvedRows(
+    lootRows.map((i) => i.name),
+    'item',
+  )
+
   const toggleItem = (id: string) =>
     setCfg((c) => ({
       ...c,
@@ -370,7 +446,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
       <div
         ref={cardRef}
         style={pos ? { position: 'absolute', left: pos.x, top: pos.y } : undefined}
-        className={`scroll-atlas pointer-events-auto max-h-[78vh] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-3.5 shadow-2xl backdrop-blur-md ${hasReport ? 'w-[46rem]' : 'w-[32rem]'}`}
+        className={`scroll-atlas pointer-events-auto max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-3.5 shadow-2xl backdrop-blur-md ${hasReport ? 'max-h-[85vh] w-[58rem]' : 'max-h-[78vh] w-[32rem]'}`}
       >
         {/* Header doubles as the drag handle — grab it to move the card. */}
         <div
@@ -522,7 +598,15 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
                   </div>
                   <div className="flex flex-col gap-1">
                     {killRows.map((k) => (
-                      <BarRow key={k.name} name={k.name} count={k.count} max={Math.max(...killRows.map((r) => r.count))} total={totalKills} color="var(--color-accent)" />
+                      <BarRow
+                        key={k.name}
+                        name={k.name}
+                        count={k.count}
+                        max={Math.max(...killRows.map((r) => r.count))}
+                        total={totalKills}
+                        color="var(--color-accent)"
+                        entry={creatureLinks[k.name.toLowerCase()]}
+                      />
                     ))}
                   </div>
                 </div>
@@ -539,7 +623,15 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
                   </div>
                   <div className="flex flex-col gap-1">
                     {lootRows.map((i) => (
-                      <BarRow key={i.name} name={i.name} count={i.count} max={lootRows[0].count} total={0} color="var(--color-gold)" />
+                      <BarRow
+                        key={i.name}
+                        name={i.name}
+                        count={i.count}
+                        max={lootRows[0].count}
+                        total={0}
+                        color="var(--color-gold)"
+                        entry={itemLinks[i.name.toLowerCase()]}
+                      />
                     ))}
                   </div>
                 </div>

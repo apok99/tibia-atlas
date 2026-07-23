@@ -42,6 +42,15 @@ import {
 import { useItems, useSetStats, useEntry } from '../hooks/useEntries'
 import { LoreText } from '../components/LoreText'
 import { LORE_POIS, type LorePoi } from '../lib/lorePois'
+import {
+  raidDelay,
+  raidInterval,
+  raidRegion,
+  raidRoster,
+  raidTimeline,
+  useRaids,
+  type Raid,
+} from '../lib/raids'
 import { RASHID_ROTATION, rashidEffectiveDay, useRashidClock, type RashidStop } from '../lib/rashid'
 import { YASIR_DOCKS, type YasirDock } from '../lib/yasir'
 import { SKILL_LABELS, signed } from '../components/items/itemStats'
@@ -52,7 +61,7 @@ import { TypeIcon } from '../components/TypeIcon'
 import { Skeleton } from '../components/Skeleton'
 import { MapTutorial, mapTourSeen } from '../components/MapTutorial'
 import HuntProfitTool from '../components/HuntProfitTool'
-import type { Dropper, Entry, EntryListItem, ItemDetail, ItemTrade, MapNpc, Paginated, Spawn } from '../types'
+import type { Dropper, Entry, EntryListItem, ItemDetail, ItemTrade, MapNpc, Paginated, SearchResult, Spawn } from '../types'
 import {
   TILE,
   X_MIN,
@@ -1816,6 +1825,122 @@ function LorePanel({ poi, onClose }: { poi: LorePoi; onClose: () => void }) {
   )
 }
 
+// The raid dossier: what an invasion actually does. The announcements are the
+// literal broadcasts the world reads out, kept in English on purpose — that is
+// the text players see in-game, translating it would make it unrecognisable.
+// Floats bottom-centre like the lore/hunt/house panels.
+function RaidPanel({
+  raid,
+  onClose,
+  onPlot,
+}: {
+  raid: Raid
+  onClose: () => void
+  onPlot: (name: string) => void
+}) {
+  const { t, i18n } = useTranslation()
+  const roster = raidRoster(raid)
+  const timeline = raidTimeline(raid)
+  const every = raidInterval(raid.interval, i18n.language)
+
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
+      <div className="scroll-atlas pointer-events-auto max-h-[70vh] w-[32rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-4 shadow-2xl backdrop-blur-md">
+        <div className="mb-2 flex items-center gap-1.5 text-[#d4483b]">
+          <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2s5 4.5 5 9a5 5 0 0 1-10 0c0-1.5.6-2.8 1.4-3.8C8.9 8.6 9.6 9.4 10 10c0-2.6 1-6 2-8z" />
+            <path d="M12 22a7 7 0 0 0 7-7" />
+          </svg>
+          <span className="text-[10px] font-bold uppercase tracking-widest">{t('map.raidTitle')}</span>
+          <button
+            onClick={onClose}
+            aria-label={t('common.close')}
+            className="ml-auto grid h-6 w-6 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:border-[#d4483b] hover:text-[#d4483b]"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <h3 className="font-serif text-lg font-bold leading-tight text-fg">{raid.name}</h3>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-fg-mute">
+          {raidRegion(raid, i18n.language)}
+        </p>
+
+        {/* Scale, cadence and where it lands. */}
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          <span className="rounded-md border border-line-2 bg-bg-3/60 px-2 py-1 text-[11px] font-semibold text-fg-dim">
+            {t('map.raidCreatures', { count: raid.creatures })}
+          </span>
+          <span className="rounded-md border border-line-2 bg-bg-3/60 px-2 py-1 text-[11px] font-semibold text-fg-dim">
+            {t('map.raidFloors', { floors: raid.floors.join(', ') })}
+          </span>
+          {every ? (
+            <span className="rounded-md border border-line-2 bg-bg-3/60 px-2 py-1 text-[11px] font-semibold text-fg-dim">
+              {t('map.raidEvery', { every })}
+            </span>
+          ) : (
+            <span
+              className="rounded-md border border-line-2 bg-bg-3/60 px-2 py-1 text-[11px] font-semibold text-fg-mute"
+              title={t('map.raidUnscheduledHint')}
+            >
+              {t('map.raidUnscheduled')}
+            </span>
+          )}
+        </div>
+
+        {/* Roster — click any creature to plot its normal spawns on the map. */}
+        <h4 className="mt-4 text-[11px] font-bold uppercase tracking-widest text-fg-mute">
+          {t('map.raidRoster')}
+        </h4>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {roster.map((c) => {
+            const boss = raid.bosses.includes(c.name)
+            return (
+              <button
+                key={c.name}
+                onClick={() => onPlot(c.name)}
+                title={t('map.raidPlotHint', { name: c.name })}
+                className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition ${
+                  boss
+                    ? 'border-[#d4483b]/60 bg-[#d4483b]/15 text-[#e2705f] hover:bg-[#d4483b]/25'
+                    : 'border-line-2 bg-bg-3/60 text-fg-dim hover:border-[#d4483b]/50 hover:text-fg'
+                }`}
+              >
+                {c.amount > 1 && <span className="text-fg-mute">{c.amount}× </span>}
+                {c.name}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* How it unfolds: broadcasts and spawn waves on one clock. */}
+        <h4 className="mt-4 text-[11px] font-bold uppercase tracking-widest text-fg-mute">
+          {t('map.raidTimeline')}
+        </h4>
+        <ol className="mt-1.5 space-y-1.5 border-l border-line-2 pl-3">
+          {timeline.map((s, i) => (
+            <li key={i} className="relative text-sm leading-snug">
+              <span className="absolute -left-[15px] top-1.5 h-1.5 w-1.5 rounded-full bg-[#d4483b]" />
+              <span className="mr-2 text-[11px] font-bold tabular-nums text-fg-mute">
+                {raidDelay(s.at)}
+              </span>
+              {s.kind === 'announce' ? (
+                <span className="italic text-[#e2b06f]">“{s.message}”</span>
+              ) : (
+                <span className="text-fg-dim">{s.label}</span>
+              )}
+            </li>
+          ))}
+        </ol>
+
+        <p className="mt-3 text-[11px] leading-relaxed text-fg-mute">{t('map.raidSource')}</p>
+      </div>
+    </div>
+  )
+}
+
 // Breakpoint feed for the creature-bar page size (3 cards wide, 1 on phones).
 // useSyncExternalStore re-reads the snapshot on every render, so a missed
 // media-query event can never leave a stale page size behind.
@@ -1848,6 +1973,7 @@ export function MapPage() {
   const poiGroupRef = useRef<L.LayerGroup | null>(null)
   const houseGroupRef = useRef<L.LayerGroup | null>(null)
   const loreGroupRef = useRef<L.LayerGroup | null>(null)
+  const raidGroupRef = useRef<L.LayerGroup | null>(null)
   const tradeGroupRef = useRef<L.LayerGroup | null>(null)
   const rashidGroupRef = useRef<L.LayerGroup | null>(null)
   // Highlight ring drawn over the hunting zone the user picked in the Hunt Finder.
@@ -1934,6 +2060,8 @@ export function MapPage() {
   const [showPoi, setShowPoi] = useState(false) // imported minimap markers layer
   const [showLore, setShowLore] = useState(false) // curated lore / mystery POIs layer
   const [lorePoi, setLorePoi] = useState<LorePoi | null>(null) // open lore reader
+  const [showRaids, setShowRaids] = useState(false) // invasions / raids layer
+  const [raid, setRaid] = useState<Raid | null>(null) // open raid dossier
   const [rashidOpen, setRashidOpen] = useState(false) // Rashid reader panel
   const [yasirOpen, setYasirOpen] = useState(false) // Yasir reader panel
   // Rashid moves city at the 10:00 Europe/Berlin server save. The second-level
@@ -2208,6 +2336,24 @@ export function MapPage() {
   const [routesOpen, setRoutesOpen] = useState(false)
   const [routesPage, setRoutesPage] = useState(1)
   const [routesQuery, setRoutesQuery] = useState('')
+
+  // The map's floating cards are mutually exclusive: opening one closes the
+  // rest so they never stack on top of each other over the map. Every entry
+  // point goes through openPanel/togglePanel instead of its own setter.
+  type MapPanel = 'char' | 'hunt' | 'profit' | 'houses' | 'routes' | 'rashid' | 'yasir'
+  function openPanel(panel: MapPanel | null) {
+    setCharOpen(panel === 'char')
+    setHuntOpen(panel === 'hunt')
+    setProfitOpen(panel === 'profit')
+    setHousePanelOpen(panel === 'houses')
+    setRoutesOpen(panel === 'routes')
+    setRashidOpen(panel === 'rashid')
+    setYasirOpen(panel === 'yasir')
+  }
+  function togglePanel(panel: MapPanel, isOpen: boolean) {
+    openPanel(isOpen ? null : panel)
+  }
+
   const routesQueryDebounced = useDebouncedValue(routesQuery.trim(), 300)
   // Routes this visitor has "liked". No accounts, so a like is client-side: we
   // remember the ids here (persisted) to show the heart filled and to avoid
@@ -2960,6 +3106,7 @@ export function MapPage() {
     const spawnGroup = L.layerGroup().addTo(map)
     const cityGroup = L.layerGroup().addTo(map)
     const loreGroup = L.layerGroup().addTo(map)
+    const raidGroup = L.layerGroup().addTo(map)
     const tradeGroup = L.layerGroup().addTo(map)
     const rashidGroup = L.layerGroup().addTo(map)
     const markersGroup = L.layerGroup().addTo(map)
@@ -2983,6 +3130,7 @@ export function MapPage() {
     poiGroupRef.current = poiGroup
     houseGroupRef.current = houseGroup
     loreGroupRef.current = loreGroup
+    raidGroupRef.current = raidGroup
     tradeGroupRef.current = tradeGroup
     rashidGroupRef.current = rashidGroup
     routeGroupRef.current = routeGroup
@@ -3118,6 +3266,7 @@ export function MapPage() {
       poiGroupRef.current = null
       houseGroupRef.current = null
       loreGroupRef.current = null
+      raidGroupRef.current = null
       tradeGroupRef.current = null
       rashidGroupRef.current = null
       routeGroupRef.current = null
@@ -3561,6 +3710,90 @@ export function MapPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showPoi, poiData, floor, mapReady])
 
+  // Invasions / raids — every raid the server can fire, baked from the OT's own
+  // raid XMLs (see tools/gen-raids.mjs). Static, so it loads once per session.
+  const { data: raidsFile } = useRaids()
+  const raids = raidsFile?.raids
+
+  // Draw the raid layer for the floor in view. Each raid contributes the exact
+  // rectangles it floods plus a pin per named creature — an invasion is ground,
+  // not a point, so the shape is the whole story. The open raid is highlighted
+  // and its geometry drawn on top.
+  useEffect(() => {
+    const grp = raidGroupRef.current
+    if (!grp) return
+    grp.clearLayers()
+    if (!showRaids || !raids) return
+
+    for (const r of raids) {
+      if (!r.floors.includes(floor)) continue
+      const active = raid?.id === r.id
+      const colour = active ? '#ffcf6b' : '#d4483b'
+
+      for (const a of r.areas) {
+        if (a.z !== floor) continue
+        // +1 so the rectangle covers the far tiles instead of stopping at their
+        // top-left corner.
+        L.rectangle(L.latLngBounds(toLatLng(a.x1, a.y1), toLatLng(a.x2 + 1, a.y2 + 1)), {
+          color: colour,
+          weight: active ? 2 : 1.5,
+          opacity: active ? 0.95 : 0.7,
+          fillColor: colour,
+          fillOpacity: active ? 0.22 : 0.12,
+          interactive: true,
+        })
+          .addTo(grp)
+          .on('click', () => openRaid(r))
+      }
+
+      // One pin per named creature on this floor; a swarm-only raid gets a single
+      // pin at the centre of the invaded ground so it stays clickable.
+      const pins = r.spawns
+        .filter((s) => s.z === floor)
+        .map((s) => ({ x: s.x, y: s.y, label: s.name }))
+      if (!pins.length) {
+        const a = r.areas.find((ar) => ar.z === floor)
+        if (a)
+          pins.push({
+            x: Math.round((a.x1 + a.x2) / 2),
+            y: Math.round((a.y1 + a.y2) / 2),
+            label: r.name,
+          })
+      }
+
+      for (const p of pins) {
+        const icon = L.divIcon({
+          className: '',
+          html:
+            `<div class="tm-raid${active ? ' is-active' : ''}">` +
+            // flame — an invasion under way
+            `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
+            `<path d="M12 2s5 4.5 5 9a5 5 0 0 1-10 0c0-1.5.6-2.8 1.4-3.8C8.9 8.6 9.6 9.4 10 10c0-2.6 1-6 2-8z"/>` +
+            `<path d="M12 22a7 7 0 0 0 7-7"/></svg>` +
+            `</div>`,
+          iconSize: [0, 0],
+        })
+        L.marker(toLatLng(p.x, p.y), { icon, interactive: true, keyboard: false, zIndexOffset: 520 })
+          .addTo(grp)
+          .bindTooltip(escapeHtml(`${r.name} — ${p.label}`), { direction: 'top', offset: [0, -12] })
+          .on('click', () => openRaid(r))
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [floor, mapReady, showRaids, raids, raid])
+
+  // Open a raid's dossier and fly to it, switching floor when it happens
+  // somewhere else (Ferumbras and friends are all underground).
+  function openRaid(r: Raid) {
+    setRaid(r)
+    if (!r.floors.includes(floorRef.current)) {
+      floorRef.current = r.z
+      setFloor(r.z)
+    }
+    const map = mapRef.current
+    if (map) map.flyTo(toLatLng(r.x, r.y), Math.max(map.getZoom(), 3), { duration: 0.5 })
+  }
+
   // Rentable houses — a static asset baked from the world files (id, name,
   // coords, rent, size, beds, town), fetched once for the session.
   const { data: housesData } = useQuery<{ houses: House[] }>({
@@ -3994,6 +4227,21 @@ export function MapPage() {
     }
   }
 
+  // Raid rosters carry creature NAMES (the OT never stores our slugs), so a click
+  // on one resolves it through the normal search and plots it like any other
+  // creature — giving the raid roster the full toolkit (best spawn, route to it).
+  // An exact name match wins; otherwise the top creature hit is close enough.
+  async function plotCreatureByName(name: string) {
+    try {
+      const { data } = await api.get<{ data: SearchResult[] }>('/search', { params: { q: name } })
+      const hits = data.data.filter((r) => r.type === 'creature')
+      const hit = hits.find((r) => r.name.toLowerCase() === name.toLowerCase()) ?? hits[0]
+      if (hit) await addCreature(hit.slug)
+    } catch {
+      // A missing creature is not worth interrupting the map for.
+    }
+  }
+
   function removeCreature(slug: string) {
     pendingRef.current.delete(slug)
     setCreatures((prev) => prev.filter((c) => c.slug !== slug))
@@ -4151,8 +4399,7 @@ export function MapPage() {
       floor: rashidStop.z,
       label: `Rashid · ${rashidStop.city}`,
     }
-    setRashidOpen(true)
-    setYasirOpen(false)
+    openPanel('rashid')
     setRouteMode(true)
     if (refresh) {
       routeStartRef.current = null
@@ -4166,8 +4413,7 @@ export function MapPage() {
   // his three candidate docks; picking one (there or on the map) flies and
   // routes to it from the nearest city, like Rashid.
   function openYasir() {
-    setYasirOpen(true)
-    setRashidOpen(false)
+    openPanel('yasir')
   }
 
   function goToYasirDock(dock: YasirDock) {
@@ -4471,7 +4717,7 @@ export function MapPage() {
             draggable card: paste the analyzer, subtract imbuement wear +
             silver-token recharges from the balance. */}
         <button
-          onClick={() => setProfitOpen((v) => !v)}
+          onClick={() => togglePanel('profit', profitOpen)}
           title={t('map.hpHint')}
           aria-pressed={profitOpen}
           className={`group flex items-center gap-2 rounded-lg border px-2.5 py-1.5 shadow-lg backdrop-blur-md transition hover:-translate-x-0.5 hover:border-accent ${profitOpen ? 'border-accent bg-accent/15' : 'border-line-2 bg-bg-2/90'}`}
@@ -5007,7 +5253,7 @@ export function MapPage() {
                 onClick={() => {
                   setRoutesPage(1)
                   setRoutesQuery('')
-                  setRoutesOpen((v) => !v)
+                  togglePanel('routes', routesOpen)
                 }}
                 title={t('map.routesGallery')}
                 aria-label={t('map.routesGallery')}
@@ -5198,7 +5444,7 @@ export function MapPage() {
                     </svg>
                   </button>
                   <button
-                    onClick={() => setHousePanelOpen((v) => !v)}
+                    onClick={() => togglePanel('houses', housePanelOpen)}
                     title={t('map.houseAvailPanel')}
                     aria-label={t('map.houseAvailPanel')}
                     aria-pressed={housePanelOpen}
@@ -5259,6 +5505,34 @@ export function MapPage() {
               </button>
             </div>
 
+            {/* Invasions / raids — where the world's scripted invasions land.
+                Turning it off also closes any open dossier. */}
+            <div className="relative flex items-center">
+              <button
+                onClick={() => {
+                  setShowRaids((v) => {
+                    if (v) setRaid(null)
+                    return !v
+                  })
+                }}
+                title={t('map.raidLayer')}
+                aria-label={t('map.raidLayer')}
+                aria-pressed={showRaids}
+                className={`relative ${SLOT} ${showRaids ? 'border-[#d4483b] bg-[#d4483b]/15 text-[#d4483b]' : SLOT_OFF}`}
+              >
+                {/* flame — an invasion under way */}
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2s5 4.5 5 9a5 5 0 0 1-10 0c0-1.5.6-2.8 1.4-3.8C8.9 8.6 9.6 9.4 10 10c0-2.6 1-6 2-8z" />
+                  <path d="M12 22a7 7 0 0 0 7-7" />
+                </svg>
+                {showRaids && raids && (
+                  <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[#d4483b] px-1 text-[10px] font-bold leading-none text-white">
+                    {raids.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
             {/* Profit / wealth legend — a framed chip with a gold coin so it
                 clearly reads as the "how rich is this spot" bar, not just a
                 swatch lost among the icon slots. Only meaningful while dots show. */}
@@ -5293,7 +5567,7 @@ export function MapPage() {
             {/* Your character — settings gear. Lit when a profile is saved; the
                 badge shows the character's level once looked up. */}
             <button
-              onClick={() => setCharOpen((v) => !v)}
+              onClick={() => togglePanel('char', charOpen)}
               title={t('map.charTitle')}
               aria-label={t('map.charTitle')}
               aria-pressed={charOpen}
@@ -5312,7 +5586,7 @@ export function MapPage() {
 
             {/* Hunt Finder — ranks the best hunting zones for your level/vocation/set. */}
             <button
-              onClick={() => setHuntOpen((v) => !v)}
+              onClick={() => togglePanel('hunt', huntOpen)}
               title={t('map.huntTitle')}
               aria-label={t('map.huntTitle')}
               aria-pressed={huntOpen}
@@ -5330,7 +5604,7 @@ export function MapPage() {
                 opens: paste an analyzer, get the profit after imbuement wear
                 and silver-token recharges. */}
             <button
-              onClick={() => setProfitOpen((v) => !v)}
+              onClick={() => togglePanel('profit', profitOpen)}
               title={t('map.hpTitle')}
               aria-label={t('map.hpTitle')}
               aria-pressed={profitOpen}
@@ -5370,7 +5644,10 @@ export function MapPage() {
 
             {/* How-to tour — last slot in the bar, where help conventionally sits. */}
             <button
-              onClick={() => setShowTour(true)}
+              onClick={() => {
+                openPanel(null) // the tour covers the map — clear the cards first
+                setShowTour(true)
+              }}
               title={t('map.tutorial.open')}
               aria-label={t('map.tutorial.open')}
               className={`${SLOT} ${SLOT_OFF}`}
@@ -5741,6 +6018,7 @@ export function MapPage() {
           hunting zone you can click to fly to, expanding into its per-creature
           breakdown (what to hit it with, reward, danger). */}
       {lorePoi && <LorePanel poi={lorePoi} onClose={() => setLorePoi(null)} />}
+      {raid && <RaidPanel raid={raid} onClose={() => setRaid(null)} onPlot={plotCreatureByName} />}
 
       {/* Rashid's reader: today's exact spot + re-trace of the route to him. */}
       {rashidOpen && (
@@ -6473,7 +6751,7 @@ export function MapPage() {
               onClick={() => {
                 setFreedToast(null)
                 setShowHouses(true)
-                setHousePanelOpen(true)
+                openPanel('houses')
                 setHouseStatusFilter('available')
               }}
               className="mt-1 text-[11px] font-bold uppercase tracking-wider text-accent transition hover:underline"
