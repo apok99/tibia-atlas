@@ -286,6 +286,13 @@ const FERRY_LINES: FerryLineDef[] = [
       { name: 'Darashia', x: 33213, y: 32453 },
       { name: 'Edron', x: 33211, y: 31830 },
       { name: 'Farmine', x: 33030, y: 31500 },
+      // Gray Island (gateway to Quirefang/The Hive) is a full Royal Tibia Line
+      // stop: captains Fearless/Seahorse/Petros/Seagull sail it straight to
+      // Krailos, Venore, Thais, Edron, Cormaya… (npc/*.lua addTravelKeyword
+      // "gray island" → 33196,31984,7). So it belongs in the main clique, not
+      // as a Cormaya-only spur — otherwise Krailos→The Hive detours south to
+      // Cormaya first. Arrival tile is the captains' own drop coordinate.
+      { name: 'Gray Island', x: 33196, y: 31984, floor: 7 },
       { name: 'Krailos', x: 33580, y: 31584 },
       { name: 'Liberty Bay', x: 32309, y: 32794 },
       { name: 'Oramond', x: 33607, y: 31955 },
@@ -366,9 +373,8 @@ const FERRY_LINES: FerryLineDef[] = [
   { name: 'Barca', icon: 'sailboat', stops: [{ name: 'Liberty Bay', x: 32347, y: 32858 }, { name: 'Meriana', x: 32132, y: 32912 }] },
   // Marapur (Moonfall): its "To Port Hope" dock marker pairs with Port Hope's harbour.
   { name: 'Barca', icon: 'sailboat', stops: [{ name: 'Port Hope', x: 32629, y: 32769 }, { name: 'Marapur', x: 33842, y: 32852 }] },
-  // Gray Island (the gateway to Quirefang/The Hive): sailed from the eastern
-  // harbours — modelled from Cormaya, the nearest one.
-  { name: 'Barca', icon: 'sailboat', stops: [{ name: 'Cormaya', x: 33307, y: 31999 }, { name: 'Gray Island', x: 33191, y: 31985 }] },
+  // (Gray Island's own boat leg now lives in the main 'Barco' clique above —
+  // the Royal Tibia Line captains sail it to every big harbour, not just Cormaya.)
   // Kazordoon steamboat: Cormaya harbour ↔ the underground mountain lake docks.
   // The Primal Ordeal update added a Gnomprona stop (the excavation under
   // Marapur) — the map has its dock marker at f14.

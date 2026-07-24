@@ -72,6 +72,22 @@ class EtlNpcShops extends Command
         $spawns = $this->parseSpawns($spawnXml);
         $this->info(count($spawns).' NPCs with map spawns in the world XML.');
 
+        // A handful of NPCs (Feyrist's Valindara/Talila…) aren't in the static
+        // world XML at all — a day/night GlobalEvent script spawns them at a
+        // fixed tile. Merge those in so the map search can still route to them.
+        $scriptSpawns = $this->parseScriptSpawns($ot.'/data-otservbr-global/scripts/world_changes/spawns_npc_by_time.lua');
+        foreach ($scriptSpawns as $key => $tiles) {
+            foreach ($tiles as $tile) {
+                $spawns[$key] ??= [];
+                if (! in_array($tile, $spawns[$key], true)) {
+                    $spawns[$key][] = $tile;
+                }
+            }
+        }
+        if ($scriptSpawns !== []) {
+            $this->info(count($scriptSpawns).' NPCs pinned from the day/night spawn script.');
+        }
+
         // lowercased EN item name -> entry id (the same matching every OT ETL uses).
         $items = Entry::ofType('item')
             ->join('entry_translations as t', fn ($j) => $j->on('t.entry_id', 'entries.id')->where('t.locale', 'en'))
@@ -268,6 +284,39 @@ class EtlNpcShops extends Command
             }
         }
         $reader->close();
+
+        return $spawns;
+    }
+
+    /**
+     * NPC tiles from a `world_changes` spawn script: entries look like
+     * `{ name = "Valindara", …, position = Position(x, y, z) }`. Positions are
+     * absolute (not center-relative). Same bounds/dedupe as parseSpawns.
+     *
+     * @return array<string, list<array{int, int, int}>>
+     */
+    private function parseScriptSpawns(string $luaPath): array
+    {
+        $spawns = [];
+        if (! is_file($luaPath)) {
+            return $spawns;
+        }
+        $src = (string) file_get_contents($luaPath);
+        if (! preg_match_all('/name\s*=\s*"([^"]+)".*?position\s*=\s*Position\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/s', $src, $rows, PREG_SET_ORDER)) {
+            return $spawns;
+        }
+        foreach ($rows as $row) {
+            $name = trim($row[1]);
+            [$x, $y, $z] = [(int) $row[2], (int) $row[3], (int) $row[4]];
+            if ($name === '' || $x < self::X_MIN || $x >= self::X_MAX || $y < self::Y_MIN || $y >= self::Y_MAX) {
+                continue;
+            }
+            $key = mb_strtolower($name);
+            $spawns[$key] ??= [];
+            if (! in_array([$x, $y, $z], $spawns[$key], true)) {
+                $spawns[$key][] = [$x, $y, $z];
+            }
+        }
 
         return $spawns;
     }

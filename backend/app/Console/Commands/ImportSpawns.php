@@ -22,6 +22,35 @@ class ImportSpawns extends Command
 
     private const SOURCE = 'https://raw.githubusercontent.com/opentibiabr/canary/main/data-otservbr-global/world/otservbr-monster.xml';
 
+    /**
+     * OT spawn name (lowercased) => our EN entry name (lowercased), for creatures
+     * whose wiki disambiguation the generic-qualifier strip below can't resolve
+     * because the word order or spelling differs from the OT name.
+     */
+    private const ALIASES = [
+        'demon goblin' => 'demon (goblin)',
+        'grey horse' => 'horse (grey)',
+        'blue butterfly' => 'butterfly (blue)',
+        'purple butterfly' => 'butterfly (purple)',
+        'red butterfly' => 'butterfly (red)',
+        'yellow butterfly' => 'butterfly (yellow)',
+        'overcharged energy elemental' => 'overcharged energy element',
+        // Anniversary "Nostalgia" creatures (OT calls them "Old X").
+        'old wolf' => 'wolf (nostalgia)',
+        'old wasp' => 'wasp (nostalgia)',
+        'old bug' => 'bug (nostalgia)',
+        'old pig' => 'pig (nostalgia)',
+        'old spider' => 'spider (nostalgia)',
+        'old giant spider' => 'giant spider (nostalgia)',
+        'old bear' => 'bear (nostalgia)',
+        'old beholder' => 'bonelord (nostalgia)',
+        'nomad female' => 'nomad (female)',
+        'nomad blue' => 'nomad (blue)',
+    ];
+
+    /** Wiki qualifiers that never change the creature's plain name: "X (Creature)" IS "X". */
+    private const GENERIC_QUALIFIERS = ['creature', 'basic'];
+
     public function handle(): int
     {
         $path = storage_path('app/spawns.xml');
@@ -42,13 +71,38 @@ class ImportSpawns extends Command
             ->get()
             ->keyBy(fn (Entry $e) => mb_strtolower((string) $e->translations->first()?->name));
 
+        // Secondary index: plain name of "X (Creature)"/"X (Basic)" entries, so an
+        // OT spawn named "Nomad"/"Fish" resolves to our "Nomad (Basic)"/"Fish (Creature)".
+        // Colliding bases are dropped (null) so we never guess between two creatures.
+        $plain = [];
+        foreach ($entries as $key => $entry) {
+            if (! preg_match('/^(.*?)\s*\(([^)]+)\)\s*$/', (string) $key, $m)) {
+                continue;
+            }
+            if (! in_array(mb_strtolower(trim($m[2])), self::GENERIC_QUALIFIERS, true)) {
+                continue;
+            }
+            $base = trim($m[1]);
+            if ($base === '' || $entries->has($base)) {
+                continue; // a real exact entry already owns this name
+            }
+            $plain[$base] = array_key_exists($base, $plain) ? null : $entry;
+        }
+
         $cap = (int) $this->option('cap');
         $updated = 0;
+        $matchedAlias = 0;
 
         foreach ($byName as $name => $coords) {
-            $entry = $entries->get(mb_strtolower($name));
+            $key = mb_strtolower($name);
+            $entry = $entries->get($key)
+                ?? $entries->get(self::ALIASES[$key] ?? '@none@')
+                ?? ($plain[$key] ?? null);
             if (! $entry) {
                 continue;
+            }
+            if (! $entries->has($key)) {
+                $matchedAlias++;
             }
 
             $meta = $entry->meta ?? [];
@@ -59,7 +113,7 @@ class ImportSpawns extends Command
             $updated++;
         }
 
-        $this->info("Done. Updated {$updated} creatures with spawn coordinates.");
+        $this->info("Done. Updated {$updated} creatures with spawn coordinates ({$matchedAlias} via alias/qualifier match).");
 
         return self::SUCCESS;
     }

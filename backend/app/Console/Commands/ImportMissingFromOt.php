@@ -34,6 +34,7 @@ class ImportMissingFromOt extends Command
         {--ot= : OT clone root (defaults to <repo>/ot)}
         {--type=all : What to sync: items|creatures|all}
         {--limit=0 : Max NEW imports per kind this run (0 = all)}
+        {--only= : Comma-separated names to restrict this run to (case-insensitive)}
         {--sleep=300 : Delay between wiki imports in milliseconds}
         {--publish : Publish newly imported creature drafts}
         {--dry : Diff and report, import nothing}';
@@ -226,6 +227,10 @@ class ImportMissingFromOt extends Command
             $missing[$name] = $boss;
         }
 
+        if ($only = $this->onlyFilter()) {
+            $missing = array_intersect_key($missing, $only);
+        }
+
         $bossCount = count(array_filter($missing));
         $this->info(count($missing).' OT monsters not in the DB ('.$bossCount.' bosses).');
         if ($this->option('dry')) {
@@ -327,6 +332,24 @@ class ImportMissingFromOt extends Command
         }
 
         return implode(' ', $words);
+    }
+
+    /** Parsed --only names as a lowercased-name lookup set, or null when unset. */
+    private function onlyFilter(): ?array
+    {
+        $raw = trim((string) $this->option('only'));
+        if ($raw === '') {
+            return null;
+        }
+        $set = [];
+        foreach (explode(',', $raw) as $n) {
+            $n = mb_strtolower(trim($n));
+            if ($n !== '') {
+                $set[$n] = true;
+            }
+        }
+
+        return $set ?: null;
     }
 
     private function throttle(): void
