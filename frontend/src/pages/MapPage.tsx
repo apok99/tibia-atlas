@@ -3755,34 +3755,49 @@ export function MapPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [huntZoneId, hunt, floor, mapReady])
 
-  // "Analyze zone" drawing mode: freeze map panning and rubber-band a rectangle
-  // under the cursor; releasing fixes the box (which opens the summary panel).
-  // A plain click (no real drag) selects nothing. Drawing is only armed while
-  // there is NO box yet — once one is fixed the map pans normally again and the
-  // box is adjusted via its corner handles; closing the panel (or re-toggling
-  // the tool) re-arms the draw. Without this gate you couldn't move the map
-  // with the tool on, and a second drag left two rectangles on screen.
+  // "Analyze zone" drawing mode: TWO CLICKS, not a drag — first click plants a
+  // corner, the dashed preview follows the cursor, second click closes the box
+  // (which opens the summary panel). Chosen over drag-to-draw precisely so the
+  // map keeps panning normally with the tool active (Leaflet suppresses 'click'
+  // after a pan, so dragging around between the two clicks is free). Armed only
+  // while there is NO box yet; once fixed, the box is adjusted via its corner
+  // handles and closing the panel (or re-toggling the tool) re-arms the draw.
   useEffect(() => {
     analyzeModeRef.current = analyzeMode
     const map = mapRef.current
     if (!map || !mapReady || !analyzeMode || analyzeBox !== null) return
-    map.dragging.disable()
     const container = map.getContainer()
     const prevCursor = container.style.cursor
     container.style.cursor = 'crosshair'
+    // Two quick corner clicks must not zoom the map.
+    map.doubleClickZoom.disable()
 
-    let start: { x: number; y: number } | null = null
+    let first: { x: number; y: number } | null = null
     let rubber: L.Rectangle | null = null
     const toXY = (e: L.LeafletMouseEvent) => ({ x: Math.round(e.latlng.lng), y: Math.round(-e.latlng.lat) })
-    const down = (e: L.LeafletMouseEvent) => {
-      // Grabbing a corner handle of the fixed box must not start a new band.
+    const click = (e: L.LeafletMouseEvent) => {
+      // A click on the fixed box's corner handles is not a corner plant.
       if ((e.originalEvent.target as HTMLElement | null)?.closest?.('.leaflet-marker-icon')) return
-      start = toXY(e)
+      const p = toXY(e)
+      if (!first) {
+        first = p
+        return
+      }
+      const box = {
+        x1: Math.min(first.x, p.x), y1: Math.min(first.y, p.y),
+        x2: Math.max(first.x, p.x), y2: Math.max(first.y, p.y),
+      }
+      // Same-spot second click (accidental double click): keep waiting.
+      if (box.x2 - box.x1 < 4 || box.y2 - box.y1 < 4) return
+      first = null
+      rubber?.remove()
+      rubber = null
+      setAnalyzeBox(box)
     }
     const move = (e: L.LeafletMouseEvent) => {
-      if (!start) return
+      if (!first) return
       const cur = toXY(e)
-      const b = L.latLngBounds(toLatLng(start.x, start.y), toLatLng(cur.x, cur.y))
+      const b = L.latLngBounds(toLatLng(first.x, first.y), toLatLng(cur.x, cur.y))
       if (!rubber) {
         rubber = L.rectangle(b, {
           color: '#3fa7d6', weight: 2, dashArray: '6 4', fillColor: '#3fa7d6', fillOpacity: 0.08, interactive: false,
@@ -3791,40 +3806,14 @@ export function MapPage() {
         rubber.setBounds(b)
       }
     }
-    const up = (e: L.LeafletMouseEvent) => {
-      if (!start) return
-      const end = toXY(e)
-      const box = {
-        x1: Math.min(start.x, end.x), y1: Math.min(start.y, end.y),
-        x2: Math.max(start.x, end.x), y2: Math.max(start.y, end.y),
-      }
-      start = null
-      rubber?.remove()
-      rubber = null
-      if (box.x2 - box.x1 < 4 || box.y2 - box.y1 < 4) return
-      setAnalyzeBox(box)
-    }
-    // Releasing OUTSIDE the map (over a panel, the hotbar, the browser chrome)
-    // never reaches the map's mouseup — the band kept following the cursor and
-    // the next drag drew a second rectangle. The map handler runs first and
-    // clears `start`, so this only catches the escapes.
-    const cancel = () => {
-      start = null
-      rubber?.remove()
-      rubber = null
-    }
-    map.on('mousedown', down)
+    map.on('click', click)
     map.on('mousemove', move)
-    map.on('mouseup', up)
-    document.addEventListener('mouseup', cancel)
     return () => {
-      map.off('mousedown', down)
+      map.off('click', click)
       map.off('mousemove', move)
-      map.off('mouseup', up)
-      document.removeEventListener('mouseup', cancel)
       rubber?.remove()
       container.style.cursor = prevCursor
-      map.dragging.enable()
+      map.doubleClickZoom.enable()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analyzeMode, analyzeBox, mapReady])
