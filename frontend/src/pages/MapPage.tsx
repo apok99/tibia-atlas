@@ -1861,16 +1861,15 @@ function ZonePanel({
                   </svg>
                   {t('map.zoneRangedLine', { ranged: data.ranged_species, total: data.species })}
                 </div>
-                {data.fleeing_species > 0 && (
-                  <div className="flex items-center gap-1.5 text-sm font-semibold text-fg">
-                    {/* footsteps running off — "these bolt when wounded" */}
-                    <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-[#d08a1e]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M13 4h6M11 12h6M9 20h6" />
-                      <path d="M19 4l2 0M17 12l2 0M15 20l2 0" strokeDasharray="1 3" />
-                    </svg>
-                    {t('map.zoneFleesLine', { fleeing: data.fleeing_species, total: data.species })}
-                  </div>
-                )}
+                {/* Always shown — "nothing here flees" is real information too. */}
+                <div className="flex items-center gap-1.5 text-sm font-semibold text-fg">
+                  {/* footsteps running off — "these bolt when wounded" */}
+                  <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-[#d08a1e]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M13 4h6M11 12h6M9 20h6" />
+                    <path d="M19 4l2 0M17 12l2 0M15 20l2 0" strokeDasharray="1 3" />
+                  </svg>
+                  {t('map.zoneFleesLine', { fleeing: data.fleeing_species, total: data.species })}
+                </div>
               </div>
             </div>
 
