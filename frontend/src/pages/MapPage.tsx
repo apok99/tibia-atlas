@@ -2143,7 +2143,7 @@ function RaidPanel({
                 {raidDelay(s.at)}
               </span>
               {s.kind === 'announce' ? (
-                <span className="italic text-[#e2b06f]">“{s.message}”</span>
+                <span className="italic text-broadcast">“{s.message}”</span>
               ) : (
                 <span className="text-fg-dim">{s.label}</span>
               )}

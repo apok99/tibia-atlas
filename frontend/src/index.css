@@ -27,6 +27,8 @@
   --color-interp: #3f6b7a;     /* inferred — slate ink */
   --color-theory: #a2854e;     /* unconfirmed — gilt */
 
+  --color-broadcast: #7a5a1e;  /* in-game server broadcast — deep gilt so it stays readable on parchment */
+
   --font-display: 'EB Garamond', Georgia, 'Times New Roman', serif;
   --font-title: 'Cinzel', Georgia, serif;
 
@@ -71,6 +73,8 @@ html[data-theme='dark'] {
   --color-canon: #79b169;
   --color-interp: #6fa8c4;
   --color-theory: #d8a23a;
+
+  --color-broadcast: #e2b06f;  /* in-game server broadcast — bright amber reads well on the night ground */
 
   --color-atlas-bg: #131419;
   --color-atlas-panel: #1b1d24;
