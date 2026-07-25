@@ -471,13 +471,13 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
       className={
         pos
           ? 'pointer-events-none fixed inset-0 z-[1002]'
-          : 'pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3'
+          : 'pointer-events-none fixed inset-0 z-[1002] flex items-center justify-center px-3 py-4'
       }
     >
       <div
         ref={cardRef}
         style={pos ? { position: 'absolute', left: pos.x, top: pos.y } : undefined}
-        className={`scroll-atlas pointer-events-auto max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-3.5 shadow-2xl backdrop-blur-md ${hasReport ? 'max-h-[85vh] w-[58rem]' : 'max-h-[78vh] w-[32rem]'}`}
+        className={`scroll-atlas pointer-events-auto max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-3.5 shadow-2xl backdrop-blur-md ${hasReport ? 'max-h-[90vh] w-[68rem]' : 'max-h-[82vh] w-[36rem]'}`}
       >
         {/* Header doubles as the drag handle — grab it to move the card. */}
         <div
@@ -600,21 +600,23 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
             <p className="mt-1.5 text-xs text-fg-mute">{t('map.hpTokenNote')}</p>
           </div>
 
-          {/* Otros gastos por sesión — nº de charms/rerolls × coste unitario */}
+          {/* Otros gastos por sesión — nº de charms/rerolls × coste unitario.
+              Grid de columnas fijas: la cantidad no crece, el coste ocupa el
+              hueco flexible y el total tiene su propio ancho, así nunca se sale. */}
           <div className={hasReport ? 'rounded-xl border border-line bg-bg-2 p-2.5 sm:col-span-2' : 'mt-2 rounded-xl border border-line bg-bg-2 p-2.5'}>
             <div className="mb-1.5 text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpExtras')}</div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
               {/* Quitar charms: nº × coste por charm */}
               <div className="flex items-end gap-2">
                 <NumField label={t('map.hpCharmCount')} value={String(cfg.charmCount)} onChange={(v) => setCfg((c) => ({ ...c, charmCount: Math.max(0, parseInt(v, 10) || 0) }))} min={0} />
                 <NumField wide label={t('map.hpCharmCost')} value={String(cfg.charmCost)} onChange={(v) => setCfg((c) => ({ ...c, charmCost: Math.max(0, parseInt(v, 10) || 0) }))} suffix="gp" min={0} step={1000} />
-                <div className="w-16 shrink-0 whitespace-nowrap pb-1 text-right text-sm font-bold tabular-nums text-fg">{charmTotal > 0 ? '-' + gp(charmTotal) : '—'}</div>
+                <div className="shrink-0 whitespace-nowrap pb-2 text-right text-sm font-bold tabular-nums text-accent">{charmTotal > 0 ? '-' + gp(charmTotal) : '—'}</div>
               </div>
               {/* Prey rerolls: nº × coste por reroll */}
               <div className="flex items-end gap-2">
                 <NumField label={t('map.hpPreyCount')} value={String(cfg.preyCount)} onChange={(v) => setCfg((c) => ({ ...c, preyCount: Math.max(0, parseInt(v, 10) || 0) }))} min={0} />
                 <NumField wide label={t('map.hpPreyCost')} value={String(cfg.preyCost)} onChange={(v) => setCfg((c) => ({ ...c, preyCost: Math.max(0, parseInt(v, 10) || 0) }))} suffix="gp" min={0} step={1000} />
-                <div className="w-16 shrink-0 whitespace-nowrap pb-1 text-right text-sm font-bold tabular-nums text-fg">{preyTotal > 0 ? '-' + gp(preyTotal) : '—'}</div>
+                <div className="shrink-0 whitespace-nowrap pb-2 text-right text-sm font-bold tabular-nums text-accent">{preyTotal > 0 ? '-' + gp(preyTotal) : '—'}</div>
               </div>
             </div>
             <p className="mt-1.5 text-xs text-fg-mute">{t('map.hpExtraNote')}</p>
