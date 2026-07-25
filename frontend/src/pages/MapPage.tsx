@@ -1833,7 +1833,12 @@ function ZonePanel({
                       {t('map.zoneAttackWith')}
                     </div>
                     <div className="flex flex-wrap gap-1">
-                      {data.attack_with.map((a) => chip(a.element, `${elName(a.element)}${a.avg_pct > 100 ? ` +${a.avg_pct - 100}%` : ''}`))}
+                      {data.attack_with.map((a) =>
+                        chip(
+                          a.element,
+                          `${elName(a.element)}${a.avg_pct > 100 ? ` +${a.avg_pct - 100}%` : a.avg_pct < 100 ? ` −${100 - a.avg_pct}%` : ''}`,
+                        ),
+                      )}
                     </div>
                   </div>
                 )}

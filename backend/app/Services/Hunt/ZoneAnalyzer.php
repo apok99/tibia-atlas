@@ -143,8 +143,9 @@ class ZoneAnalyzer
     /**
      * The elements that work best against this crowd: count-weighted average of
      * each element's damage_mods across the residents (creatures without mods
-     * count as neutral 100). Only elements at or above normal make the list —
-     * "attack with" advice must never recommend something the zone resists.
+     * count as neutral 100). Always the top three — when the zone resists
+     * everything, the least-resisted elements are still the honest advice (the
+     * chip carries the negative % so it doesn't oversell them).
      *
      * @return list<array{element: string, avg_pct: int}>
      */
@@ -154,9 +155,10 @@ class ZoneAnalyzer
         arsort($avg);
         $out = [];
         foreach ($avg as $el => $pct) {
-            if ($pct >= 100 && count($out) < 3) {
-                $out[] = ['element' => $el, 'avg_pct' => (int) round($pct)];
+            if (count($out) >= 3) {
+                break;
             }
+            $out[] = ['element' => $el, 'avg_pct' => (int) round($pct)];
         }
 
         return $out;
