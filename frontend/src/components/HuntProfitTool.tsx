@@ -208,8 +208,8 @@ function NumField({
   wide?: boolean
 }) {
   return (
-    <label className={`flex flex-col gap-0.5 ${wide ? 'flex-1' : ''}`}>
-      <span className="text-[10px] font-bold uppercase tracking-wide text-fg-dim">{label}</span>
+    <label className={`flex min-w-0 flex-col gap-0.5 ${wide ? 'flex-1' : 'w-14'}`}>
+      <span className="truncate text-[10px] font-bold uppercase tracking-wide text-fg-dim">{label}</span>
       <span className="flex items-center gap-1">
         <input
           type="number"
@@ -608,13 +608,13 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
               <div className="flex items-end gap-2">
                 <NumField label={t('map.hpCharmCount')} value={String(cfg.charmCount)} onChange={(v) => setCfg((c) => ({ ...c, charmCount: Math.max(0, parseInt(v, 10) || 0) }))} min={0} />
                 <NumField wide label={t('map.hpCharmCost')} value={String(cfg.charmCost)} onChange={(v) => setCfg((c) => ({ ...c, charmCost: Math.max(0, parseInt(v, 10) || 0) }))} suffix="gp" min={0} step={1000} />
-                <div className="pb-1 text-right text-sm font-bold text-fg">{charmTotal > 0 ? '-' + gp(charmTotal) : '—'}</div>
+                <div className="w-16 shrink-0 whitespace-nowrap pb-1 text-right text-sm font-bold tabular-nums text-fg">{charmTotal > 0 ? '-' + gp(charmTotal) : '—'}</div>
               </div>
               {/* Prey rerolls: nº × coste por reroll */}
               <div className="flex items-end gap-2">
                 <NumField label={t('map.hpPreyCount')} value={String(cfg.preyCount)} onChange={(v) => setCfg((c) => ({ ...c, preyCount: Math.max(0, parseInt(v, 10) || 0) }))} min={0} />
                 <NumField wide label={t('map.hpPreyCost')} value={String(cfg.preyCost)} onChange={(v) => setCfg((c) => ({ ...c, preyCost: Math.max(0, parseInt(v, 10) || 0) }))} suffix="gp" min={0} step={1000} />
-                <div className="pb-1 text-right text-sm font-bold text-fg">{preyTotal > 0 ? '-' + gp(preyTotal) : '—'}</div>
+                <div className="w-16 shrink-0 whitespace-nowrap pb-1 text-right text-sm font-bold tabular-nums text-fg">{preyTotal > 0 ? '-' + gp(preyTotal) : '—'}</div>
               </div>
             </div>
             <p className="mt-1.5 text-xs text-fg-mute">{t('map.hpExtraNote')}</p>
