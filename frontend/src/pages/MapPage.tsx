@@ -58,7 +58,7 @@ import { SKILL_LABELS, signed } from '../components/items/itemStats'
 import { useGlossary } from '../hooks/useGlossary'
 import { useBosses, useKillWorlds, type BossRow } from '../hooks/useKillStats'
 import { useHunts, type HuntZone } from '../hooks/useHunts'
-import { useZoneSummary, type ZoneBox, type ZoneSummary } from '../hooks/useZoneSummary'
+import { useZoneProtection, useZoneSummary, type ZoneBox, type ZoneSummary } from '../hooks/useZoneSummary'
 import { TypeIcon } from '../components/TypeIcon'
 import { Skeleton } from '../components/Skeleton'
 import { MapTutorial, mapTourSeen } from '../components/MapTutorial'
@@ -1749,6 +1749,9 @@ function ZonePanel({
   onClose: () => void
 }) {
   const { t } = useTranslation()
+  // Clicked incoming-damage element → "how do I protect myself" advice.
+  const [protEl, setProtEl] = useState<string | null>(null)
+  const protection = useZoneProtection(protEl)
   const elName = (el: string) => t(`elements.${el}`, { defaultValue: el.replace(/_/g, ' ') })
   const elColor = (el: string) => HUNT_ELEMENT_COLOR[el] ?? '#8a8578'
   // The element palette is tuned for accents; darkened it holds AA contrast as
@@ -1810,7 +1813,12 @@ function ZonePanel({
                 </div>
                 <div className="flex flex-col gap-1.5">
                   {data.incoming.slice(0, 5).map((i) => (
-                    <div key={i.element} className="flex items-center gap-2">
+                    <button
+                      key={i.element}
+                      onClick={() => setProtEl((cur) => (cur === i.element ? null : i.element))}
+                      title={t('map.zoneProtectHint')}
+                      className={`flex w-full items-center gap-2 rounded-md px-1 py-0.5 text-left transition hover:bg-surface ${protEl === i.element ? 'bg-surface ring-1 ring-[#3fa7d6]' : ''}`}
+                    >
                       <span className="w-20 shrink-0 truncate text-[13px] font-semibold text-fg">{elName(i.element)}</span>
                       <span className="relative h-3 min-w-0 flex-1 overflow-hidden rounded-full bg-line/50">
                         <span
@@ -1821,9 +1829,10 @@ function ZonePanel({
                       <span className="w-11 shrink-0 text-right text-[13px] font-bold" style={{ color: elDark(i.element) }}>
                         {i.pct}%
                       </span>
-                    </div>
+                    </button>
                   ))}
                 </div>
+                <p className="mt-1 text-[11px] text-fg-mute">{t('map.zoneProtectHint')}</p>
               </div>
               {/* What works, what doesn't, who shoots. */}
               <div className="flex flex-col gap-2">
@@ -1877,6 +1886,66 @@ function ZonePanel({
                 </div>
               </div>
             </div>
+
+            {/* "How do I protect myself from <clicked element>": the best
+                obtainable resist gear (two per slot, best slots first) plus
+                the element's protection imbuement. */}
+            {protEl && (
+              <div className="mt-3 rounded-xl border border-[#3fa7d6]/40 bg-surface/60 p-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: elDark(protEl) }}>
+                    {t('map.zoneProtectTitle', { el: elName(protEl) })}
+                  </span>
+                  <button
+                    onClick={() => setProtEl(null)}
+                    aria-label={t('common.close')}
+                    className="ml-auto grid h-5 w-5 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:border-[#3fa7d6] hover:text-[#3fa7d6]"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                {protection.isPending && <Skeleton className="mt-2 h-16 w-full" />}
+                {protection.data && (
+                  <>
+                    {protection.data.imbue ? (
+                      <p className="mt-1.5 text-[13px] font-semibold text-fg">
+                        {t('map.zoneProtectImbue', { name: protection.data.imbue })}
+                      </p>
+                    ) : (
+                      <p className="mt-1.5 text-[13px] text-fg-dim">{t('map.zoneProtectNoImbue')}</p>
+                    )}
+                    {protection.data.slots.length === 0 && (
+                      <p className="mt-1.5 text-[13px] text-fg-dim">{t('map.zoneProtectEmpty')}</p>
+                    )}
+                    <div className="mt-1.5 flex flex-col">
+                      {protection.data.slots.slice(0, 5).map((pieces) => (
+                        <div key={pieces[0].slot} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 py-1">
+                          <span className="w-16 shrink-0 text-[11px] font-bold uppercase tracking-wide text-fg-mute">
+                            {t(`slots.${pieces[0].slot}`, { defaultValue: pieces[0].slot })}
+                          </span>
+                          {pieces.map((p) => (
+                            <Link
+                              key={p.slug}
+                              to={`/entry/${p.slug}`}
+                              className="flex items-center gap-1.5 rounded-lg border border-line px-2 py-0.5 transition hover:border-[#3fa7d6]"
+                            >
+                              {p.image && (
+                                <img src={p.image} alt="" className="h-6 w-6 object-contain" style={{ imageRendering: 'pixelated' }} />
+                              )}
+                              <span className="text-[13px] font-semibold text-fg">{p.name}</span>
+                              <span className="text-[13px] font-bold" style={{ color: '#1f7a44' }}>+{p.pct}%</span>
+                              {p.level > 0 && <span className="text-[11px] text-fg-mute">lvl {p.level}</span>}
+                            </Link>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Residents, deadliest first. */}
             <div className="mt-3 border-t border-line pt-2">

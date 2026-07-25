@@ -48,6 +48,8 @@ Route::middleware([SetLocale::class, 'throttle:public'])->group(function () {
         Route::get('/hunts', [HuntController::class, 'index']);
         // Map zone analysis: combat summary of a drag-selected rectangle.
         Route::get('/zone-summary', [ZoneController::class, 'summary']);
+        // "How do I protect myself from <element>?" — clicked incoming-damage bar.
+        Route::get('/zone-protection', [ZoneController::class, 'protection']);
         // Detail must come AFTER the literal item routes or it'd bind them as a slug.
         Route::get('/items/{slug}', [ItemController::class, 'show']);
     });

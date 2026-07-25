@@ -51,6 +51,41 @@ export type ZoneSummary = {
   creatures: ZoneCreature[]
 }
 
+// One gear piece that resists an element, as the protection advice lists it.
+export type ProtectionItem = {
+  slug: string
+  name: string
+  image: string | null
+  slot: string
+  pct: number
+  level: number
+}
+
+// "How do I protect myself from <element>?" — best obtainable resist gear
+// (two best pieces per slot, best slots first) plus the element's protection
+// imbuement (null for physical/holy, which have none in the game).
+export type ZoneProtection = {
+  element: string
+  imbue: string | null
+  slots: ProtectionItem[][]
+}
+
+// Fetch the protection advice for a clicked incoming-damage element.
+export function useZoneProtection(element: string | null) {
+  return useQuery({
+    queryKey: ['zone-protection', element, i18n.language],
+    queryFn: async () => {
+      const { data } = await api.get<ZoneProtection>('/zone-protection', {
+        params: { element },
+      })
+      return data
+    },
+    enabled: !!element,
+    staleTime: 60 * 60 * 1000,
+    placeholderData: keepPreviousData,
+  })
+}
+
 // Fetch the combat summary of a drag-selected rectangle on a floor. Disabled
 // until a box exists; keeps the previous payload while a floor flip or a
 // corner-handle nudge refetches, so the panel never flashes empty.
