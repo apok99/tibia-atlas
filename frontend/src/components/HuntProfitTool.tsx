@@ -199,6 +199,7 @@ function NumField({
   step,
   wide,
   w,
+  big,
 }: {
   label: string
   value: string
@@ -208,6 +209,7 @@ function NumField({
   step?: number
   wide?: boolean
   w?: string
+  big?: boolean
 }) {
   return (
     <label className={`flex min-w-0 flex-col gap-0.5 ${wide ? 'flex-1' : w ?? 'w-14'}`}>
@@ -219,7 +221,7 @@ function NumField({
           min={min ?? 0}
           step={step ?? 1}
           onChange={(e) => onChange(e.target.value)}
-          className="h-8 w-full min-w-0 rounded-lg border border-line bg-bg-2 px-2 text-sm font-semibold outline-none transition focus:border-accent"
+          className={`w-full min-w-0 rounded-lg border border-line bg-bg-2 px-2 font-semibold outline-none transition focus:border-accent ${big ? 'h-10 text-lg tabular-nums' : 'h-8 text-sm'}`}
         />
         {suffix && <span className="shrink-0 text-[11px] font-semibold text-fg-mute">{suffix}</span>}
       </span>
@@ -356,6 +358,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
   const [hoursDraft, setHoursDraft] = useState('') // manual override of the session length
   const [cfg, setCfg] = useState<Config>(loadConfig)
   const [collapsed, setCollapsed] = useState(false) // hide the inputs, keep the verdict + charts
+  const [calculated, setCalculated] = useState(false) // gate: no report until "Calcular" is hit
 
   useEffect(() => {
     try {
@@ -391,6 +394,13 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
   }
 
   const parsed = useMemo(() => parseAnalyzer(text), [text])
+
+  // A fresh paste invalidates the previous result: hide the report (and reopen
+  // the inputs) until the user hits "Calcular" again.
+  useEffect(() => {
+    setCalculated(false)
+    setCollapsed(false)
+  }, [text])
 
   // The analyzer's session length auto-fills the hours field but stays editable
   // (a fixed 20:00h party session, someone hunting less than a full recharge…).
@@ -439,30 +449,38 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
   // Every looted item (coins folded into the raw-gold line), most-dropped first.
   // No cap: the valuable rares usually drop in low quantity, so slicing to a
   // "top 8 by count" hid exactly the loot worth seeing. The list scrolls.
-  const lootRows = useMemo(
-    () =>
-      parsed.items
-        .filter((i) => !(i.name.toLowerCase() in COIN_VALUE))
-        .sort((a, b) => b.count - a.count),
+  // Looted items minus coins (folded into the raw-gold line). Kept unsorted here
+  // so the value lookups below can resolve, then re-sorted by worth.
+  const lootBase = useMemo(
+    () => parsed.items.filter((i) => !(i.name.toLowerCase() in COIN_VALUE)),
     [parsed.items],
   )
 
   const xpH = parsed.xpPerHour ?? (parsed.xpGain != null && hours != null ? parsed.xpGain / hours : null)
   const dmgH = parsed.damagePerHour ?? (parsed.damage != null && hours != null ? parsed.damage / hours : null)
   const healH = parsed.healingPerHour ?? (parsed.healing != null && hours != null ? parsed.healing / hours : null)
-  const hasReport = kills.length > 0 || lootRows.length > 0 || xpH != null || dmgH != null
+  const hasReport = kills.length > 0 || lootBase.length > 0 || xpH != null || dmgH != null
 
   // Sprite + page link for each visible row ("Others" is a label, not a name).
   const creatureLinks = useResolvedRows(
     kills.slice(0, 8).map((k) => k.name),
     'creature',
   )
-  // Sprites/links for the loot list — cap the lookups so a huge paste doesn't
-  // fire 40+ /search calls; rows past the cap still list, just without a sprite.
+  // Sprites/links + gold value for the loot list — cap the lookups so a huge
+  // paste doesn't fire 40+ /search calls; rows past the cap still list, just
+  // without a sprite (and worth 0, so they sink to the bottom).
   const itemLinks = useResolvedRows(
-    lootRows.slice(0, 30).map((i) => i.name),
+    lootBase.slice(0, 30).map((i) => i.name),
     'item',
   )
+  // Loot ordered by total worth (unit NPC value × quantity), most valuable
+  // first; count breaks ties. Re-sorts as the value lookups resolve.
+  const lootRows = useMemo(() => {
+    const worth = (i: { name: string; count: number }) =>
+      (itemLinks[i.name.toLowerCase()]?.value ?? 0) * i.count
+    return [...lootBase].sort((a, b) => worth(b) - worth(a) || b.count - a.count)
+  }, [lootBase, itemLinks])
+  const maxLootCount = Math.max(1, ...lootBase.map((i) => i.count))
 
   const toggleItem = (id: string) =>
     setCfg((c) => ({
@@ -547,7 +565,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
 
         {/* What we read from the paste + the editable session length */}
         <div className="mt-2 flex flex-wrap items-end gap-x-3 gap-y-2">
-          <NumField label={t('map.hpHours')} value={hoursDraft} onChange={setHoursDraft} suffix="h" min={0} step={0.25} />
+          <NumField big w="w-24" label={t('map.hpHours')} value={hoursDraft} onChange={setHoursDraft} suffix="h" min={0} step={0.25} />
           <div className="flex flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-sm">
             {parsed.loot != null && (
               <span className="text-fg-dim">
@@ -635,7 +653,10 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
         {/* Calcular — folds the inputs away so the verdict + charts fill the card */}
         {ready && (
           <button
-            onClick={() => setCollapsed(true)}
+            onClick={() => {
+              setCalculated(true)
+              setCollapsed(true)
+            }}
             className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-accent bg-accent/10 py-2.5 text-sm font-bold uppercase tracking-widest text-accent transition hover:bg-accent hover:text-bg-2 active:scale-[0.99]"
           >
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -648,8 +669,8 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
           </div>
         </div>
 
-        {/* The verdict */}
-        {ready ? (
+        {/* The verdict — only after "Calcular" */}
+        {calculated && (ready ? (
           <div className="mt-2 rounded-xl border border-line bg-bg-2 p-2.5">
             <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 text-sm">
               <dt className="text-fg-dim">{t('map.hpBalanceRow')}</dt>
@@ -673,10 +694,10 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
           </div>
         ) : (
           <p className="mt-2 text-sm text-fg-mute">{t('map.hpNoData')}</p>
-        )}
+        ))}
 
         {/* --- session report: the "video wall" ------------------------------- */}
-        {hasReport && (
+        {calculated && hasReport && (
           <div className="mt-3 border-t-2 border-line pt-2.5">
             <div className="mb-2 text-xs font-bold uppercase tracking-widest text-accent">{t('map.hpReport')}</div>
 
@@ -728,7 +749,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
                         key={i.name}
                         name={i.name}
                         count={i.count}
-                        max={lootRows[0].count}
+                        max={maxLootCount}
                         total={0}
                         color="var(--color-gold)"
                         entry={itemLinks[i.name.toLowerCase()]}

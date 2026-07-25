@@ -24,6 +24,11 @@ class SearchResultTransformer
                 'type' => $e->type->value,
                 'name' => $this->name($e, $locale),
                 'image' => $e->primary_image,
+                // Gold value for items (NPC sell price, market fallback) so callers
+                // like the hunt-profit loot list can sort by worth. Null for lore.
+                'value' => $e->type->value === 'item'
+                    ? (int) ($e->meta['value'] ?? $e->meta['npc_value'] ?? 0) ?: null
+                    : null,
             ])
             ->filter(fn ($i) => filled($i['name']))
             ->values();

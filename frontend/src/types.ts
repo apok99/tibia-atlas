@@ -52,6 +52,8 @@ export interface SearchResult {
   type: EntryType
   name: string
   image: string | null
+  /** Gold value for items (NPC sell price), null for lore. */
+  value?: number | null
 }
 
 export interface EntryListItem {
