@@ -31,6 +31,11 @@ const IMBUE_DEFAULT_COST = 500_000
 const IMBUE_DURATION_H = 20
 const SILVER_TOKEN_DEFAULT = 50_000
 
+// Flat per-session estimates the analyzer never sees: gold spent removing charms
+// to swap hunts, and paying to reroll prey. Rough averages — both editable.
+const CHARM_REMOVAL_DEFAULT = 35_000
+const PREY_REROLL_DEFAULT = 75_000
+
 const STORE_KEY = 'atlas:map:huntProfit'
 
 type Tally = { name: string; count: number }
@@ -144,6 +149,8 @@ type Config = {
   imbueCount: number
   imbueCost: number
   silverPrice: number
+  charmCost: number
+  preyCost: number
   items: string[]
 }
 
@@ -156,13 +163,22 @@ function loadConfig(): Config {
         imbueCount: Number.isFinite(c.imbueCount) ? c.imbueCount : 3,
         imbueCost: Number.isFinite(c.imbueCost) ? c.imbueCost : IMBUE_DEFAULT_COST,
         silverPrice: Number.isFinite(c.silverPrice) ? c.silverPrice : SILVER_TOKEN_DEFAULT,
+        charmCost: Number.isFinite(c.charmCost) ? c.charmCost : CHARM_REMOVAL_DEFAULT,
+        preyCost: Number.isFinite(c.preyCost) ? c.preyCost : PREY_REROLL_DEFAULT,
         items: Array.isArray(c.items) ? c.items.filter((i: unknown) => typeof i === 'string') : [],
       }
     }
   } catch {
     /* corrupted storage — fall through to defaults */
   }
-  return { imbueCount: 3, imbueCost: IMBUE_DEFAULT_COST, silverPrice: SILVER_TOKEN_DEFAULT, items: [] }
+  return {
+    imbueCount: 3,
+    imbueCost: IMBUE_DEFAULT_COST,
+    silverPrice: SILVER_TOKEN_DEFAULT,
+    charmCost: CHARM_REMOVAL_DEFAULT,
+    preyCost: PREY_REROLL_DEFAULT,
+    items: [],
+  }
 }
 
 const gp = (n: number) => Math.round(n).toLocaleString()
@@ -383,14 +399,18 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
   const imbueCount = Math.max(0, Math.round(Number(cfg.imbueCount) || 0))
   const imbueCost = Math.max(0, Number(cfg.imbueCost) || 0)
   const silverPrice = Math.max(0, Number(cfg.silverPrice) || 0)
+  const charmCost = Math.max(0, Number(cfg.charmCost) || 0)
+  const preyCost = Math.max(0, Number(cfg.preyCost) || 0)
 
   const imbueTotal = hours != null ? imbueCount * (imbueCost / IMBUE_DURATION_H) * hours : 0
   const wornItems = RECHARGEABLES.filter((r) => cfg.items.includes(r.id))
   const tokenTotal =
     hours != null ? wornItems.reduce((sum, r) => sum + (hours / r.hours) * r.tokens * silverPrice, 0) : 0
+  // Flat per-session — independent of hours, unlike imbues/tokens.
+  const extraTotal = charmCost + preyCost
 
   const ready = hours != null && balance != null
-  const realProfit = ready ? balance! - imbueTotal - tokenTotal : null
+  const realProfit = ready ? balance! - imbueTotal - tokenTotal - extraTotal : null
   const perHour = realProfit != null && hours != null ? realProfit / hours : null
 
   // --- report data -----------------------------------------------------------
@@ -550,6 +570,17 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
             </div>
             <p className="mt-1.5 text-xs text-fg-mute">{t('map.hpTokenNote')}</p>
           </div>
+
+          {/* Otros gastos fijos por sesión — quitar charms + prey rerolls */}
+          <div className={hasReport ? 'rounded-xl border border-line bg-bg-2 p-2.5 sm:col-span-2' : 'mt-2 rounded-xl border border-line bg-bg-2 p-2.5'}>
+            <div className="mb-1.5 text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpExtras')}</div>
+            <div className="flex items-end gap-2">
+              <NumField wide label={t('map.hpCharmCost')} value={String(cfg.charmCost)} onChange={(v) => setCfg((c) => ({ ...c, charmCost: Math.max(0, parseInt(v, 10) || 0) }))} suffix="gp" min={0} step={1000} />
+              <NumField wide label={t('map.hpPreyCost')} value={String(cfg.preyCost)} onChange={(v) => setCfg((c) => ({ ...c, preyCost: Math.max(0, parseInt(v, 10) || 0) }))} suffix="gp" min={0} step={1000} />
+              <div className="pb-1 text-right text-sm font-bold text-fg">{extraTotal > 0 ? '-' + gp(extraTotal) : '—'}</div>
+            </div>
+            <p className="mt-1.5 text-xs text-fg-mute">{t('map.hpExtraNote')}</p>
+          </div>
         </div>
 
         {/* The verdict */}
@@ -562,6 +593,10 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
               <dd className="text-right font-semibold text-fg">{imbueTotal > 0 ? '-' + gp(imbueTotal) : '0'}</dd>
               <dt className="text-fg-dim">{t('map.hpCostTokens')}</dt>
               <dd className="text-right font-semibold text-fg">{tokenTotal > 0 ? '-' + gp(tokenTotal) : '0'}</dd>
+              <dt className="text-fg-dim">{t('map.hpCostCharms')}</dt>
+              <dd className="text-right font-semibold text-fg">{charmCost > 0 ? '-' + gp(charmCost) : '0'}</dd>
+              <dt className="text-fg-dim">{t('map.hpCostPrey')}</dt>
+              <dd className="text-right font-semibold text-fg">{preyCost > 0 ? '-' + gp(preyCost) : '0'}</dd>
             </dl>
             <div className="mt-1.5 flex items-baseline justify-between border-t border-line pt-1.5">
               <span className="text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpReal')}</span>
@@ -648,6 +683,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
                     { label: t('map.hpSupplies'), value: -parsed.supplies },
                     { label: t('map.hpImbues'), value: -imbueTotal },
                     { label: t('map.hpCostTokensShort'), value: -tokenTotal },
+                    { label: t('map.hpCostExtraShort'), value: -extraTotal },
                   ]}
                   realLabel={t('map.hpReal')}
                 />
