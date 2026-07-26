@@ -338,7 +338,7 @@ function NewsRail({
 // chrome around them. Rashid reads gold, Yasir teal, so the two never blur.
 const RASHID_SPRITE = '/sprites/rashid.webp'
 const YASIR_SPRITE = '/sprites/yasir.webp'
-const RASHID_GOLD = '#d8a63c'
+const RASHID_GOLD = 'var(--color-rashid)'
 const YASIR_TEAL = '#5fb8a6'
 
 /** Short city tag: initials for multi-word names ("Port Hope" → PH), first
@@ -452,13 +452,13 @@ function RashidPanel({
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
       <div className="pointer-events-auto w-[26rem] max-w-[calc(100vw-1.5rem)] rounded-2xl border-2 border-line bg-bg-2/95 p-4 shadow-2xl backdrop-blur-md">
-        <div className="mb-2 flex items-center gap-1.5 text-[#d8a63c]">
+        <div className="mb-2 flex items-center gap-1.5 text-rashid">
           <img src={RASHID_SPRITE} alt="" className="h-6 w-6 shrink-0 [image-rendering:pixelated]" />
           <span className="text-[10px] font-bold uppercase tracking-widest">{t('map.rashidTitle')}</span>
           <button
             onClick={onClose}
             aria-label={t('common.close')}
-            className="ml-auto grid h-6 w-6 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:border-[#d8a63c] hover:text-[#d8a63c]"
+            className="ml-auto grid h-6 w-6 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:border-rashid hover:text-rashid"
           >
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M18 6 6 18M6 6l12 12" />
@@ -486,7 +486,7 @@ function RashidPanel({
           <button
             type="button"
             onClick={onRoute}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[#d8a63c]/50 bg-[#d8a63c]/10 px-3 py-1.5 text-sm font-semibold text-[#d8a63c] transition hover:bg-[#d8a63c]/20"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-rashid/50 bg-rashid/10 px-3 py-1.5 text-sm font-semibold text-rashid transition hover:bg-rashid/20"
           >
             <Icon name="compass" size={15} />
             {t('map.rashidRoute')}
@@ -755,7 +755,9 @@ function housePopup(h: House, t: (k: string) => string, watched: boolean): strin
           ? `${t('map.houseAuctioned')}${h.live.bid ? ` · ${fmtGold(h.live.bid)}` : ''}`
           : `${t('map.houseRented')}${h.live.owner ? ` · ${escapeHtml(h.live.owner)}` : ''}`
     const col = h.live.status === 'free' ? '#2f9e5a' : h.live.status === 'auctioned' ? '#d08a1e' : '#a13d3d'
-    live = `<div style="margin-top:3px;font-size:11px;font-weight:600;color:${col}">${label}</div>`
+    // data-house-live lets buildHousePopupEl patch the owner in once its
+    // on-demand lookup answers (the bulk status feed carries no owner names).
+    live = `<div data-house-live style="margin-top:3px;font-size:11px;font-weight:600;color:${col}">${label}</div>`
   }
   const bellLabel = watched ? t('map.houseUnwatch') : t('map.houseWatch')
   const bellCol = watched ? '#b3873f' : 'currentColor'
@@ -2779,6 +2781,24 @@ export function MapPage() {
         btn.style.color = on ? '#b3873f' : 'currentColor'
       })
     }
+    // Owner lookup on demand: the bulk /api/houses feed has no owner names
+    // (TibiaData's town lists omit them), so the first time a rented house's
+    // popup opens we ask the per-house proxy, patch the status line in place,
+    // and cache the name on houseLiveRef so re-opens show it instantly.
+    if (hl.live?.status === 'rented' && !hl.live.owner) {
+      const w = worldRef.current
+      fetch(`/api/houses/${encodeURIComponent(w)}/${hl.id}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          const owner: string | undefined = d?.house?.owner
+          if (!owner || worldRef.current !== w) return
+          const live = houseLiveRef.current?.[hl.id]
+          if (live) live.owner = owner
+          const line = el.querySelector('[data-house-live]')
+          if (line) line.textContent = `${t('map.houseRented')} · ${owner}`
+        })
+        .catch(() => {})
+    }
     return el
   }
 
@@ -3259,11 +3279,13 @@ export function MapPage() {
             `stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-7 9 7M5 9v11h14V9"/></svg></div>`,
           iconSize: [0, 0],
         })
-        // Popup as a DOM node so the bell button gets a live click handler
-        // (Leaflet accepts an element as popup content).
+        // Popup as a DOM node so the bell button gets a live click handler.
+        // Bound LAZILY (Leaflet accepts a content factory) so the on-demand
+        // owner lookup inside buildHousePopupEl only fires when a popup is
+        // actually opened — not once per visible pin on every repaint.
         return L.marker(toLatLng(hl.x, hl.y), { icon })
           .bindTooltip(escapeHtml(hl.name), { direction: 'top', offset: [0, -12] })
-          .bindPopup(buildHousePopupEl(hl))
+          .bindPopup(() => buildHousePopupEl(hl))
       })
     }
     syncMarkers(
@@ -5403,7 +5425,7 @@ export function MapPage() {
             gold — and the same 2.9rem width as the collapsed news button, with
             the merchants stacked one above the other, so the right edge stays a
             single narrow column instead of growing sideways. */}
-        <div className="pointer-events-auto flex w-[2.9rem] flex-col items-center gap-1 rounded-2xl border-2 border-[#d8a63c]/70 bg-bg-2/95 p-1.5 shadow-lg backdrop-blur-md">
+        <div className="pointer-events-auto flex w-[2.9rem] flex-col items-center gap-1 rounded-2xl border-2 border-rashid/70 bg-bg-2/95 p-1.5 shadow-lg backdrop-blur-md">
           <RashidRail stop={rashidStop} active={rashidOpen} onPick={() => goToRashid()} t={t} />
           <TravellerRail
             sprite={YASIR_SPRITE}

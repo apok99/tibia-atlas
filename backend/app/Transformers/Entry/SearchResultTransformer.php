@@ -24,14 +24,38 @@ class SearchResultTransformer
                 'type' => $e->type->value,
                 'name' => $this->name($e, $locale),
                 'image' => $e->primary_image,
-                // Gold value for items (NPC sell price, market fallback) so callers
-                // like the hunt-profit loot list can sort by worth. Null for lore.
-                'value' => $e->type->value === 'item'
-                    ? (int) ($e->meta['value'] ?? $e->meta['npc_value'] ?? 0) ?: null
-                    : null,
+                // Gold value for items so callers (the hunt-profit loot list) can
+                // rank loot by worth. Null for lore.
+                'value' => $e->type->value === 'item' ? $this->itemValue($e->meta) : null,
             ])
             ->filter(fn ($i) => filled($i['name']))
             ->values();
+    }
+
+    /**
+     * A single gold worth for an item. `npc_value` is a clean integer (the NPC
+     * sell price); `value` is a TibiaWiki market string like "30,000 - 40,000",
+     * so we pull its first number rather than blindly casting (which would keep
+     * only "30"). Returns null when neither yields a positive number.
+     *
+     * @param  array<string, mixed>|null  $meta
+     */
+    private function itemValue(?array $meta): ?int
+    {
+        $npc = data_get($meta, 'npc_value');
+        if (is_numeric($npc) && (int) $npc > 0) {
+            return (int) $npc;
+        }
+
+        $raw = data_get($meta, 'value');
+        if (is_numeric($raw)) {
+            return (int) $raw ?: null;
+        }
+        if (is_string($raw) && preg_match('/[\d,]+/', $raw, $m)) {
+            return (int) str_replace(',', '', $m[0]) ?: null;
+        }
+
+        return null;
     }
 
     /** Active-locale name with an English fallback. */

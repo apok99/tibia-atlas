@@ -137,6 +137,8 @@ Route::prefix('houses')->middleware(['throttle:public', 'cache.headers:public;ma
     Route::get('/prices', [HouseController::class, 'prices']);
     Route::get('/prices/towns', [HouseController::class, 'priceTowns']);
     Route::get('/{world}/{house}/bids', [HouseController::class, 'bids'])->whereNumber('house');
+    // Live single-house detail (TibiaData proxy) — owner name for the map popup.
+    Route::get('/{world}/{house}', [HouseController::class, 'show'])->whereNumber('house');
 });
 
 /*

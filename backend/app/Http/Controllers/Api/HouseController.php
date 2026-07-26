@@ -8,6 +8,7 @@ use App\Models\HouseSale;
 use App\Models\HouseStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 
 /**
  * Live house rent status for the map. The pins themselves come from the static
@@ -131,6 +132,56 @@ class HouseController extends Controller
     {
         return response()->json([
             'data' => HouseSale::query()->distinct()->orderBy('town')->pluck('town'),
+        ]);
+    }
+
+    /**
+     * GET /api/houses/{world}/{id} — live detail for ONE house, proxied straight
+     * from TibiaData's per-house endpoint. The town lists the ETL consumes carry
+     * no owner name, so the map popup fetches this on demand when a rented house
+     * is opened. Trimmed to what the popup shows.
+     */
+    public function show(string $world, int $house): JsonResponse
+    {
+        $base = rtrim((string) env('TIBIADATA_BASE_URL', 'https://api.tibiadata.com'), '/');
+
+        try {
+            $resp = Http::timeout(15)->retry(2, 800)
+                ->withHeaders(['User-Agent' => 'TibiaAtlas/1.0 (+map house lookup)'])
+                ->get("{$base}/v4/house/".rawurlencode($world).'/'.$house);
+        } catch (\Throwable $e) {
+            return response()->json(['found' => false, 'error' => 'upstream_unreachable'], 502);
+        }
+
+        if (! $resp->successful()) {
+            return response()->json(['found' => false, 'error' => 'upstream_error'], 502);
+        }
+
+        $h = $resp->json('house');
+        if (! is_array($h) || empty($h['houseid'])) {
+            // TibiaData answers 200 with an empty block for unknown world/id pairs.
+            return response()->json(['found' => false]);
+        }
+
+        $status = $h['status'] ?? [];
+        $rental = $status['rental'] ?? [];
+        $auction = $status['auction'] ?? [];
+        $str = fn ($v) => is_string($v) && $v !== '' ? $v : null;
+
+        return response()->json([
+            'found' => true,
+            'house' => [
+                'id' => (int) $h['houseid'],
+                'world' => $h['world'] ?? $world,
+                'name' => $h['name'] ?? null,
+                'rented' => (bool) ($status['is_rented'] ?? false),
+                'auctioned' => (bool) ($status['is_auctioned'] ?? false),
+                'owner' => $str($rental['owner'] ?? null),
+                'paid_until' => $str($rental['paid_until'] ?? null),
+                'bid' => (int) ($auction['current_bid'] ?? 0),
+                'bidder' => $str($auction['current_bidder'] ?? null),
+                'auction_end' => $str($auction['auction_end'] ?? null),
+            ],
         ]);
     }
 

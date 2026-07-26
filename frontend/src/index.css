@@ -28,6 +28,7 @@
   --color-theory: #a2854e;     /* unconfirmed — gilt */
 
   --color-broadcast: #7a5a1e;  /* in-game server broadcast — deep gilt so it stays readable on parchment */
+  --color-rashid: #7a5a1e;     /* Rashid's gold on the map — deep gilt by day so it reads on parchment */
 
   --font-display: 'EB Garamond', Georgia, 'Times New Roman', serif;
   --font-title: 'Cinzel', Georgia, serif;
@@ -75,6 +76,7 @@ html[data-theme='dark'] {
   --color-theory: #d8a23a;
 
   --color-broadcast: #e2b06f;  /* in-game server broadcast — bright amber reads well on the night ground */
+  --color-rashid: #d8a63c;     /* Rashid's gold — bright amber at night, as before */
 
   --color-atlas-bg: #131419;
   --color-atlas-panel: #1b1d24;

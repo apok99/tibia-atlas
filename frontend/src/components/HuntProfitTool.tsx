@@ -501,7 +501,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
       <div
         ref={cardRef}
         style={pos ? { position: 'absolute', left: pos.x, top: pos.y } : undefined}
-        className={`scroll-atlas pointer-events-auto max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-3.5 shadow-2xl backdrop-blur-md ${hasReport ? 'max-h-[94vh] w-[68rem]' : 'max-h-[82vh] w-[36rem]'}`}
+        className="scroll-atlas pointer-events-auto max-h-[92vh] w-[64rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-3.5 shadow-2xl backdrop-blur-md"
       >
         {/* Header doubles as the drag handle — grab it to move the card. */}
         <div
@@ -586,7 +586,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
           </div>
         </div>
 
-        <div className={hasReport ? 'mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2' : 'mt-3'}>
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
           {/* Imbuements — slots x (cost / 20h) x session hours */}
           <div className="rounded-xl border border-line bg-bg-2 p-2.5">
             <div className="mb-1.5 text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpImbues')}</div>
@@ -601,7 +601,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
           </div>
 
           {/* Silver-token rechargeables — tick what you wore for the session */}
-          <div className={hasReport ? 'rounded-xl border border-line bg-bg-2 p-2.5' : 'mt-2 rounded-xl border border-line bg-bg-2 p-2.5'}>
+          <div className="rounded-xl border border-line bg-bg-2 p-2.5">
             <div className="mb-1.5 flex items-end justify-between gap-2">
               <div className="text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpTokens')}</div>
               <NumField w="w-32" label={t('map.hpTokenPrice')} value={String(cfg.silverPrice)} onChange={(v) => setCfg((c) => ({ ...c, silverPrice: Math.max(0, parseInt(v, 10) || 0) }))} suffix="gp" min={0} step={1000} />
@@ -630,7 +630,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
           {/* Otros gastos por sesión — nº de charms/rerolls × coste unitario.
               Grid de columnas fijas: la cantidad no crece, el coste ocupa el
               hueco flexible y el total tiene su propio ancho, así nunca se sale. */}
-          <div className={hasReport ? 'rounded-xl border border-line bg-bg-2 p-2.5 sm:col-span-2' : 'mt-2 rounded-xl border border-line bg-bg-2 p-2.5'}>
+          <div className="rounded-xl border border-line bg-bg-2 p-2.5 sm:col-span-2">
             <div className="mb-1.5 text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpExtras')}</div>
             <div className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
               {/* Quitar charms: nº × coste por charm */}
