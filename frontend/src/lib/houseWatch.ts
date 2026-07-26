@@ -156,6 +156,73 @@ export function diffFreed(
   return freed
 }
 
+// ---- auction outbid watch ---------------------------------------------------
+// Last-seen bid per BELLED (house-kind watch) auctioned house, so a later
+// per-house lookup can tell "someone raised the bid" — and, when the stored
+// bidder is the user's own configured character, "you've been outbid". Fully
+// client-side like the freed diff above; the resulting alerts are local news
+// entries merged into the map's news rail.
+
+export type BidSeen = Record<number, { bid: number; bidder: string | null }>
+
+const BID_SEEN_PREFIX = 'tibia:house-bid-seen:' // + world
+
+export function loadBidSeen(world: string): BidSeen {
+  try {
+    const raw = localStorage.getItem(BID_SEEN_PREFIX + world)
+    const obj = raw ? JSON.parse(raw) : null
+    return obj && typeof obj === 'object' ? (obj as BidSeen) : {}
+  } catch {
+    return {}
+  }
+}
+
+export function saveBidSeen(world: string, seen: BidSeen): void {
+  try {
+    localStorage.setItem(BID_SEEN_PREFIX + world, JSON.stringify(seen))
+  } catch {
+    /* ignore */
+  }
+}
+
+// A locally-generated news entry (new bid / outbid on a belled auction).
+// Persisted per world so it survives a reload; the shape mirrors the server's
+// world events so the news rail can render both interchangeably. Local ids are
+// negative — server ids are positive, so the two can never collide as keys.
+export type LocalBidEvent = {
+  id: number
+  type: 'house_bid' | 'house_outbid'
+  ref_id: number
+  title: string | null
+  town: string | null
+  meta: { bid?: number; bidder?: string | null }
+  occurred_at: string
+}
+
+const BID_EVENTS_PREFIX = 'tibia:house-bid-events:' // + world
+const BID_EVENTS_MAX = 20
+
+export function loadBidEvents(world: string): LocalBidEvent[] {
+  try {
+    const raw = localStorage.getItem(BID_EVENTS_PREFIX + world)
+    const arr = raw ? JSON.parse(raw) : null
+    if (!Array.isArray(arr)) return []
+    // Match the server feed's 30-day horizon so old alerts age out.
+    const cutoff = Date.now() - 30 * 86400_000
+    return (arr as LocalBidEvent[]).filter((e) => new Date(e.occurred_at).getTime() >= cutoff)
+  } catch {
+    return []
+  }
+}
+
+export function saveBidEvents(world: string, events: LocalBidEvent[]): void {
+  try {
+    localStorage.setItem(BID_EVENTS_PREFIX + world, JSON.stringify(events.slice(0, BID_EVENTS_MAX)))
+  } catch {
+    /* ignore */
+  }
+}
+
 // ---- browser Notification API (no push server, no keys) --------------------
 
 export function notifyPermission(): NotificationPermission {

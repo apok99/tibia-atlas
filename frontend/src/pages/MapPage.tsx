@@ -27,6 +27,11 @@ import {
   notifyPermission,
   requestNotifyPermission,
   osNotify,
+  type LocalBidEvent,
+  loadBidSeen,
+  saveBidSeen,
+  loadBidEvents,
+  saveBidEvents,
 } from '../lib/houseWatch'
 import {
   type CharProfile,
@@ -157,7 +162,13 @@ type House = {
   size: number
   beds: number
   guild: number
-  live?: { status: 'rented' | 'auctioned' | 'free'; owner?: string | null; bid?: number } | null
+  live?: {
+    status: 'rented' | 'auctioned' | 'free'
+    owner?: string | null
+    bid?: number
+    // Current-bidder name; undefined = not looked up yet, null = no bids.
+    bidder?: string | null
+  } | null
 }
 
 // A live "what's happening on your world" event from GET /api/events. Two
@@ -174,6 +185,7 @@ type WorldEvent = {
     from?: string
     to?: string
     bid?: number
+    bidder?: string | null // house_bid / house_outbid: who holds the top bid
     count?: number // digest_*: how many were killed
     slug?: string // digest creature/boss: lore slug, for click-to-plot
     image?: string | null // digest creature/boss: sprite
@@ -188,6 +200,10 @@ const EVENT_STYLE: Record<string, { icon: string; color: string }> = {
   house_rented: { icon: 'home', color: 'var(--color-accent)' },
   house_freed: { icon: 'key', color: '#2f9e5a' },
   house_auctioned: { icon: 'gavel', color: '#e0a531' },
+  // Local (client-generated) entries for belled auctions: gold = someone bid,
+  // red = they bid over YOUR configured character.
+  house_bid: { icon: 'gavel', color: '#e0a531' },
+  house_outbid: { icon: 'gavel', color: '#c94f4f' },
   // Daily digest: sword = total slain, paw = most-hunted creature, skull = boss.
   digest_total: { icon: 'sword', color: 'var(--color-accent-2)' },
   digest_top_creature: { icon: 'paw', color: '#6cc551' },
@@ -213,6 +229,12 @@ function eventLabel(ev: WorldEvent, t: (k: string, o?: Record<string, unknown>) 
       return t('map.evtFreed')
     case 'house_auctioned':
       return t('map.evtAuction')
+    // Local bid alerts carry the amount right in the label so the rail answers
+    // "how much?" without a click; the bidder shows in the house popup.
+    case 'house_bid':
+      return `${t('map.evtNewBid')}${ev.meta?.bid ? ` · ${fmtGold(ev.meta.bid)}` : ''}`
+    case 'house_outbid':
+      return `${t('map.evtOutbid')}${ev.meta?.bid ? ` · ${fmtGold(ev.meta.bid)}` : ''}`
     case 'digest_total':
       return t('map.evtTotalKills')
     case 'digest_top_creature':
@@ -752,7 +774,7 @@ function housePopup(h: House, t: (k: string) => string, watched: boolean): strin
       h.live.status === 'free'
         ? t('map.houseFree')
         : h.live.status === 'auctioned'
-          ? `${t('map.houseAuctioned')}${h.live.bid ? ` · ${fmtGold(h.live.bid)}` : ''}`
+          ? `${t('map.houseAuctioned')}${h.live.bid ? ` · ${fmtGold(h.live.bid)}` : ''}${h.live.bidder ? ` · ${escapeHtml(h.live.bidder)}` : ''}`
           : `${t('map.houseRented')}${h.live.owner ? ` · ${escapeHtml(h.live.owner)}` : ''}`
     const col = h.live.status === 'free' ? '#2f9e5a' : h.live.status === 'auctioned' ? '#d08a1e' : '#a13d3d'
     // data-house-live lets buildHousePopupEl patch the owner in once its
@@ -2398,6 +2420,12 @@ export function MapPage() {
       /* private mode / storage disabled — non-fatal */
     }
   }, [world])
+  // Local bid alerts (new bid / outbid on a belled auction) for the news rail.
+  // Per-world in localStorage; swapped wholesale when the world changes.
+  const [bidEvents, setBidEvents] = useState<LocalBidEvent[]>(() => loadBidEvents(world))
+  useEffect(() => {
+    setBidEvents(loadBidEvents(world))
+  }, [world])
   // "Your character" overlay: the saved profile (localStorage), the settings
   // panel open state, and the name being typed. The live character data is
   // fetched by react-query below, keyed on the saved name.
@@ -2725,7 +2753,10 @@ export function MapPage() {
   const housesRef = useRef<House[]>([])
   // House lookup by real Tibia id, so the news ticker can fly to an event's house.
   const houseByIdRef = useRef<Map<number, House>>(new Map())
-  const houseLiveRef = useRef<Record<number, { status: 'rented' | 'auctioned' | 'free'; owner?: string | null; bid?: number }> | null>(null)
+  const houseLiveRef = useRef<Record<
+    number,
+    { status: 'rented' | 'auctioned' | 'free'; owner?: string | null; bid?: number; bidder?: string | null }
+  > | null>(null)
   // Bumped when live status is merged, so the marker diff's epoch changes and the
   // (otherwise key-cached) pins get rebuilt with their new rent-status colour.
   const houseLiveVerRef = useRef(0)
@@ -2781,21 +2812,38 @@ export function MapPage() {
         btn.style.color = on ? '#b3873f' : 'currentColor'
       })
     }
-    // Owner lookup on demand: the bulk /api/houses feed has no owner names
-    // (TibiaData's town lists omit them), so the first time a rented house's
-    // popup opens we ask the per-house proxy, patch the status line in place,
-    // and cache the name on houseLiveRef so re-opens show it instantly.
-    if (hl.live?.status === 'rented' && !hl.live.owner) {
+    // Owner/bidder lookup on demand: the bulk /api/houses feed carries neither
+    // (TibiaData's town lists omit them), so the first time a rented or
+    // auctioned house's popup opens we ask the per-house proxy, patch the
+    // status line in place, and cache the answer on houseLiveRef so re-opens
+    // show it instantly. `bidder === undefined` = never looked up; null after
+    // a lookup marks a bidless auction so we don't refetch on every open.
+    const lv = hl.live
+    if (lv && ((lv.status === 'rented' && !lv.owner) || (lv.status === 'auctioned' && lv.bidder === undefined))) {
       const w = worldRef.current
       fetch(`/api/houses/${encodeURIComponent(w)}/${hl.id}`)
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
-          const owner: string | undefined = d?.house?.owner
-          if (!owner || worldRef.current !== w) return
+          const det = d?.house
+          if (!det || worldRef.current !== w) return
           const live = houseLiveRef.current?.[hl.id]
-          if (live) live.owner = owner
+          if (live) {
+            if (det.owner) live.owner = det.owner
+            if (det.auctioned) {
+              // Fresher than the twice-daily ETL snapshot.
+              if (det.bid) live.bid = det.bid
+              live.bidder = det.bidder ?? null
+            }
+          }
           const line = el.querySelector('[data-house-live]')
-          if (line) line.textContent = `${t('map.houseRented')} · ${owner}`
+          if (!line) return
+          if (det.rented && det.owner) {
+            line.textContent = `${t('map.houseRented')} · ${det.owner}`
+          } else if (det.auctioned && (det.bid || det.bidder)) {
+            line.textContent =
+              `${t('map.houseAuctioned')}${det.bid ? ` · ${fmtGold(det.bid)}` : ''}` +
+              `${det.bidder ? ` · ${det.bidder}` : ''}`
+          }
         })
         .catch(() => {})
     }
@@ -4310,6 +4358,15 @@ export function MapPage() {
     refetchOnWindowFocus: true,
   })
   const worldEvents = worldEventsData?.events ?? []
+  // The news rail shows the server's world events PLUS the local bid alerts on
+  // belled auctions, newest first (LocalBidEvent mirrors the WorldEvent shape).
+  const newsEvents = useMemo<WorldEvent[]>(() => {
+    if (!bidEvents.length) return worldEvents
+    return [...(bidEvents as WorldEvent[]), ...worldEvents].sort(
+      (a, b) => +new Date(b.occurred_at) - +new Date(a.occurred_at),
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [worldEventsData, bidEvents])
 
   // Load the houses into the ref and (re)draw when toggled, floor changes, or the
   // map remounts.
@@ -4400,6 +4457,94 @@ export function MapPage() {
     osNotify(t('map.houseFreedTitle'), msg)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [houseStatus, world])
+
+  // Auction outbid watch — also fully client-side. For every BELLED house that
+  // is on auction, ask the per-house proxy who holds the top bid (the bulk feed
+  // has no bidder names; a handful of watched houses keeps this cheap). A raised
+  // bid becomes a local news entry; when the PREVIOUS bidder was the user's
+  // configured character it upgrades to an "outbid" alert with an OS
+  // notification. First sighting of an auction is stored silently — same
+  // no-phantom-alerts rule as the freed diff above.
+  useEffect(() => {
+    if (!houseStatus?.houses) return
+    const belled = watchesRef.current.filter(
+      (w): w is Extract<Watch, { kind: 'house' }> => w.kind === 'house' && w.world === world,
+    )
+    const auctioned = belled.filter((w) => houseStatus.houses[w.id]?.status === 'auctioned')
+    const seen = loadBidSeen(world)
+    // A house that left its auction has nothing to compare against any more.
+    for (const key of Object.keys(seen)) {
+      if (houseStatus.houses[Number(key)]?.status !== 'auctioned') delete seen[Number(key)]
+    }
+    if (!auctioned.length) {
+      saveBidSeen(world, seen)
+      return
+    }
+    let stale = false
+    const my = charProfile?.name.trim().toLowerCase() ?? ''
+    void Promise.all(
+      auctioned.map(async (w) => {
+        try {
+          const res = await fetch(`/api/houses/${encodeURIComponent(world)}/${w.id}`)
+          if (!res.ok) return null
+          const d = await res.json()
+          if (!d?.house?.auctioned) return null
+          return {
+            watch: w,
+            bid: Number(d.house.bid) || 0,
+            bidder: (d.house.bidder as string | null) ?? null,
+          }
+        } catch {
+          return null
+        }
+      }),
+    ).then((rows) => {
+      if (stale) return
+      const fresh: LocalBidEvent[] = []
+      const now = new Date().toISOString()
+      for (const row of rows) {
+        if (!row) continue
+        const { watch: w, bid, bidder } = row
+        const prev = seen[w.id]
+        seen[w.id] = { bid, bidder }
+        // Cold start or nothing moved → just (re)store the baseline.
+        if (!prev || (prev.bid === bid && prev.bidder === bidder)) continue
+        const bidderLc = bidder?.toLowerCase() ?? ''
+        // The user's own (re)bid — nothing worth announcing to themselves.
+        if (my && bidderLc === my) continue
+        const outbid = my !== '' && prev.bidder?.toLowerCase() === my && bidderLc !== my
+        fresh.push({
+          // Negative + house-id salt: unique locally, never collides with
+          // the server feed's positive ids in the rail's key prop.
+          id: -(Date.now() + w.id),
+          type: outbid ? 'house_outbid' : 'house_bid',
+          ref_id: w.id,
+          title: w.name,
+          town: w.town,
+          meta: { bid: bid || undefined, bidder },
+          occurred_at: now,
+        })
+        if (outbid) {
+          osNotify(
+            t('map.houseOutbidTitle'),
+            t('map.houseOutbidBody', { name: w.name, bid: fmtGold(bid), bidder: bidder ?? '¿?' }),
+          )
+        }
+      }
+      saveBidSeen(world, seen)
+      if (fresh.length) {
+        setBidEvents((cur) => {
+          const next = [...fresh, ...cur].slice(0, 20)
+          saveBidEvents(world, next)
+          return next
+        })
+      }
+    })
+    return () => {
+      stale = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [houseStatus, world, charProfile?.name])
 
   // Houses for the panel list — respecting BOTH the guildhall (kind) and
   // rent-status filters — sorted by town then rent. Empty until the static pins
@@ -5415,7 +5560,7 @@ export function MapPage() {
           merchants — one tap flies to them and routes there. */}
       <div className="pointer-events-none absolute right-2 top-3 z-[1101] flex flex-col items-end gap-2 sm:right-3">
         <NewsRail
-          events={worldEvents}
+          events={newsEvents}
           open={newsOpen}
           onToggle={() => setNewsOpen((v) => !v)}
           t={t}
