@@ -251,6 +251,9 @@ function BarRow({
   total,
   color,
   entry,
+  barValue,
+  valueText,
+  note,
 }: {
   name: string
   count: number
@@ -258,8 +261,17 @@ function BarRow({
   total: number
   color: string
   entry?: SearchResult | null
+  /** Magnitude the bar length maps to (defaults to `count`). */
+  barValue?: number
+  /** Right-hand figure (defaults to the count). */
+  valueText?: string
+  /** Small muted qualifier after the figure (defaults to the share of total). */
+  note?: string
 }) {
   const share = total > 0 ? Math.round((count / total) * 100) : null
+  const mag = barValue ?? count
+  const main = valueText ?? count.toLocaleString()
+  const sub = note ?? (share != null ? ` · ${share}%` : '')
   const body = (
     <>
       <span className="grid h-7 w-7 shrink-0 place-items-center">
@@ -275,16 +287,16 @@ function BarRow({
       <span className="relative h-3 min-w-0 flex-1 overflow-hidden rounded-sm bg-line/40">
         <span
           className="absolute inset-y-0 left-0 rounded-r-[4px]"
-          style={{ width: `${Math.max(2, (count / max) * 100)}%`, background: color }}
+          style={{ width: `${Math.max(2, (mag / max) * 100)}%`, background: color }}
         />
       </span>
       <span className="w-24 shrink-0 text-right text-xs font-semibold text-fg">
-        {count.toLocaleString()}
-        {share != null && <span className="font-normal text-fg-mute"> · {share}%</span>}
+        {main}
+        {sub && <span className="font-normal text-fg-mute">{sub}</span>}
       </span>
     </>
   )
-  const tip = share != null ? `${count.toLocaleString()} · ${share}%` : count.toLocaleString()
+  const tip = `${main}${sub}`
   return entry ? (
     <Link
       to={entry.type === 'item' ? `/items/${entry.slug}` : `/entry/${entry.slug}`}
@@ -359,6 +371,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
   const [cfg, setCfg] = useState<Config>(loadConfig)
   const [collapsed, setCollapsed] = useState(false) // hide the inputs, keep the verdict + charts
   const [calculated, setCalculated] = useState(false) // gate: no report until "Calcular" is hit
+  const [lootSort, setLootSort] = useState<'total' | 'unit' | 'count'>('total') // loot list ordering
 
   useEffect(() => {
     try {
@@ -473,14 +486,22 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
     lootBase.slice(0, 30).map((i) => i.name),
     'item',
   )
-  // Loot ordered by total worth (unit NPC value × quantity), most valuable
-  // first; count breaks ties. Re-sorts as the value lookups resolve.
+  // Each looted line enriched with its unit gold value and session total worth,
+  // then ordered by the chosen metric (total worth / unit price / quantity).
+  // Count breaks ties. Re-sorts live as the value lookups resolve.
   const lootRows = useMemo(() => {
-    const worth = (i: { name: string; count: number }) =>
-      (itemLinks[i.name.toLowerCase()]?.value ?? 0) * i.count
-    return [...lootBase].sort((a, b) => worth(b) - worth(a) || b.count - a.count)
-  }, [lootBase, itemLinks])
-  const maxLootCount = Math.max(1, ...lootBase.map((i) => i.count))
+    const rows = lootBase.map((i) => {
+      const unit = itemLinks[i.name.toLowerCase()]?.value ?? 0
+      return { ...i, unit, worth: unit * i.count }
+    })
+    const key = lootSort === 'unit' ? 'unit' : lootSort === 'count' ? 'count' : 'worth'
+    return rows.sort((a, b) => b[key] - a[key] || b.count - a.count)
+  }, [lootBase, itemLinks, lootSort])
+  // Bar magnitude scale for the active metric (never 0, so a bar always shows).
+  const maxLoot = Math.max(
+    1,
+    ...lootRows.map((i) => (lootSort === 'unit' ? i.unit : lootSort === 'count' ? i.count : i.worth)),
+  )
 
   const toggleItem = (id: string) =>
     setCfg((c) => ({
@@ -736,25 +757,47 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
               {/* Every looted item (coins folded into one raw-gold line) */}
               {(lootRows.length > 0 || coinGold > 0) && (
                 <div className="flex min-h-0 flex-col rounded-xl border border-line bg-bg-2 p-2.5">
-                  <div className="mb-1.5 flex items-baseline justify-between gap-2">
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
                     <span className="text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpLootTop')}</span>
-                    <span className="truncate text-xs font-semibold text-fg-mute">
-                      {t('map.hpLootItems', { n: lootRows.length })}
-                      {coinGold > 0 && ` · ${t('map.hpCoins', { n: gp(coinGold) })}`}
-                    </span>
+                    {/* Sort toggle: total worth / unit price / quantity */}
+                    <div className="flex shrink-0 gap-0.5 rounded-lg border border-line p-0.5">
+                      {(['total', 'unit', 'count'] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          onClick={() => setLootSort(mode)}
+                          aria-pressed={lootSort === mode}
+                          className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide transition ${lootSort === mode ? 'bg-accent text-bg-2' : 'text-fg-mute hover:text-fg'}`}
+                        >
+                          {t(`map.hpSort_${mode}`)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="mb-1 truncate text-[11px] font-semibold text-fg-mute">
+                    {t('map.hpLootItems', { n: lootRows.length })}
+                    {coinGold > 0 && ` · ${t('map.hpCoins', { n: gp(coinGold) })}`}
                   </div>
                   <div className="scroll-atlas flex max-h-[15rem] flex-col gap-1 overflow-y-auto pr-1">
-                    {lootRows.map((i) => (
-                      <BarRow
-                        key={i.name}
-                        name={i.name}
-                        count={i.count}
-                        max={maxLootCount}
-                        total={0}
-                        color="var(--color-gold)"
-                        entry={itemLinks[i.name.toLowerCase()]}
-                      />
-                    ))}
+                    {lootRows.map((i) => {
+                      const barValue = lootSort === 'unit' ? i.unit : lootSort === 'count' ? i.count : i.worth
+                      const valueText =
+                        lootSort === 'count' ? i.count.toLocaleString() : barValue > 0 ? compact(barValue) : '—'
+                      const note = lootSort === 'count' ? '' : ` · ×${i.count.toLocaleString()}`
+                      return (
+                        <BarRow
+                          key={i.name}
+                          name={i.name}
+                          count={i.count}
+                          barValue={barValue}
+                          valueText={valueText}
+                          note={note}
+                          max={maxLoot}
+                          total={0}
+                          color="var(--color-gold)"
+                          entry={itemLinks[i.name.toLowerCase()]}
+                        />
+                      )
+                    })}
                   </div>
                 </div>
               )}
