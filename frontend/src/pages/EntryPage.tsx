@@ -1,9 +1,7 @@
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useEntry } from '../hooks/useEntries'
-import { RelatedCodex } from '../components/RelatedCodex'
 import { EntryPageSkeleton } from '../components/Skeleton'
-import { RecommendedReading } from '../components/RecommendedReading'
 import { TypeIcon } from '../components/TypeIcon'
 import { LoreText } from '../components/LoreText'
 import { CreatureKillStats } from '../components/CreatureKillStats'
@@ -31,8 +29,6 @@ export function EntryPage() {
   // Show canon as body text only when the overview already provided the lead,
   // so it isn't duplicated. Titles for canon/interpretations are intentionally omitted.
   const canonBody = entry.content.overview ? entry.content.canon : null
-
-  const related = entry.related ?? []
 
   // Internal bookkeeping fields that must never appear in the stat block.
   // immune_to / weak_to get their own visual Combat panel below.
@@ -185,8 +181,7 @@ export function EntryPage() {
         )}
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_19rem]">
-        <div className="space-y-5">
+      <div className="space-y-5">
           {canonBody && (
             <div className="panel p-5">
               <div className="prose-atlas">
@@ -244,12 +239,6 @@ export function EntryPage() {
               onClose={() => setZoomed(false)}
             />
           )}
-        </div>
-
-        <aside className="space-y-5">
-          <RelatedCodex items={related} />
-          <RecommendedReading excludeSlug={entry.slug} />
-        </aside>
       </div>
     </div>
   )

@@ -180,6 +180,9 @@ interface Ability {
   element?: string
 }
 
+/** Ability kinds the creature casts on itself — never damage dealt to you. */
+const NON_OFFENSE = new Set(['healing', 'haste', 'summon'])
+
 const KIND_COLOR: Record<string, string> = {
   melee: '#8a8578',
   healing: '#4f9e6a',
@@ -287,18 +290,21 @@ export function CreatureCombat({ meta }: { meta: Record<string, unknown> }) {
     : []
   const hasAbilities = abilities.length > 0
 
-  // Peak elemental damage per element — powers the "predominant element" chart.
+  // Damage share per element — sums each attack's peak damage so the donut
+  // answers "which type hits me hardest" at a glance. Self-buffs (healing,
+  // haste, summons) are what the creature does to itself, never to you.
   const damageByElement = new Map<string, number>()
   for (const a of abilities) {
+    if (a.kind && NON_OFFENSE.has(a.kind)) continue
     if (!a.element || !ELEMENT[a.element]) continue
     const peak = peakDamage(a.damage)
     if (peak == null || peak <= 1) continue
-    damageByElement.set(a.element, Math.max(damageByElement.get(a.element) ?? 0, peak))
+    damageByElement.set(a.element, (damageByElement.get(a.element) ?? 0) + peak)
   }
   const damageRows = [...damageByElement.entries()]
     .map(([id, val]) => ({ def: ELEMENT[id], val }))
     .sort((a, b) => b.val - a.val)
-  const maxDamage = damageRows[0]?.val ?? 0
+  const totalDamage = damageRows.reduce((sum, r) => sum + r.val, 0)
 
   if (!hasAffinity && !hasAbilities) return null
 
@@ -439,8 +445,9 @@ export function CreatureCombat({ meta }: { meta: Record<string, unknown> }) {
             </span>
           </SubHeader>
 
-          {/* Predominant-element chart: peak damage per element, tallest first. */}
-          {damageRows.length >= 2 && (
+          {/* Damage-type donut: share of summed peak damage per element, so the
+              dominant type is readable at a glance even with a single slice. */}
+          {damageRows.length > 0 && totalDamage > 0 && (
             <div className="px-4 pb-3 pt-1">
               <div className="mb-2 flex items-baseline gap-2">
                 <h4 className="text-[10px] font-bold uppercase tracking-[0.14em] text-fg-mute">
@@ -448,36 +455,35 @@ export function CreatureCombat({ meta }: { meta: Record<string, unknown> }) {
                 </h4>
                 <span className="text-[10px] text-fg-mute">{t('combat.byElementHint')}</span>
               </div>
-              <div className="flex flex-col gap-1.5">
-                {damageRows.map(({ def, val }, idx) => (
-                  <div key={def.id} className="flex items-center gap-2">
-                    <ElementIcon def={def} size={18} />
-                    <span className="w-20 shrink-0 truncate text-[11px] font-semibold text-fg-dim">
-                      {t(`elements.${def.id}`)}
-                    </span>
-                    <div className="relative h-3.5 flex-1 overflow-hidden rounded-[3px] bg-bg-2">
-                      <div
-                        className="h-full rounded-[3px]"
-                        style={{
-                          width: `${maxDamage ? Math.max(6, (val / maxDamage) * 100) : 0}%`,
-                          background: def.color,
-                          opacity: idx === 0 ? 1 : 0.66,
-                        }}
-                      />
-                    </div>
-                    {idx === 0 && (
-                      <span
-                        className="shrink-0 rounded-[3px] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
-                        style={{ color: def.color, background: `${def.color}1f` }}
-                      >
-                        {t('combat.predominant')}
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+                <DamageDonut rows={damageRows} total={totalDamage} t={t} />
+                <div className="flex min-w-[13rem] flex-1 flex-col gap-1.5">
+                  {damageRows.map(({ def, val }, idx) => (
+                    <div key={def.id} className="flex items-center gap-2">
+                      <ElementIcon def={def} size={18} />
+                      <span className="truncate text-[11px] font-semibold text-fg-dim">
+                        {t(`elements.${def.id}`)}
                       </span>
-                    )}
-                    <span className="w-12 shrink-0 text-right font-mono text-[11px] font-bold tabular-nums text-fg">
-                      {val}
-                    </span>
-                  </div>
-                ))}
+                      {idx === 0 && damageRows.length > 1 && (
+                        <span
+                          className="shrink-0 rounded-[3px] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
+                          style={{ color: def.color, background: `${def.color}1f` }}
+                        >
+                          {t('combat.predominant')}
+                        </span>
+                      )}
+                      <span className="ml-auto shrink-0 font-mono text-[11px] font-bold tabular-nums text-fg">
+                        {val.toLocaleString()}
+                      </span>
+                      <span
+                        className="w-10 shrink-0 text-right font-mono text-[11px] font-bold tabular-nums"
+                        style={{ color: def.color }}
+                      >
+                        {Math.round((val / totalDamage) * 100)}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -540,6 +546,62 @@ export function CreatureCombat({ meta }: { meta: Record<string, unknown> }) {
         </div>
       )}
     </section>
+  )
+}
+
+/**
+ * Donut chart of the creature's damage output by element. Each slice is a
+ * stroked circle segment (circumference normalised to 100); the hole shows the
+ * predominant element's share so the answer is readable without the legend.
+ */
+function DamageDonut({
+  rows,
+  total,
+  t,
+}: {
+  rows: { def: ElementDef; val: number }[]
+  total: number
+  t: (k: string) => string
+}) {
+  const top = rows[0]
+  // A hairline gap between slices, but only when there is more than one.
+  const gap = rows.length > 1 ? 1.25 : 0
+  let start = 0
+  return (
+    <div className="relative h-28 w-28 shrink-0">
+      <svg viewBox="0 0 42 42" className="h-full w-full -rotate-90" aria-hidden="true">
+        {rows.map(({ def, val }) => {
+          const frac = (val / total) * 100
+          const dash = Math.max(frac - gap, 0.5)
+          const seg = (
+            <circle
+              key={def.id}
+              cx="21"
+              cy="21"
+              r="15.915"
+              fill="none"
+              stroke={def.color}
+              strokeWidth="5.5"
+              strokeDasharray={`${dash} ${100 - dash}`}
+              strokeDashoffset={-start - gap / 2}
+            />
+          )
+          start += frac
+          return seg
+        })}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span
+          className="font-mono text-base font-black tabular-nums leading-none"
+          style={{ color: top.def.color }}
+        >
+          {Math.round((top.val / total) * 100)}%
+        </span>
+        <span className="mt-0.5 max-w-[4.5rem] truncate text-center text-[9px] font-bold uppercase tracking-wider text-fg-mute">
+          {t(`elements.${top.def.id}`)}
+        </span>
+      </div>
+    </div>
   )
 }
 

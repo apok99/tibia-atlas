@@ -1029,7 +1029,7 @@ const resources = {
         noEffect: 'Useless against it',
         noWeakness: 'No elemental weaknesses.',
         byElement: 'Damage by element',
-        byElementHint: 'peak per hit',
+        byElementHint: 'share of its strongest hits',
         predominant: 'Predominant',
       },
       abilities: {
@@ -2105,7 +2105,7 @@ const resources = {
         noEffect: 'Inútil contra él',
         noWeakness: 'Sin debilidades elementales.',
         byElement: 'Daño por elemento',
-        byElementHint: 'pico por golpe',
+        byElementHint: 'proporción de sus golpes más fuertes',
         predominant: 'Predominante',
       },
       abilities: {
