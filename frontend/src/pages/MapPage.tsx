@@ -15,6 +15,7 @@ import {
   isHouseWatched,
   isTownWatched,
   isWorldWatched,
+  houseCovered,
   loadWatches,
   saveWatches,
   toggleHouseWatch,
@@ -255,12 +256,16 @@ function eventLabel(ev: WorldEvent, t: (k: string, o?: Record<string, unknown>) 
 function NewsRail({
   events,
   open,
+  alert,
   onToggle,
   t,
   onPick,
 }: {
   events: WorldEvent[]
   open: boolean
+  // Unseen PERSONAL news (outbid on your auction, a belled house released):
+  // the collapsed badge swaps its count for a pulsing red "!" until opened.
+  alert: boolean
   onToggle: () => void
   t: (k: string, o?: Record<string, unknown>) => string
   onPick: (ev: WorldEvent) => void
@@ -296,8 +301,12 @@ function NewsRail({
           ) : (
             <>
               <Icon name="newspaper" size={17} className="text-accent" />
-              <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold leading-none text-white">
-                {events.length}
+              <span
+                className={`absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-bold leading-none text-white ${
+                  alert ? 'animate-pulse bg-[#c94f4f]' : 'bg-accent'
+                }`}
+              >
+                {alert ? '!' : events.length}
               </span>
             </>
           )}
@@ -2426,6 +2435,23 @@ export function MapPage() {
   useEffect(() => {
     setBidEvents(loadBidEvents(world))
   }, [world])
+  // When the news rail was last OPENED on this world — personal news newer than
+  // this makes the collapsed button flash a red "!" instead of the count.
+  const newsSeenKey = 'tibia:news-seen:' + world
+  const [newsSeenAt, setNewsSeenAt] = useState<number>(() => {
+    try {
+      return Number(localStorage.getItem(newsSeenKey)) || 0
+    } catch {
+      return 0
+    }
+  })
+  useEffect(() => {
+    try {
+      setNewsSeenAt(Number(localStorage.getItem('tibia:news-seen:' + world)) || 0)
+    } catch {
+      setNewsSeenAt(0)
+    }
+  }, [world])
   // "Your character" overlay: the saved profile (localStorage), the settings
   // panel open state, and the name being typed. The live character data is
   // fetched by react-query below, keyed on the saved name.
@@ -4368,6 +4394,23 @@ export function MapPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [worldEventsData, bidEvents])
 
+  // Unseen PERSONAL news since the rail was last opened: any local bid alert
+  // (new bid / outbid), or a server house event saying a house covered by one
+  // of the user's watches was released (freed or thrown on auction by its
+  // owner). Drives the red "!" on the collapsed news button.
+  const hasNewsAlert = useMemo(() => {
+    const isNew = (iso: string) => new Date(iso).getTime() > newsSeenAt
+    if (bidEvents.some((e) => isNew(e.occurred_at))) return true
+    return worldEvents.some(
+      (e) =>
+        (e.type === 'house_freed' || e.type === 'house_auctioned') &&
+        e.ref_id != null &&
+        isNew(e.occurred_at) &&
+        houseCovered(watches, world, e.ref_id, e.town),
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bidEvents, worldEventsData, watches, world, newsSeenAt])
+
   // Load the houses into the ref and (re)draw when toggled, floor changes, or the
   // map remounts.
   useEffect(() => {
@@ -5562,7 +5605,20 @@ export function MapPage() {
         <NewsRail
           events={newsEvents}
           open={newsOpen}
-          onToggle={() => setNewsOpen((v) => !v)}
+          alert={hasNewsAlert}
+          onToggle={() => {
+            // Opening the rail marks everything as seen — the "!" stands down.
+            if (!newsOpen) {
+              const now = Date.now()
+              setNewsSeenAt(now)
+              try {
+                localStorage.setItem(newsSeenKey, String(now))
+              } catch {
+                /* ignore */
+              }
+            }
+            setNewsOpen((v) => !v)
+          }}
           t={t}
           onPick={onPickEvent}
         />
