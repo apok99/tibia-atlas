@@ -3,6 +3,7 @@
 namespace App\Services\Import;
 
 use App\Models\Entry;
+use App\Support\Wikitext;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
@@ -782,33 +783,6 @@ class StubFiller
         return trim(preg_replace("/\n{3,}/", "\n\n", $prose) ?? $prose);
     }
 
-    /** Remove balanced {{ ... }} template blocks (handles nesting). */
-    private function stripTemplates(string $w): string
-    {
-        $out = '';
-        $depth = 0;
-        $len = strlen($w);
-        for ($i = 0; $i < $len; $i++) {
-            if ($i + 1 < $len && $w[$i] === '{' && $w[$i + 1] === '{') {
-                $depth++;
-                $i++;
-
-                continue;
-            }
-            if ($i + 1 < $len && $w[$i] === '}' && $w[$i + 1] === '}') {
-                $depth = max(0, $depth - 1);
-                $i++;
-
-                continue;
-            }
-            if ($depth === 0) {
-                $out .= $w[$i];
-            }
-        }
-
-        return $out;
-    }
-
     /** Remove wiki tables {| ... |}. */
     private function stripTables(string $w): string
     {
@@ -828,7 +802,7 @@ class StubFiller
         $text = preg_replace('/<ref[^>]*>.*?<\/ref>/is', '', $text) ?? $text;
         $text = preg_replace('/<ref[^>]*\/>/i', '', $text) ?? $text;
         // Strip nested templates that weren't stripped at the block level.
-        $text = $this->stripTemplates($text);
+        $text = Wikitext::stripTemplates($text);
         $text = preg_replace('/<\/?[^>]+>/', '', $text) ?? $text;
         $text = str_replace(["'''", "''"], '', $text);
         $text = preg_replace('/^[\*#:;]+\s*/m', '', $text) ?? $text;
@@ -836,9 +810,7 @@ class StubFiller
         $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5);
 
         $lines = array_map(fn ($l) => trim(preg_replace('/[ \t]+/', ' ', $l) ?? $l), explode("\n", $text));
-        $text = implode("\n", $lines);
-        $text = preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
 
-        return trim($text);
+        return Wikitext::tidy(implode("\n", $lines));
     }
 }

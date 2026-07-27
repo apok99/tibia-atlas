@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { Seo } from '../lib/seo'
+import { GameLeaderboard } from '../components/GameLeaderboard'
 import { TILE, toLatLng, ZONES, type Place } from '../lib/zones'
 
 type Status = 'playing' | 'won' | 'lost'
@@ -418,6 +419,15 @@ export function GeoPage() {
           mapHash={mapHash}
         />
       )}
+
+      {/* Today's top 10 — one guess, so it's a pure race against the clock. */}
+      <div className="w-full max-w-md">
+        <GameLeaderboard
+          game="geo"
+          date={date}
+          result={finished ? { solved: status === 'won', attempts: 1 } : null}
+        />
+      </div>
     </div>
   )
 }

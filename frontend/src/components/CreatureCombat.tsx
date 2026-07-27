@@ -180,8 +180,9 @@ interface Ability {
   element?: string
 }
 
-/** Ability kinds the creature casts on itself — never damage dealt to you. */
-const NON_OFFENSE = new Set(['healing', 'haste', 'summon'])
+/** Self-cast abilities — never damage dealt to you. The importer flags these
+ *  either as `kind` (melee-style rows) or as a pseudo-`element`. */
+const NON_OFFENSE = new Set(['healing', 'haste', 'summon', 'invisible'])
 
 const KIND_COLOR: Record<string, string> = {
   melee: '#8a8578',
@@ -290,21 +291,46 @@ export function CreatureCombat({ meta }: { meta: Record<string, unknown> }) {
     : []
   const hasAbilities = abilities.length > 0
 
-  // Damage share per element — sums each attack's peak damage so the donut
-  // answers "which type hits me hardest" at a glance. Self-buffs (healing,
-  // haste, summons) are what the creature does to itself, never to you.
-  const damageByElement = new Map<string, number>()
+  // Split the list into real attacks and self-buffs/tricks. Attacks are ranked
+  // by how hard they hit; melee without an explicit element counts as physical.
+  const offensive: { a: Ability; def: ElementDef | null; peak: number | null }[] = []
+  const utility: Ability[] = []
   for (const a of abilities) {
-    if (a.kind && NON_OFFENSE.has(a.kind)) continue
-    if (!a.element || !ELEMENT[a.element]) continue
+    if ((a.kind && NON_OFFENSE.has(a.kind)) || (a.element && NON_OFFENSE.has(a.element))) {
+      utility.push(a)
+      continue
+    }
+    const elId =
+      a.element && ELEMENT[a.element] ? a.element : a.kind === 'melee' ? 'physical' : null
     const peak = peakDamage(a.damage)
-    if (peak == null || peak <= 1) continue
-    damageByElement.set(a.element, (damageByElement.get(a.element) ?? 0) + peak)
+    if (elId || (peak != null && peak > 1)) {
+      offensive.push({ a, def: elId ? ELEMENT[elId] : null, peak })
+    } else {
+      utility.push(a)
+    }
+  }
+  offensive.sort((x, y) => (y.peak ?? -1) - (x.peak ?? -1))
+  const maxPeak = offensive[0]?.peak ?? 0
+
+  // Pooled peak damage per element — the donut's "which type hits hardest".
+  const damageByElement = new Map<string, number>()
+  for (const { def, peak } of offensive) {
+    if (!def || peak == null || peak <= 1) continue
+    damageByElement.set(def.id, (damageByElement.get(def.id) ?? 0) + peak)
   }
   const damageRows = [...damageByElement.entries()]
     .map(([id, val]) => ({ def: ELEMENT[id], val }))
-    .sort((a, b) => b.val - a.val)
+    .sort((x, y) => y.val - x.val)
   const totalDamage = damageRows.reduce((sum, r) => sum + r.val, 0)
+
+  const abilityLabel = (a: Ability): string =>
+    a.kind
+      ? a.kind === 'summon' && a.name
+        ? `${t('abilities.kind.summon')}: ${a.name}`
+        : t(`abilities.kind.${a.kind}`, { defaultValue: a.name ?? a.kind })
+      : a.name
+        ? localizeAbilityName(a.name, lang)
+        : ''
 
   if (!hasAffinity && !hasAbilities) return null
 
@@ -445,104 +471,122 @@ export function CreatureCombat({ meta }: { meta: Record<string, unknown> }) {
             </span>
           </SubHeader>
 
-          {/* Damage-type donut: share of summed peak damage per element, so the
-              dominant type is readable at a glance even with a single slice. */}
-          {damageRows.length > 0 && totalDamage > 0 && (
-            <div className="px-4 pb-3 pt-1">
-              <div className="mb-2 flex items-baseline gap-2">
-                <h4 className="text-[10px] font-bold uppercase tracking-[0.14em] text-fg-mute">
-                  {t('combat.byElement')}
-                </h4>
-                <span className="text-[10px] text-fg-mute">{t('combat.byElementHint')}</span>
-              </div>
-              <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          {/* Threat overview: donut of damage share by type on the left, the
+              attacks ranked by how hard they hit on the right — one colour
+              code shared by both, so the donut needs no separate legend. */}
+          {offensive.length > 0 && (
+            <div className="flex flex-col items-center gap-5 px-4 pb-4 pt-2 sm:flex-row">
+              {damageRows.length > 0 && totalDamage > 0 && (
                 <DamageDonut rows={damageRows} total={totalDamage} t={t} />
-                <div className="flex min-w-[13rem] flex-1 flex-col gap-1.5">
-                  {damageRows.map(({ def, val }, idx) => (
-                    <div key={def.id} className="flex items-center gap-2">
-                      <ElementIcon def={def} size={18} />
-                      <span className="truncate text-[11px] font-semibold text-fg-dim">
-                        {t(`elements.${def.id}`)}
-                      </span>
-                      {idx === 0 && damageRows.length > 1 && (
-                        <span
-                          className="shrink-0 rounded-[3px] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
-                          style={{ color: def.color, background: `${def.color}1f` }}
-                        >
-                          {t('combat.predominant')}
+              )}
+              <ul className="flex w-full min-w-0 flex-1 flex-col gap-1">
+                {offensive.map(({ a, def, peak }, idx) => {
+                  const color = def?.color ?? '#8a8578'
+                  const glyph = def?.glyph ?? (a.kind ? KIND_GLYPH[a.kind] : null)
+                  const width = maxPeak && peak ? Math.max((peak / maxPeak) * 100, 4) : 0
+                  return (
+                    <li
+                      key={idx}
+                      className="rounded-[4px] px-2.5 py-2"
+                      style={idx === 0 ? { background: `${color}12` } : undefined}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        {glyph ? (
+                          <span
+                            className="grid h-8 w-8 shrink-0 place-items-center rounded-full"
+                            style={{ color, background: `${color}22` }}
+                          >
+                            <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]">
+                              {glyph}
+                            </svg>
+                          </span>
+                        ) : (
+                          <span
+                            className="mx-3 h-2 w-2 shrink-0 rounded-full"
+                            style={{ background: color }}
+                          />
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold leading-tight text-fg">
+                            {abilityLabel(a)}
+                          </span>
+                          {def && (
+                            <span
+                              className="block text-[9px] font-bold uppercase tracking-[0.14em]"
+                              style={{ color }}
+                            >
+                              {t(`elements.${def.id}`)}
+                            </span>
+                          )}
                         </span>
-                      )}
-                      <span className="ml-auto shrink-0 font-mono text-[11px] font-bold tabular-nums text-fg">
-                        {val.toLocaleString()}
-                      </span>
-                      <span
-                        className="w-10 shrink-0 text-right font-mono text-[11px] font-bold tabular-nums"
-                        style={{ color: def.color }}
-                      >
-                        {Math.round((val / totalDamage) * 100)}%
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+                        <span
+                          className="shrink-0 font-mono text-sm font-bold tabular-nums"
+                          style={{ color: peak ? color : 'var(--color-fg-mute)' }}
+                        >
+                          {a.damage ? a.damage.replace(/-/g, '–') : '—'}
+                        </span>
+                      </div>
+                      {/* Intensity bar: this attack's peak vs the hardest one. */}
+                      <div className="ml-[42px] mt-1.5 h-1 overflow-hidden rounded-full bg-bg-2">
+                        {width > 0 && (
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${width}%`,
+                              background: color,
+                              opacity: idx === 0 ? 1 : 0.7,
+                            }}
+                          />
+                        )}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
             </div>
           )}
 
-          <ul className="divide-y divide-line">
-            {abilities.map((a, i) => {
-              const label = a.kind
-                ? a.kind === 'summon' && a.name
-                  ? `${t('abilities.kind.summon')}: ${a.name}`
-                  : t(`abilities.kind.${a.kind}`, { defaultValue: a.name ?? a.kind })
-                : a.name
-                  ? localizeAbilityName(a.name, lang)
-                  : ''
-
-              const elDef = a.element ? ELEMENT[a.element] : null
-              const kindColor = a.kind ? KIND_COLOR[a.kind] : null
-              const dotColor = elDef?.color ?? kindColor ?? '#8a8578'
-              const elLabel = a.element
-                ? t(`elements.${a.element}`, { defaultValue: a.element.replace(/_/g, ' ') })
-                : null
-
-              // Prefer the element glyph; fall back to the ability-kind glyph.
-              const glyph = elDef?.glyph ?? (a.kind ? KIND_GLYPH[a.kind] : null)
-
-              return (
-                <li key={i} className="flex items-center gap-3 px-4 py-2.5">
-                  {glyph ? (
-                    <span
-                      className="grid h-7 w-7 shrink-0 place-items-center rounded-full"
-                      style={{ color: dotColor, background: `${dotColor}22` }}
-                    >
-                      <svg viewBox="0 0 24 24" className="h-4 w-4">
+          {/* Tricks & self-buffs: things it does that aren't damage to you. */}
+          {utility.length > 0 && (
+            <div
+              className={`flex flex-wrap items-center gap-1.5 px-4 py-3${offensive.length > 0 ? ' border-t border-line/70' : ''}`}
+            >
+              <span className="mr-1 text-[10px] font-bold uppercase tracking-wider text-fg-mute">
+                {t('combat.alsoCan')}
+              </span>
+              {utility.map((a, i) => {
+                // The self-cast flavour may arrive as kind or pseudo-element.
+                const k = a.kind ?? a.element ?? ''
+                const kindColor = KIND_COLOR[k] ?? null
+                const glyph = KIND_GLYPH[k] ?? null
+                return (
+                  <span
+                    key={i}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-line bg-bg-2 px-2.5 py-1 text-[11px] font-semibold text-fg-dim"
+                  >
+                    {glyph && (
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-3.5 w-3.5 shrink-0"
+                        style={{ color: kindColor ?? 'var(--color-fg-mute)' }}
+                      >
                         {glyph}
                       </svg>
-                    </span>
-                  ) : (
-                    <span
-                      className="h-2 w-2 shrink-0 rounded-full"
-                      style={{ background: dotColor }}
-                    />
-                  )}
-                  <span className="flex-1 text-sm font-medium text-fg">{label}</span>
-                  {a.damage && (
-                    <span className="font-mono text-xs font-semibold tabular-nums text-fg-dim">
-                      {a.damage}
-                    </span>
-                  )}
-                  {elLabel && elDef && (
-                    <span
-                      className="rounded-[3px] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-                      style={{ color: elDef.color, background: `${elDef.color}1f` }}
-                    >
-                      {elLabel}
-                    </span>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
+                    )}
+                    {abilityLabel(a)}
+                    {(a.kind === 'healing' || a.element === 'healing') && a.damage && (
+                      <span
+                        className="font-mono text-[10px] font-bold tabular-nums"
+                        style={{ color: KIND_COLOR.healing }}
+                      >
+                        +{a.damage.replace(/-/g, '–')}
+                      </span>
+                    )}
+                  </span>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
     </section>
@@ -551,8 +595,9 @@ export function CreatureCombat({ meta }: { meta: Record<string, unknown> }) {
 
 /**
  * Donut chart of the creature's damage output by element. Each slice is a
- * stroked circle segment (circumference normalised to 100); the hole shows the
- * predominant element's share so the answer is readable without the legend.
+ * stroked circle segment (circumference normalised to 100); the hole carries
+ * the predominant element's glyph and share, and its name sits underneath —
+ * the attack rows beside it double as the legend via the shared colours.
  */
 function DamageDonut({
   rows,
@@ -564,43 +609,68 @@ function DamageDonut({
   t: (k: string) => string
 }) {
   const top = rows[0]
+  const topPct = Math.round((top.val / total) * 100)
   // A hairline gap between slices, but only when there is more than one.
   const gap = rows.length > 1 ? 1.25 : 0
   let start = 0
   return (
-    <div className="relative h-28 w-28 shrink-0">
-      <svg viewBox="0 0 42 42" className="h-full w-full -rotate-90" aria-hidden="true">
-        {rows.map(({ def, val }) => {
-          const frac = (val / total) * 100
-          const dash = Math.max(frac - gap, 0.5)
-          const seg = (
-            <circle
-              key={def.id}
-              cx="21"
-              cy="21"
-              r="15.915"
-              fill="none"
-              stroke={def.color}
-              strokeWidth="5.5"
-              strokeDasharray={`${dash} ${100 - dash}`}
-              strokeDashoffset={-start - gap / 2}
-            />
-          )
-          start += frac
-          return seg
-        })}
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span
-          className="font-mono text-base font-black tabular-nums leading-none"
-          style={{ color: top.def.color }}
-        >
-          {Math.round((top.val / total) * 100)}%
-        </span>
-        <span className="mt-0.5 max-w-[4.5rem] truncate text-center text-[9px] font-bold uppercase tracking-wider text-fg-mute">
-          {t(`elements.${top.def.id}`)}
-        </span>
+    <div className="flex shrink-0 flex-col items-center gap-1.5">
+      <div className="relative h-28 w-28">
+        <svg viewBox="0 0 42 42" className="h-full w-full -rotate-90" aria-hidden="true">
+          <circle
+            cx="21"
+            cy="21"
+            r="15.915"
+            fill="none"
+            stroke="var(--color-bg-2)"
+            strokeWidth="6.5"
+          />
+          {rows.map(({ def, val }) => {
+            const frac = (val / total) * 100
+            const dash = Math.max(frac - gap, 0.5)
+            const seg = (
+              <circle
+                key={def.id}
+                cx="21"
+                cy="21"
+                r="15.915"
+                fill="none"
+                stroke={def.color}
+                strokeWidth="6.5"
+                strokeDasharray={`${dash} ${100 - dash}`}
+                strokeDashoffset={-start - gap / 2}
+              />
+            )
+            start += frac
+            return seg
+          })}
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+          <span
+            className="grid h-7 w-7 place-items-center rounded-full"
+            style={{ color: top.def.color, background: `${top.def.color}22` }}
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4">
+              {top.def.glyph}
+            </svg>
+          </span>
+          <span
+            className="font-mono text-sm font-black tabular-nums leading-none"
+            style={{ color: top.def.color }}
+          >
+            {topPct}%
+          </span>
+        </div>
       </div>
+      <span
+        className="max-w-[8rem] truncate text-center text-[10px] font-bold uppercase tracking-wider"
+        style={{ color: top.def.color }}
+      >
+        {t(`elements.${top.def.id}`)}
+      </span>
+      <span className="-mt-1.5 text-[9px] font-semibold uppercase tracking-wider text-fg-mute">
+        {t('combat.predominant')}
+      </span>
     </div>
   )
 }

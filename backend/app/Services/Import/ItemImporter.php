@@ -9,6 +9,7 @@ use App\Enums\SourceType;
 use App\Models\Entry;
 use App\Models\ImportRun;
 use App\Services\EntryService;
+use App\Support\Wikitext;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Throwable;
@@ -692,12 +693,13 @@ class ItemImporter
             return '';
         }
         $text = preg_replace('/\[\[(?:[^|\]]*\|)?([^\]]+)\]\]/', '$1', $text) ?? $text;
-        $text = preg_replace('/\{\{[^{}]*\}\}/', '', $text) ?? $text;
+        $text = Wikitext::stripTemplates($text);
         $text = preg_replace('/<ref[^>]*>.*?<\/ref>/is', '', $text) ?? $text;
         $text = preg_replace('/<\/?[^>]+>/', '', $text) ?? $text;
         $text = str_replace(["'''", "''"], '', $text);
         $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5);
+        $text = preg_replace('/[ \t]+/', ' ', $text) ?? $text;
 
-        return trim(preg_replace('/[ \t]+/', ' ', $text) ?? $text);
+        return Wikitext::tidy($text);
     }
 }

@@ -9,6 +9,7 @@ use App\Enums\SourceType;
 use App\Models\Entry;
 use App\Models\ImportRun;
 use App\Services\EntryService;
+use App\Support\Wikitext;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Throwable;
@@ -923,15 +924,18 @@ class TibiaWikiImporter
         switch ($tname) {
             case 'melee':
                 [$dmg, $el] = $this->damageAndElement($pos);
+
                 return $prune(['kind' => 'melee', 'damage' => $dmg, 'element' => $kvElement ?? $el ?? 'physical']);
             case 'healing':
                 [$dmg] = $this->damageAndElement($pos);
+
                 return $prune(['kind' => 'healing', 'damage' => $kv['range'] ?? $dmg]);
             case 'haste':
                 return ['kind' => 'haste'];
             case 'summon':
             case 'summons':
                 $names = array_values(array_filter($pos, static fn ($v) => ! preg_match('/^\d/', $v) && ! str_contains($v, '=')));
+
                 return $prune(['kind' => 'summon', 'name' => $names ? $this->cleanWikitext(implode(', ', $names)) : null]);
             case 'ability':
                 $name = $this->cleanWikitext($pos[0] ?? '');
@@ -939,6 +943,7 @@ class TibiaWikiImporter
                     return null;
                 }
                 [$dmg, $el] = $this->damageAndElement(array_slice($pos, 1));
+
                 return $prune(['name' => $name, 'damage' => $kv['damage'] ?? $dmg, 'element' => $kvElement ?? $el]);
             default:
                 $name = $this->cleanWikitext($pos[0] ?? ucfirst($tname));
@@ -946,6 +951,7 @@ class TibiaWikiImporter
                     return null;
                 }
                 [$dmg, $el] = $this->damageAndElement(array_slice($pos, 1));
+
                 return $prune(['name' => $name, 'damage' => $kv['damage'] ?? $dmg, 'element' => $kvElement ?? $el]);
         }
     }
@@ -1121,12 +1127,13 @@ class TibiaWikiImporter
             },
             $text
         ) ?? $text;
-        $text = preg_replace('/\{\{[^{}]*\}\}/', '', $text) ?? $text;   // remaining simple templates
+        $text = Wikitext::stripTemplates($text);                        // remaining templates
         $text = preg_replace('/<ref[^>]*>.*?<\/ref>/is', '', $text) ?? $text;
         $text = preg_replace('/<\/?[^>]+>/', '', $text) ?? $text;       // stray HTML
         $text = str_replace(["'''", "''"], '', $text);                  // bold/italic
         $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5);
+        $text = preg_replace('/[ \t]+/', ' ', $text) ?? $text;
 
-        return trim(preg_replace('/[ \t]+/', ' ', $text) ?? $text);
+        return Wikitext::tidy($text);
     }
 }

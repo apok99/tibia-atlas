@@ -2692,10 +2692,13 @@ export function MapPage() {
   const [routesPage, setRoutesPage] = useState(1)
   const [routesQuery, setRoutesQuery] = useState('')
 
-  // The map's floating cards are mutually exclusive: opening one closes the
-  // rest so they never stack on top of each other over the map. Every entry
-  // point goes through openPanel/togglePanel instead of its own setter.
-  type MapPanel = 'char' | 'hunt' | 'profit' | 'houses' | 'routes' | 'rashid' | 'yasir'
+  // The map's floating cards are mutually exclusive: they all dock bottom-centre,
+  // so opening one closes the rest instead of stacking them on the same spot.
+  // Every entry point goes through openPanel/togglePanel instead of its own
+  // setter — a hotbar slot, a pin click and a rail button all land here.
+  type MapPanel =
+    | 'char' | 'hunt' | 'profit' | 'houses' | 'routes' | 'rashid' | 'yasir'
+    | 'lore' | 'raid' | 'bless' | 'zone'
   function openPanel(panel: MapPanel | null) {
     setCharOpen(panel === 'char')
     setHuntOpen(panel === 'hunt')
@@ -2704,9 +2707,34 @@ export function MapPage() {
     setRoutesOpen(panel === 'routes')
     setRashidOpen(panel === 'rashid')
     setYasirOpen(panel === 'yasir')
+    setAnalyzeMode(panel === 'zone')
+    // Cards that carry a payload the caller sets straight after this call, so
+    // here we only clear the ones being left behind.
+    if (panel !== 'zone') setAnalyzeBox(null)
+    if (panel !== 'lore') setLorePoi(null)
+    if (panel !== 'raid') setRaid(null)
+    if (panel !== 'bless') {
+      setBlessSet(null)
+      setBlessStops(null)
+    }
+    // Zone analysis reads map drags, so it joins the interaction modes too.
+    if (panel === 'zone') setMapMode('zone')
   }
   function togglePanel(panel: MapPanel, isOpen: boolean) {
     openPanel(isOpen ? null : panel)
+  }
+
+  // The modes that hijack map clicks and drags are exclusive for a different
+  // reason: two of them live at once would fight over the same gesture. `zone`
+  // belongs to both groups, so it is set by openPanel above, not here.
+  function setMapMode(mode: 'route' | 'build' | 'place' | 'zone' | null) {
+    setRouteMode(mode === 'route')
+    setBuildMode(mode === 'build')
+    setPlacing(mode === 'place')
+    if (mode !== 'zone') {
+      setAnalyzeMode(false)
+      setAnalyzeBox(null)
+    }
   }
 
   const routesQueryDebounced = useDebouncedValue(routesQuery.trim(), 300)
@@ -2847,21 +2875,28 @@ export function MapPage() {
     const lv = hl.live
     if (lv && ((lv.status === 'rented' && !lv.owner) || (lv.status === 'auctioned' && lv.bidder === undefined))) {
       const w = worldRef.current
+      const line = el.querySelector('[data-house-live]')
+      const plainLabel = line?.textContent ?? ''
+      // Show the lookup is in flight; replaced by the name (or restored to the
+      // plain label if the proxy fails / has nothing) so it never dangles.
+      if (line) line.textContent = `${plainLabel} · …`
+      const restore = () => {
+        if (line) line.textContent = plainLabel
+      }
       fetch(`/api/houses/${encodeURIComponent(w)}/${hl.id}`)
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
           const det = d?.house
-          if (!det || worldRef.current !== w) return
+          if (!det || worldRef.current !== w) return restore()
           const live = houseLiveRef.current?.[hl.id]
           if (live) {
             if (det.owner) live.owner = det.owner
             if (det.auctioned) {
-              // Fresher than the twice-daily ETL snapshot.
+              // Fresher than the periodic ETL snapshot.
               if (det.bid) live.bid = det.bid
               live.bidder = det.bidder ?? null
             }
           }
-          const line = el.querySelector('[data-house-live]')
           if (!line) return
           if (det.rented && det.owner) {
             line.textContent = `${t('map.houseRented')} · ${det.owner}`
@@ -2869,9 +2904,11 @@ export function MapPage() {
             line.textContent =
               `${t('map.houseAuctioned')}${det.bid ? ` · ${fmtGold(det.bid)}` : ''}` +
               `${det.bidder ? ` · ${det.bidder}` : ''}`
+          } else {
+            restore()
           }
         })
-        .catch(() => {})
+        .catch(restore)
     }
     return el
   }
@@ -3068,14 +3105,7 @@ export function MapPage() {
 
   // --- manual route builder actions ---
   function toggleBuildMode() {
-    const next = !buildMode
-    setBuildMode(next)
-    // Modes are mutually exclusive: leaving directions / marker placement on
-    // would fight the builder for map clicks.
-    if (next) {
-      setRouteMode(false)
-      setPlacing(false)
-    }
+    setMapMode(buildMode ? null : 'build')
   }
 
   function undoBuildPoint() {
@@ -3748,6 +3778,7 @@ export function MapPage() {
         .addTo(grp)
         .bindTooltip(escapeHtml(poi.title), { direction: 'top', offset: [0, -12] })
         .on('click', () => {
+          openPanel('lore')
           setLorePoi(poi)
           const map = mapRef.current
           if (map) map.flyTo(toLatLng(poi.x, poi.y), Math.max(map.getZoom(), 3), { duration: 0.5 })
@@ -4303,6 +4334,7 @@ export function MapPage() {
   const { data: blessings } = useBlessings(blessSet !== null)
 
   async function runPilgrimage(set: 'five' | 'seven') {
+    openPanel('bless')
     setBlessSet(set)
     setBlessStops(null)
     setRouteMsg(null)
@@ -4340,6 +4372,7 @@ export function MapPage() {
   // Open a raid's dossier and fly to it, switching floor when it happens
   // somewhere else (Ferumbras and friends are all underground).
   function openRaid(r: Raid) {
+    openPanel('raid')
     setRaid(r)
     if (!r.floors.includes(floorRef.current)) {
       floorRef.current = r.z
@@ -5019,7 +5052,7 @@ export function MapPage() {
     const cr = creaturesRef.current.find((c) => c.slug === slug)
     const pt = cr && routeEndForCreature(cr)
     if (!pt) return
-    setRouteMode(true)
+    setMapMode('route')
     ensureRouteStartNear(pt)
     applyRouteEnd(pt)
   }
@@ -5037,7 +5070,7 @@ export function MapPage() {
   // "Cómo llegar" to a merchant pin from the item trade layer.
   function routeToTradeNpc(name: string, c: [number, number, number]) {
     const pt: RoutePoint = { x: c[0], y: c[1], floor: c[2], label: name }
-    setRouteMode(true)
+    setMapMode('route')
     ensureRouteStartNear(pt)
     applyRouteEnd(pt)
   }
@@ -5054,7 +5087,7 @@ export function MapPage() {
       label: `Rashid · ${rashidStop.city}`,
     }
     openPanel('rashid')
-    setRouteMode(true)
+    setMapMode('route')
     if (refresh) {
       routeStartRef.current = null
       setRouteStart(null)
@@ -5073,7 +5106,7 @@ export function MapPage() {
   function goToYasirDock(dock: YasirDock) {
     const pt: RoutePoint = { x: dock.x, y: dock.y, floor: dock.z, label: `Yasir · ${dock.city}` }
     openYasir()
-    setRouteMode(true)
+    setMapMode('route')
     routeStartRef.current = null
     setRouteStart(null)
     ensureRouteStartNear(pt)
@@ -5279,14 +5312,12 @@ export function MapPage() {
   // with pins + legs and can be tweaked/re-published), fly to its start, and bump
   // its load counter (the popularity signal).
   function loadCommunityRoute(r: CommunityRoute) {
-    setRouteMode(false)
-    setPlacing(false)
-    setBuildMode(true)
+    openPanel(null) // the gallery card closes; the route lands in the builder
+    setMapMode('build')
     setBuildName(r.name)
     setBuildConnect(r.connect)
     setBuildPoints(r.waypoints.map(([x, y, floor]) => ({ x, y, floor })))
     setPublishState('idle')
-    setRoutesOpen(false)
     const first = r.waypoints[0]
     if (first) {
       floorRef.current = first[2]
@@ -5883,11 +5914,9 @@ export function MapPage() {
               <button
                 onClick={() => {
                   const next = !routeMode
-                  setRouteMode(next)
+                  setMapMode(next ? 'route' : null)
                   resetRoute()
                   if (next) {
-                    setPlacing(false)
-                    setBuildMode(false)
                     const cr = creaturesRef.current[0]
                     const pt = cr && routeEndForCreature(cr)
                     if (pt) applyRouteEnd(pt)
@@ -5994,11 +6023,7 @@ export function MapPage() {
                     style={{ background: 'var(--color-interp)', opacity: 0.45 }}
                   />
                   <button
-                    onClick={() => {
-                      setPlacing((p) => !p)
-                      setRouteMode(false)
-                      setBuildMode(false)
-                    }}
+                    onClick={() => setMapMode(placing ? null : 'place')}
                     title={t('map.addMarker')}
                     aria-label={t('map.addMarker')}
                     aria-pressed={placing}
@@ -6173,12 +6198,7 @@ export function MapPage() {
                 spawns inside. Turning it off clears the selection + panel. */}
             <div className="relative flex items-center">
               <button
-                onClick={() => {
-                  setAnalyzeMode((v) => {
-                    if (v) setAnalyzeBox(null)
-                    return !v
-                  })
-                }}
+                onClick={() => togglePanel('zone', analyzeMode)}
                 title={t('map.zoneLayer')}
                 aria-label={t('map.zoneLayer')}
                 aria-pressed={analyzeMode}

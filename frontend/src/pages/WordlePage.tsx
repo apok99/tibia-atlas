@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useWordleToday, postGuess, type Tile } from '../hooks/useWordle'
 import { WordleSkeleton } from '../components/Skeleton'
+import { GameLeaderboard } from '../components/GameLeaderboard'
 import { Seo } from '../lib/seo'
 
 type Status = 'playing' | 'won' | 'lost'
@@ -305,6 +306,13 @@ export function WordlePage() {
       <p className="mt-6 max-w-sm text-center text-xs leading-relaxed text-fg-mute">
         {t('wordle.howTo')}
       </p>
+
+      {/* Today's top 10 — fewest tries first, elapsed time as the tiebreak. */}
+      <GameLeaderboard
+        game="wordle"
+        date={date}
+        result={status === 'playing' ? null : { solved: status === 'won', attempts: rows.length }}
+      />
     </div>
   )
 }

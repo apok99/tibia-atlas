@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\BookController;
 use App\Http\Controllers\Api\CharacterController;
 use App\Http\Controllers\Api\EntryController;
 use App\Http\Controllers\Api\EventController;
+use App\Http\Controllers\Api\GameScoreController;
 use App\Http\Controllers\Api\HouseController;
 use App\Http\Controllers\Api\HuntController;
 use App\Http\Controllers\Api\ItemController;
@@ -189,5 +190,26 @@ Route::prefix('altar')->middleware('throttle:public')->group(function () {
     Route::get('/silhouette', [AltarController::class, 'silhouette'])
         ->middleware('cache.headers:public;max_age=1800;s_maxage=3600');
     Route::post('/guess', [AltarController::class, 'guess'])
+        ->middleware('throttle:interact');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Daily game boards — top 10 per game (wordle / altar / geo), ranked by
+| attempts then time, tied to the Tibia character linked on the map. Wipes
+| itself at server save (the query filters on the current game day).
+|
+| Explicitly uncacheable: the board moves the instant anyone finishes, and the
+| player who just posted a run reloads it immediately — even a 15s browser TTL
+| serves them a board they aren't on yet. `?char=` also personalises it, so a
+| shared cache must not store it either. It stays cheap regardless: one indexed
+| query over a table that only holds the current day, plus a 30s client-side
+| stale window in the panel itself.
+|--------------------------------------------------------------------------
+*/
+Route::prefix('games/{game}')->middleware('throttle:public')->group(function () {
+    Route::get('/board', [GameScoreController::class, 'index'])
+        ->middleware('cache.headers:private;no_store');
+    Route::post('/board', [GameScoreController::class, 'store'])
         ->middleware('throttle:interact');
 });

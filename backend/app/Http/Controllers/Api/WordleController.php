@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Entry;
 use App\Models\WordlePuzzle;
 use App\Support\ContentCache;
+use App\Support\GameDay;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -28,11 +29,6 @@ class WordleController extends Controller
     private const LENGTHS = [4, 5, 6, 7];
 
     private const MAX_ATTEMPTS = 6;
-
-    /** Tibia server save: the puzzle day flips at 10:00 Spanish time (CET/CEST). */
-    private const SAVE_HOUR = 10;
-
-    private const SAVE_TZ = 'Europe/Madrid';
 
     /** Puzzle shape + dictionary of valid guesses (no answer). */
     public function today(): JsonResponse
@@ -217,18 +213,12 @@ class WordleController extends Controller
     /** The current Tibia day (Y-m-d), with the boundary at server save. */
     private function gameDate(): string
     {
-        return Carbon::now(self::SAVE_TZ)->subHours(self::SAVE_HOUR)->toDateString();
+        return GameDay::date();
     }
 
     /** The next server save instant (for the client's countdown). */
     private function nextSave(): Carbon
     {
-        $now = Carbon::now(self::SAVE_TZ);
-        $save = $now->copy()->setTime(self::SAVE_HOUR, 0);
-        if ($now->greaterThanOrEqualTo($save)) {
-            $save->addDay();
-        }
-
-        return $save;
+        return GameDay::nextSave();
     }
 }

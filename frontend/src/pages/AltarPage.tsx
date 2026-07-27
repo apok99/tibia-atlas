@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAltarToday, postAltarGuess, type AltarPoolItem, type AltarReveal } from '../hooks/useAltar'
 import { Skeleton } from '../components/Skeleton'
+import { GameLeaderboard } from '../components/GameLeaderboard'
 import { Seo } from '../lib/seo'
 
 type Status = 'playing' | 'won' | 'lost'
@@ -297,6 +298,12 @@ export function AltarPage() {
         <ResultPanel status={status} reveal={reveal} date={date} nextSave={data.next_save} />
       )}
 
+      {/* Today's top 10 — one guess, so it's a pure race against the clock. */}
+      <GameLeaderboard
+        game="altar"
+        date={date}
+        result={finished ? { solved: status === 'won', attempts: 1 } : null}
+      />
     </div>
   )
 }
