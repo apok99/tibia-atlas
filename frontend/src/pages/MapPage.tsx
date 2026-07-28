@@ -29,6 +29,7 @@ import {
   requestNotifyPermission,
   osNotify,
   type LocalBidEvent,
+  type BidSeen,
   loadBidSeen,
   saveBidSeen,
   loadBidEvents,
@@ -58,6 +59,13 @@ import {
   useRaids,
   type Raid,
 } from '../lib/raids'
+import {
+  useWorldChanges,
+  wcCadenceKey,
+  wcFloors,
+  type WcSpot,
+  type WorldChange,
+} from '../lib/worldChanges'
 import { RASHID_ROTATION, rashidEffectiveDay, useRashidClock, type RashidStop } from '../lib/rashid'
 import { YASIR_DOCKS, type YasirDock } from '../lib/yasir'
 import { SKILL_LABELS, signed } from '../components/items/itemStats'
@@ -2264,6 +2272,172 @@ function RaidPanel({
   )
 }
 
+// The mini-world-change dossier. A change is a dice roll the server makes at
+// start-up, so the panel never claims one is live — it lists every place it can
+// land and quotes what the world says when it does. Those quotes stay in English
+// like the raid broadcasts: that is the text players hear in-game.
+function WorldChangePanel({
+  change,
+  spot,
+  onClose,
+  onSpot,
+  onInside,
+  onPlot,
+}: {
+  change: WorldChange
+  spot: string | null
+  onClose: () => void
+  onSpot: (s: WcSpot) => void
+  onInside: () => void
+  onPlot: (name: string) => void
+}) {
+  const { t } = useTranslation()
+  const inside = change.inside
+  // Which spot each announcement belongs to, so a rhyme that names a coast is
+  // shown next to that coast instead of floating loose.
+  const spotLabel = (key: string | null) =>
+    key ? (change.spots.find((s) => s.key === key)?.label ?? null) : null
+
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
+      <div className="scroll-atlas pointer-events-auto max-h-[70vh] w-[32rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-4 shadow-2xl backdrop-blur-md">
+        <div className="mb-2 flex items-center gap-1.5 text-[#8b6fd4]">
+          <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+          </svg>
+          <span className="text-[10px] font-bold uppercase tracking-widest">{t('map.wcTitle')}</span>
+          <button
+            onClick={onClose}
+            aria-label={t('common.close')}
+            className="ml-auto grid h-6 w-6 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:border-[#8b6fd4] hover:text-[#8b6fd4]"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <h3 className="font-serif text-lg font-bold leading-tight text-fg">
+          {t(`map.wcName.${change.id}`)}
+        </h3>
+
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <span className="rounded-md border border-line-2 bg-bg-3/60 px-2 py-1 text-[11px] font-semibold text-fg-dim">
+            {t(wcCadenceKey(change), { spots: change.spots.length, chance: change.chance, day: change.day })}
+          </span>
+          <span className="rounded-md border border-line-2 bg-bg-3/60 px-2 py-1 text-[11px] font-semibold text-fg-dim">
+            {t('map.raidFloors', { floors: wcFloors(change).join(', ') })}
+          </span>
+          {change.requirement && (
+            <span className="rounded-md border border-[#c79a3f]/60 bg-[#c79a3f]/10 px-2 py-1 text-[11px] font-semibold text-[#e2b06f]">
+              {t('map.wcRequirement', { level: change.requirement.level })}
+            </span>
+          )}
+        </div>
+
+        <p className="mt-3 text-sm leading-relaxed text-fg-dim">{t(`map.wcDesc.${change.id}`)}</p>
+
+        {/* What the world says. The whole point of the layer: you learn a change
+            fired by hearing it, so these are the lines to listen for. */}
+        {change.phrases.length > 0 && (
+          <>
+            <h4 className="mt-4 text-[11px] font-bold uppercase tracking-widest text-fg-mute">
+              {t('map.wcPhrases')}
+            </h4>
+            <ul className="mt-1.5 space-y-2 border-l border-line-2 pl-3">
+              {change.phrases.map((p, i) => (
+                <li key={i} className="text-sm leading-snug">
+                  <span className="mr-2 text-[10px] font-bold uppercase tracking-wide text-fg-mute">
+                    {t(`map.wcFrom.${p.from}`)}
+                    {spotLabel(p.spot) ? ` · ${spotLabel(p.spot)}` : ''}
+                  </span>
+                  <span className="italic text-broadcast">“{p.text}”</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+
+        {/* Every candidate place. One of them happens per roll — never all. */}
+        <h4 className="mt-4 text-[11px] font-bold uppercase tracking-widest text-fg-mute">
+          {t('map.wcSpots', { count: change.spots.length })}
+        </h4>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {change.spots.map((s) => (
+            <button
+              key={s.key}
+              onClick={() => onSpot(s)}
+              title={t('map.wcSpotHint')}
+              className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition ${
+                spot === s.key
+                  ? 'border-[#8b6fd4] bg-[#8b6fd4]/20 text-[#b79df0]'
+                  : 'border-line-2 bg-bg-3/60 text-fg-dim hover:border-[#8b6fd4]/50 hover:text-fg'
+              }`}
+            >
+              {s.label}
+              {s.when && (
+                <span className="ml-1 font-normal text-fg-mute">
+                  · {t(s.when === 'night' ? 'map.wcAtNight' : 'map.wcByDay')}
+                </span>
+              )}
+              <span className="ml-1 font-normal tabular-nums text-fg-mute">
+                {s.x}, {s.y}, {s.z}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* The full moon swaps the wildlife in the vale rather than opening a
+            portal, so its spot carries a before/after instead of a roster. */}
+        {change.spots.map((s) =>
+          s.creatures?.length ? (
+            <p key={`${s.key}-swap`} className="mt-2 text-[11px] leading-relaxed text-fg-mute">
+              {t('map.wcInstead', {
+                creatures: s.creatures.join(', '),
+                instead: (s.instead ?? []).join(', '),
+              })}
+            </p>
+          ) : null
+        )}
+
+        {/* Where it leads. Click a creature to plot its ordinary spawns. */}
+        {inside && (
+          <>
+            <h4 className="mt-4 text-[11px] font-bold uppercase tracking-widest text-fg-mute">
+              {t('map.wcInside')}
+            </h4>
+            <button
+              onClick={onInside}
+              title={t('map.wcSpotHint')}
+              className="mt-1.5 rounded-md border border-[#8b6fd4]/60 bg-[#8b6fd4]/10 px-2 py-1 text-[11px] font-semibold text-[#b79df0] transition hover:bg-[#8b6fd4]/20"
+            >
+              {inside.label}
+              <span className="ml-1 font-normal text-fg-mute">
+                {t('map.raidFloors', { floors: inside.floors.join(', ') })}
+              </span>
+            </button>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {inside.creatures.map((c) => (
+                <button
+                  key={c.name}
+                  onClick={() => onPlot(c.name)}
+                  title={t('map.raidPlotHint', { name: c.name })}
+                  className="rounded-md border border-line-2 bg-bg-3/60 px-2 py-1 text-[11px] font-semibold text-fg-dim transition hover:border-[#8b6fd4]/50 hover:text-fg"
+                >
+                  {c.name}
+                  <span className="ml-1 font-normal text-fg-mute">×{c.spawns}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        <p className="mt-3 text-[11px] leading-relaxed text-fg-mute">{t('map.wcSource')}</p>
+      </div>
+    </div>
+  )
+}
+
 // Breakpoint feed for the creature-bar page size (3 cards wide, 1 on phones).
 // useSyncExternalStore re-reads the snapshot on every render, so a missed
 // media-query event can never leave a stale page size behind.
@@ -2297,6 +2471,7 @@ export function MapPage() {
   const houseGroupRef = useRef<L.LayerGroup | null>(null)
   const loreGroupRef = useRef<L.LayerGroup | null>(null)
   const raidGroupRef = useRef<L.LayerGroup | null>(null)
+  const wcGroupRef = useRef<L.LayerGroup | null>(null)
   const tradeGroupRef = useRef<L.LayerGroup | null>(null)
   const rashidGroupRef = useRef<L.LayerGroup | null>(null)
   // Highlight ring drawn over the hunting zone the user picked in the Hunt Finder.
@@ -2384,6 +2559,11 @@ export function MapPage() {
   const [lorePoi, setLorePoi] = useState<LorePoi | null>(null) // open lore reader
   const [showRaids, setShowRaids] = useState(false) // invasions / raids layer
   const [raid, setRaid] = useState<Raid | null>(null) // open raid dossier
+  const [showWc, setShowWc] = useState(false) // mini world changes layer
+  const [wc, setWc] = useState<WorldChange | null>(null) // open world-change dossier
+  // The spot inside that change the user is looking at, so the pin they clicked
+  // (and only that one) is highlighted while the rest stay candidates.
+  const [wcSpot, setWcSpot] = useState<string | null>(null)
   // "Analyze zone": drag-select a rectangle and get a combat summary of what
   // spawns inside it. The box has no floor — the floor control picks the level.
   const [analyzeMode, setAnalyzeMode] = useState(false)
@@ -2408,6 +2588,14 @@ export function MapPage() {
   const [watches, setWatches] = useState<Watch[]>(() => loadWatches()) // client-side alert list
   const [notifPerm, setNotifPerm] = useState<NotificationPermission>(() => notifyPermission())
   const [freedToast, setFreedToast] = useState<string | null>(null) // "a house opened up" banner
+  // "You've been outbid" — a MODAL, not a corner toast: it's the one alert the
+  // user must not miss, so it opens by itself the moment the check finds it.
+  const [outbidToast, setOutbidToast] = useState<{
+    id: number
+    name: string
+    bid: number
+    bidder: string | null
+  } | null>(null)
   const [newsOpen, setNewsOpen] = useState(false) // right-edge world-news rail (collapsed by default)
   const [freedIds, setFreedIds] = useState<Set<number>>(() => new Set()) // ids just freed this session
   const [townSel, setTownSel] = useState('') // town picked in the "watch a whole town" control
@@ -2661,6 +2849,9 @@ export function MapPage() {
   const [routeMsg, setRouteMsg] = useState<string | null>(null)
   const [blessSet, setBlessSet] = useState<null | 'five' | 'seven'>(null) // pilgrimage in progress
   const [blessStops, setBlessStops] = useState<PilgrimStop[] | null>(null) // its stop list
+  // Collapsed card: the stop list folds away to a single bar so you can read the
+  // map under it. Closing throws the pilgrimage away, minimising never does.
+  const [blessMin, setBlessMin] = useState(false)
   // "Reportar" flow for a wrong route: idle → editing (note box open) → sending →
   // done/error. The submitted report (endpoints + itinerary + note) lands in the
   // DB for a later routing fix pass (read via `php artisan tibia:route-reports`).
@@ -2698,7 +2889,7 @@ export function MapPage() {
   // setter — a hotbar slot, a pin click and a rail button all land here.
   type MapPanel =
     | 'char' | 'hunt' | 'profit' | 'houses' | 'routes' | 'rashid' | 'yasir'
-    | 'lore' | 'raid' | 'bless' | 'zone'
+    | 'lore' | 'raid' | 'worldchange' | 'bless' | 'zone'
   function openPanel(panel: MapPanel | null) {
     setCharOpen(panel === 'char')
     setHuntOpen(panel === 'hunt')
@@ -2713,9 +2904,14 @@ export function MapPage() {
     if (panel !== 'zone') setAnalyzeBox(null)
     if (panel !== 'lore') setLorePoi(null)
     if (panel !== 'raid') setRaid(null)
+    if (panel !== 'worldchange') {
+      setWc(null)
+      setWcSpot(null)
+    }
     if (panel !== 'bless') {
       setBlessSet(null)
       setBlessStops(null)
+      setBlessMin(false)
     }
     // Zone analysis reads map drags, so it joins the interaction modes too.
     if (panel === 'zone') setMapMode('zone')
@@ -3520,6 +3716,7 @@ export function MapPage() {
     const cityGroup = L.layerGroup().addTo(map)
     const loreGroup = L.layerGroup().addTo(map)
     const raidGroup = L.layerGroup().addTo(map)
+    const wcGroup = L.layerGroup().addTo(map)
     const tradeGroup = L.layerGroup().addTo(map)
     const rashidGroup = L.layerGroup().addTo(map)
     const markersGroup = L.layerGroup().addTo(map)
@@ -3544,6 +3741,7 @@ export function MapPage() {
     houseGroupRef.current = houseGroup
     loreGroupRef.current = loreGroup
     raidGroupRef.current = raidGroup
+    wcGroupRef.current = wcGroup
     tradeGroupRef.current = tradeGroup
     rashidGroupRef.current = rashidGroup
     routeGroupRef.current = routeGroup
@@ -3686,6 +3884,7 @@ export function MapPage() {
       houseGroupRef.current = null
       loreGroupRef.current = null
       raidGroupRef.current = null
+      wcGroupRef.current = null
       tradeGroupRef.current = null
       rashidGroupRef.current = null
       routeGroupRef.current = null
@@ -4326,6 +4525,111 @@ export function MapPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [floor, mapReady, showRaids, raids, raid])
 
+  // Mini world changes — the server's daily dice rolls, baked from the OT's own
+  // scripts and map patches (see tools/gen-world-changes.mjs). Static like the
+  // raids, so it loads once per session.
+  const { data: wcFile } = useWorldChanges()
+  const worldChanges = wcFile?.changes
+
+  // Draw the world-change layer for the floor in view: every place a change CAN
+  // land, never a claim that one is live today. Each candidate spot gets a pin
+  // plus the footprint of the ground the change swaps in, which is what makes a
+  // fury gate read as a piece of a city instead of a dot. The destination behind
+  // the change (Fury Hell, the isle) is only drawn for the open dossier —
+  // otherwise its pins would sit on floors nothing else explains.
+  useEffect(() => {
+    const grp = wcGroupRef.current
+    if (!grp) return
+    grp.clearLayers()
+    if (!showWc || !worldChanges) return
+
+    const pin = (x: number, y: number, cls: string, label: string, onClick: () => void) => {
+      const icon = L.divIcon({
+        className: '',
+        // waning moon — a change the world rolls overnight
+        html: `<div class="${cls}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></div>`,
+        iconSize: [0, 0],
+      })
+      L.marker(toLatLng(x, y), { icon, interactive: true, keyboard: false, zIndexOffset: 530 })
+        .addTo(grp)
+        .bindTooltip(escapeHtml(label), { direction: 'top', offset: [0, -12] })
+        .on('click', onClick)
+    }
+
+    for (const c of worldChanges) {
+      const open = wc?.id === c.id
+      const name = t(`map.wcName.${c.id}`)
+
+      for (const s of c.spots) {
+        const active = open && wcSpot === s.key
+        const colour = active ? '#c7b0ff' : '#8b6fd4'
+
+        if (s.bounds?.floors.includes(floor)) {
+          // +1 so the rectangle covers the far tiles instead of stopping at
+          // their top-left corner (same convention as the raid areas).
+          L.rectangle(
+            L.latLngBounds(toLatLng(s.bounds.x1, s.bounds.y1), toLatLng(s.bounds.x2 + 1, s.bounds.y2 + 1)),
+            {
+              color: colour,
+              weight: active ? 2 : 1.5,
+              opacity: open ? 0.95 : 0.6,
+              fillColor: colour,
+              fillOpacity: active ? 0.22 : 0.1,
+              interactive: true,
+            }
+          )
+            .addTo(grp)
+            .on('click', () => openWorldChange(c, s))
+        }
+
+        if (s.z === floor) {
+          pin(
+            s.x,
+            s.y,
+            `tm-wc${open ? ' is-open' : ''}${active ? ' is-active' : ''}`,
+            `${name} — ${s.label}`,
+            () => openWorldChange(c, s)
+          )
+        }
+      }
+
+      if (open && c.inside) {
+        if (c.inside.floors.includes(floor)) {
+          L.rectangle(
+            L.latLngBounds(
+              toLatLng(c.inside.bounds.x1, c.inside.bounds.y1),
+              toLatLng(c.inside.bounds.x2 + 1, c.inside.bounds.y2 + 1)
+            ),
+            { color: '#8b6fd4', weight: 1.5, opacity: 0.8, fillColor: '#8b6fd4', fillOpacity: 0.1, dashArray: '5 4' }
+          ).addTo(grp)
+        }
+        if (c.inside.z === floor) {
+          pin(c.inside.x, c.inside.y, 'tm-wc is-open is-inside', `${name} — ${c.inside.label}`, () =>
+            openWorldChange(c, null)
+          )
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [floor, mapReady, showWc, worldChanges, wc, wcSpot, i18n.language])
+
+  // Open a world change's dossier and fly to the spot that was clicked — or, when
+  // opened from the panel with no spot, to its first candidate. Changing floors
+  // is often the point: Fury Hell sits eight floors under the gate.
+  function openWorldChange(c: WorldChange, s: WcSpot | null) {
+    openPanel('worldchange')
+    setWc(c)
+    setWcSpot(s?.key ?? null)
+    const target = s ?? (c.inside && !s ? null : c.spots[0])
+    const dest = target ? { x: target.x, y: target.y, z: target.z } : c.inside!
+    if (dest.z !== floorRef.current) {
+      floorRef.current = dest.z
+      setFloor(dest.z)
+    }
+    const map = mapRef.current
+    if (map) map.flyTo(toLatLng(dest.x, dest.y), Math.max(map.getZoom(), 3), { duration: 0.5 })
+  }
+
   // The blessing pilgrimage. The visiting ORDER is precomputed — an exact tour
   // over real travel distances (tools/gen-blessings.mjs) — because solving it in
   // the browser would mean thousands of searches over the walkability bake. Here
@@ -4337,6 +4641,7 @@ export function MapPage() {
     openPanel('bless')
     setBlessSet(set)
     setBlessStops(null)
+    setBlessMin(false)
     setRouteMsg(null)
     setRoutePlan(null)
     setRouteBusy(true)
@@ -4534,39 +4839,57 @@ export function MapPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [houseStatus, world])
 
-  // Auction outbid watch — also fully client-side. For every BELLED house that
-  // is on auction, ask the per-house proxy who holds the top bid (the bulk feed
-  // has no bidder names; a handful of watched houses keeps this cheap). A raised
-  // bid becomes a local news entry; when the PREVIOUS bidder was the user's
-  // configured character it upgrades to an "outbid" alert with an OS
-  // notification. First sighting of an auction is stored silently — same
-  // no-phantom-alerts rule as the freed diff above.
-  useEffect(() => {
-    if (!houseStatus?.houses) return
-    const belled = watchesRef.current.filter(
-      (w): w is Extract<Watch, { kind: 'house' }> => w.kind === 'house' && w.world === world,
-    )
-    const auctioned = belled.filter((w) => houseStatus.houses[w.id]?.status === 'auctioned')
-    const seen = loadBidSeen(world)
-    // A house that left its auction has nothing to compare against any more.
-    for (const key of Object.keys(seen)) {
-      if (houseStatus.houses[Number(key)]?.status !== 'auctioned') delete seen[Number(key)]
+  // Auction outbid watch — fully client-side, and deliberately NOT gated on the
+  // bulk /api/houses snapshot: the belled houses come from localStorage, so the
+  // check can run the INSTANT the page opens instead of a round-trip later
+  // (being outbid is the alert users want immediately). `bidSeenRef` holds the
+  // baseline in memory so the on-load run and the periodic one can never
+  // clobber each other's writes to localStorage.
+  const bidSeenRef = useRef<{ world: string; map: BidSeen } | null>(null)
+  function bidSeenFor(w: string): BidSeen {
+    if (!bidSeenRef.current || bidSeenRef.current.world !== w) {
+      bidSeenRef.current = { world: w, map: loadBidSeen(w) }
     }
-    if (!auctioned.length) {
-      saveBidSeen(world, seen)
-      return
-    }
-    let stale = false
+    return bidSeenRef.current.map
+  }
+  // Last probe per `world:id`. The on-load run and the snapshot run fire within
+  // milliseconds of each other on every page load (and React's dev double-mount
+  // doubles that again), so without this one house costs 3-4 upstream calls per
+  // visit. Far below the 10-min refresh interval, so it never blocks a real one.
+  const bidProbeRef = useRef<Map<string, number>>(new Map())
+  const PROBE_TTL = 15_000
+
+  // Ask the per-house proxy who holds the top bid on each belled house (the
+  // bulk feed has no bidder names; a handful of watches keeps this cheap). A
+  // raised bid becomes a local news entry; when the PREVIOUS top bidder was the
+  // user's configured character it upgrades to an "outbid" alert — red toast +
+  // OS notification. A first sighting is stored silently (no phantom alerts on
+  // a cold baseline), same rule as the freed diff above.
+  async function checkOutbids(belled: Extract<Watch, { kind: 'house' }>[]): Promise<void> {
+    const w = world
+    const now = Date.now()
+    const due = belled.filter((bw) => {
+      const key = `${w}:${bw.id}`
+      if (now - (bidProbeRef.current.get(key) ?? 0) < PROBE_TTL) return false
+      bidProbeRef.current.set(key, now)
+      return true
+    })
+    if (!due.length) return
+    const seen = bidSeenFor(w)
     const my = charProfile?.name.trim().toLowerCase() ?? ''
-    void Promise.all(
-      auctioned.map(async (w) => {
+    const rows = await Promise.all(
+      due.map(async (bw) => {
         try {
-          const res = await fetch(`/api/houses/${encodeURIComponent(world)}/${w.id}`)
+          const res = await fetch(`/api/houses/${encodeURIComponent(w)}/${bw.id}`)
           if (!res.ok) return null
           const d = await res.json()
-          if (!d?.house?.auctioned) return null
+          if (!d?.house?.auctioned) {
+            // Auction over — its baseline can't be compared against any more.
+            delete seen[bw.id]
+            return null
+          }
           return {
-            watch: w,
+            watch: bw,
             bid: Number(d.house.bid) || 0,
             bidder: (d.house.bidder as string | null) ?? null,
           }
@@ -4574,51 +4897,87 @@ export function MapPage() {
           return null
         }
       }),
-    ).then((rows) => {
-      if (stale) return
-      const fresh: LocalBidEvent[] = []
-      const now = new Date().toISOString()
-      for (const row of rows) {
-        if (!row) continue
-        const { watch: w, bid, bidder } = row
-        const prev = seen[w.id]
-        seen[w.id] = { bid, bidder }
-        // Cold start or nothing moved → just (re)store the baseline.
-        if (!prev || (prev.bid === bid && prev.bidder === bidder)) continue
-        const bidderLc = bidder?.toLowerCase() ?? ''
-        // The user's own (re)bid — nothing worth announcing to themselves.
-        if (my && bidderLc === my) continue
-        const outbid = my !== '' && prev.bidder?.toLowerCase() === my && bidderLc !== my
-        fresh.push({
-          // Negative + house-id salt: unique locally, never collides with
-          // the server feed's positive ids in the rail's key prop.
-          id: -(Date.now() + w.id),
-          type: outbid ? 'house_outbid' : 'house_bid',
-          ref_id: w.id,
-          title: w.name,
-          town: w.town,
-          meta: { bid: bid || undefined, bidder },
-          occurred_at: now,
-        })
-        if (outbid) {
-          osNotify(
-            t('map.houseOutbidTitle'),
-            t('map.houseOutbidBody', { name: w.name, bid: fmtGold(bid), bidder: bidder ?? '¿?' }),
-          )
-        }
-      }
-      saveBidSeen(world, seen)
-      if (fresh.length) {
-        setBidEvents((cur) => {
-          const next = [...fresh, ...cur].slice(0, 20)
-          saveBidEvents(world, next)
-          return next
-        })
-      }
-    })
-    return () => {
-      stale = true
+    )
+    // The user switched worlds mid-flight — these answers are for the old one.
+    if (worldRef.current !== w) return
+
+    const fresh: LocalBidEvent[] = []
+    let beaten: { id: number; name: string; bid: number; bidder: string | null } | null = null
+    const stamp = new Date().toISOString()
+    for (const row of rows) {
+      if (!row) continue
+      const { watch: bw, bid, bidder } = row
+      const prev = seen[bw.id]
+      seen[bw.id] = { bid, bidder }
+      // Cold start or nothing moved → just (re)store the baseline.
+      if (!prev || (prev.bid === bid && prev.bidder === bidder)) continue
+      const bidderLc = bidder?.toLowerCase() ?? ''
+      // The user's own (re)bid — nothing worth announcing to themselves.
+      if (my && bidderLc === my) continue
+      const outbid = my !== '' && prev.bidder?.toLowerCase() === my && bidderLc !== my
+      fresh.push({
+        // Negative + house-id salt: unique locally, never collides with the
+        // server feed's positive ids in the rail's key prop.
+        id: -(Date.now() + bw.id),
+        type: outbid ? 'house_outbid' : 'house_bid',
+        ref_id: bw.id,
+        title: bw.name,
+        town: bw.town,
+        meta: { bid: bid || undefined, bidder },
+        occurred_at: stamp,
+      })
+      // Only the newest one gets the toast; the rest are in the news rail.
+      if (outbid) beaten = { id: bw.id, name: bw.name, bid, bidder }
     }
+    saveBidSeen(w, seen)
+    if (fresh.length) {
+      setBidEvents((cur) => {
+        const next = [...fresh, ...cur].slice(0, 20)
+        saveBidEvents(w, next)
+        return next
+      })
+    }
+    if (beaten) {
+      setOutbidToast(beaten)
+      osNotify(
+        t('map.houseOutbidTitle'),
+        t('map.houseOutbidBody', {
+          name: beaten.name,
+          bid: fmtGold(beaten.bid),
+          bidder: beaten.bidder ?? '?',
+        }),
+      )
+    }
+  }
+
+  // ON LOAD (and on world / character change): probe every belled house that
+  // already has a stored baseline — those are exactly the ones where movement
+  // is meaningful, and they're known from localStorage without any prior fetch,
+  // so an outbid that happened while away shows within one request of opening
+  // the page.
+  useEffect(() => {
+    const seen = bidSeenFor(world)
+    void checkOutbids(
+      watchesRef.current.filter(
+        (w): w is Extract<Watch, { kind: 'house' }> =>
+          w.kind === 'house' && w.world === world && seen[w.id] !== undefined,
+      ),
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [world, charProfile?.name])
+
+  // Ongoing: every status snapshot (10-min interval / tab focus) re-checks the
+  // belled houses the bulk feed says are on auction. This is also what SEEDS a
+  // baseline for an auction we've never probed, which is what lets the on-load
+  // run above catch it next time.
+  useEffect(() => {
+    if (!houseStatus?.houses) return
+    void checkOutbids(
+      watchesRef.current.filter(
+        (w): w is Extract<Watch, { kind: 'house' }> =>
+          w.kind === 'house' && w.world === world && houseStatus.houses[w.id]?.status === 'auctioned',
+      ),
+    )
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [houseStatus, world, charProfile?.name])
 
@@ -6194,6 +6553,36 @@ export function MapPage() {
               </button>
             </div>
 
+            {/* Mini world changes — the daily rolls (fury gates, nightmare isles,
+                Yasir, the full moon). Turning it off closes the dossier too. */}
+            <div className="relative flex items-center">
+              <button
+                onClick={() => {
+                  setShowWc((v) => {
+                    if (v) {
+                      setWc(null)
+                      setWcSpot(null)
+                    }
+                    return !v
+                  })
+                }}
+                title={t('map.wcLayer')}
+                aria-label={t('map.wcLayer')}
+                aria-pressed={showWc}
+                className={`relative ${SLOT} ${showWc ? 'border-[#8b6fd4] bg-[#8b6fd4]/15 text-[#8b6fd4]' : SLOT_OFF}`}
+              >
+                {/* waning moon — the world rolls these overnight */}
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+                </svg>
+                {showWc && worldChanges && (
+                  <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[#8b6fd4] px-1 text-[10px] font-bold leading-none text-white">
+                    {worldChanges.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
             {/* Analyze zone — drag a rectangle, get a combat summary of what
                 spawns inside. Turning it off clears the selection + panel. */}
             <div className="relative flex items-center">
@@ -6744,32 +7133,70 @@ export function MapPage() {
         />
       )}
       {raid && <RaidPanel raid={raid} onClose={() => setRaid(null)} onPlot={plotCreatureByName} />}
+      {/* Mini world change dossier: where it can land and what the world says. */}
+      {wc && (
+        <WorldChangePanel
+          change={wc}
+          spot={wcSpot}
+          onClose={() => {
+            setWc(null)
+            setWcSpot(null)
+          }}
+          onSpot={(s) => openWorldChange(wc, s)}
+          onInside={() => openWorldChange(wc, null)}
+          onPlot={plotCreatureByName}
+        />
+      )}
       {/* Pilgrimage stop list — the order the route follows, and the two shrines
           you cannot simply walk into. */}
       {blessStops && (
         <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[1002] flex justify-center px-3">
           <div className="scroll-atlas pointer-events-auto max-h-[60vh] w-[24rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-3 shadow-2xl backdrop-blur-md">
-            <div className="mb-2 flex items-center gap-1.5 text-[#c79a3f]">
+            <div className={`flex items-center gap-1.5 text-[#c79a3f] ${blessMin ? '' : 'mb-2'}`}>
               <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 3v18M7 8h10" />
               </svg>
               <span className="text-[10px] font-bold uppercase tracking-widest">
                 {t(blessSet === 'seven' ? 'map.blessSeven' : 'map.blessFive')}
               </span>
+              {blessMin && (
+                <span className="text-[10px] font-bold tabular-nums text-fg-mute">
+                  {t('map.blessTiles', { tiles: blessStops.reduce((a, s) => a + s.tiles, 0) })}
+                </span>
+              )}
+              {/* Minimise: folds the list away and LEAVES the route drawn. Only
+                  the X below throws the pilgrimage away. */}
+              <button
+                onClick={() => setBlessMin((v) => !v)}
+                aria-pressed={blessMin}
+                title={blessMin ? t('map.blessExpand') : t('map.blessCollapse')}
+                aria-label={blessMin ? t('map.blessExpand') : t('map.blessCollapse')}
+                className={`ml-auto flex h-6 items-center gap-1 rounded-md border border-line-2 text-fg-mute transition hover:border-[#c79a3f] hover:text-[#c79a3f] ${blessMin ? 'px-1.5' : 'w-6 justify-center'}`}
+              >
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  {blessMin ? <path d="m7 14 5 5 5-5M7 10l5-5 5 5" /> : <path d="M5 12h14" />}
+                </svg>
+                {blessMin && (
+                  <span className="text-[10px] font-bold uppercase tracking-wide">{t('map.blessExpand')}</span>
+                )}
+              </button>
               <button
                 onClick={() => {
                   setBlessStops(null)
                   setBlessSet(null)
+                  setBlessMin(false)
                   setRoutePlan(null)
                 }}
                 aria-label={t('common.close')}
-                className="ml-auto grid h-6 w-6 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:border-[#c79a3f] hover:text-[#c79a3f]"
+                className="grid h-6 w-6 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:border-[#c79a3f] hover:text-[#c79a3f]"
               >
                 <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M18 6 6 18M6 6l12 12" />
                 </svg>
               </button>
             </div>
+            {!blessMin && (
+              <>
             <ol className="space-y-1">
               {blessStops.map((s, i) => {
                 const access = SHRINE_ACCESS[s.shrine.id]?.mode
@@ -6807,6 +7234,8 @@ export function MapPage() {
               })}
             </ol>
             <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">{t('map.blessNote')}</p>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -8151,6 +8580,67 @@ export function MapPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* "You've been outbid" — a real modal, opened by the check itself (on
+          load and on every refresh) so the user never has to go looking in the
+          news rail for the one alert that's time-critical. */}
+      {outbidToast && (
+        <div
+          className="fixed inset-0 z-[1400] grid place-items-center bg-black/55 p-4 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setOutbidToast(null)}
+        >
+          <div
+            className="w-full max-w-sm overflow-hidden rounded-2xl border-2 border-[#c94f4f] bg-bg-2 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2.5 border-b border-[#c94f4f]/40 bg-[#c94f4f]/15 px-4 py-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#c94f4f]/20 text-[#c94f4f]">
+                <Icon name="gavel" size={20} />
+              </span>
+              <p className="min-w-0 flex-1 text-[15px] font-bold leading-tight text-fg">
+                {t('map.houseOutbidTitle')}
+              </p>
+            </div>
+            <div className="px-4 py-3">
+              <p className="text-[15px] font-bold text-fg">{outbidToast.name}</p>
+              <p className="mt-0.5 text-xs text-fg-dim">
+                {(housesRef.current.find((h) => h.id === outbidToast.id)?.town ?? '') || world}
+              </p>
+              <div className="mt-3 flex items-baseline gap-2">
+                <span className="text-2xl font-bold tabular-nums text-[#d08a1e]">
+                  {fmtGold(outbidToast.bid)}
+                </span>
+                {outbidToast.bidder && (
+                  <span className="min-w-0 truncate text-sm text-fg-dim">· {outbidToast.bidder}</span>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-2 border-t border-line px-4 py-3">
+              <button
+                onClick={() => {
+                  const h = housesRef.current.find((x) => x.id === outbidToast.id)
+                  setOutbidToast(null)
+                  if (h) {
+                    if (!showHouses) setShowHouses(true)
+                    flyToHouse(h)
+                  }
+                }}
+                className="flex-1 rounded-lg bg-accent px-3 py-2 text-xs font-bold uppercase tracking-wider text-white transition hover:bg-accent-2"
+              >
+                {t('map.houseFlyTo')}
+              </button>
+              <button
+                onClick={() => setOutbidToast(null)}
+                className="rounded-lg border border-line-2 px-3 py-2 text-xs font-bold uppercase tracking-wider text-fg-dim transition hover:border-line hover:text-fg"
+              >
+                {t('map.close')}
+              </button>
+            </div>
           </div>
         </div>
       )}

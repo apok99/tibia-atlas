@@ -446,11 +446,11 @@ export function CreatureCombat({ meta }: { meta: Record<string, unknown> }) {
                       <span className="absolute h-px w-9 rotate-45 bg-fg-mute" aria-hidden />
                     )}
                   </span>
-                  <span className="text-[11px] font-semibold leading-tight text-fg">
+                  <span className="text-[13px] font-semibold leading-tight text-fg">
                     {t(`elements.${el.id}`)}
                   </span>
                   <span
-                    className={`font-mono text-[11px] font-bold tabular-nums leading-none${isWeak || isResist ? '' : ' text-fg-dim'}`}
+                    className={`font-mono text-[13px] font-bold tabular-nums leading-none${isWeak || isResist ? '' : ' text-fg'}`}
                     style={isWeak || isResist ? { color: accent ?? undefined } : undefined}
                   >
                     {value}
@@ -720,7 +720,7 @@ function TacticLine({
         return (
           <span
             key={el.id}
-            className="inline-flex items-center gap-1 rounded-full border py-0.5 pl-0.5 pr-2 text-[11px] font-semibold"
+            className="inline-flex items-center gap-1 rounded-full border py-0.5 pl-0.5 pr-2 text-[13px] font-semibold"
             style={{
               borderColor: muted ? 'var(--color-line)' : `${accent}66`,
               background: muted ? 'var(--color-bg-2)' : `${accent}14`,

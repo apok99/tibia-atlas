@@ -495,6 +495,51 @@ const resources = {
         raidPlotHint: 'Plot {{name}} on the map',
         raidSource:
           'Spawn tiles, waves and broadcasts read from the server scripts. Announcements are shown in their original English, exactly as the world reads them out.',
+        wcLayer: 'Mini world changes',
+        wcTitle: 'Mini world change',
+        wcPhrases: 'What the world says',
+        wcSpots: '{{count}} possible place',
+        wcSpots_other: '{{count}} possible places',
+        wcSpotHint: 'Show it on the map',
+        wcInside: 'Where it leads',
+        wcInstead: 'That day: {{creatures}}. The rest of the month: {{instead}}.',
+        wcRequirement: 'Premium, promoted, level {{level}}+',
+        wcAtNight: 'at night',
+        wcByDay: 'by day',
+        wcCadenceDaily: 'Every server save · one of {{spots}} places',
+        wcCadenceDailyOne: 'Every server save',
+        wcCadenceChance: '{{chance}}% of days · one of {{spots}} places',
+        wcCadenceMonthly: 'The {{day}}th of every month',
+        wcCadenceDayNight: 'Tibian day & night',
+        wcFrom: {
+          crier: 'Town Crier',
+          broadcast: 'Broadcast',
+          portal: 'At the portal',
+        },
+        wcName: {
+          fury_gates: 'Fury Gates',
+          nightmare_isles: 'Nightmare Isles',
+          oriental_trader: 'The Oriental Trader (Yasir)',
+          full_moon: 'Full Moon over Grimvale',
+          their_masters_voice: "Their Master's Voice",
+          day_night_npcs: 'Day and night visitors',
+        },
+        wcDesc: {
+          fury_gates:
+            'A burning gate to Fury Hell opens inside one city, drawn at random when the server starts. Through it lie the fire caves below Edron; stepping back out drops you on the gate tile again.',
+          nightmare_isles:
+            'A storm uncovers the way to the Nightmare Isles on one of three coasts. The crier’s rhyme names which one — the desert north of Ankrahmun, the coast north of Darashia, or the mountains west of it, by Drefia.',
+          oriental_trader:
+            'Yasir moors his ship in Carlin, Ankrahmun or Liberty Bay — but only on about a third of the days. He pays far above the usual price for creature products, so the rhyme is worth listening for.',
+          full_moon:
+            'On the 13th of the month the full moon takes Grimvale: wereboars and werebadgers replace the vale’s ordinary wildlife, and Feroxa can be fought in her arena, whose ground changes as the fight goes on.',
+          their_masters_voice:
+            'No crier and no broadcast: about one server start in five, the stone floor of the caves east of Edron sprouts slime fungus. That is the whole tell — you either walk in and see it, or you never know it happened.',
+          day_night_npcs:
+            'Not a dice roll but the same idea: NPCs the world puts out and takes back as Tibian day turns to night. Talila and Valindara share one tile in Feyrist and never meet.',
+        },
+        wcSource:
+          'Places, odds and announcements read from the server scripts, the town crier’s lines and the world-change map patches. Which one is live on your world today cannot be known from outside the game, so the layer shows every place each change can land. Announcements are shown in their original English, exactly as the world reads them out.',
         zoneLayer: 'Analyze zone',
         zoneTitle: 'Zone analysis',
         zoneHint: 'Click one corner of the area, then the opposite one — you can pan the map in between',
@@ -537,6 +582,8 @@ const resources = {
         blessFloor: 'floor {{floor}}',
         blessTiles: '{{tiles}} tiles',
         blessNoWalk: 'no walking route',
+        blessCollapse: 'Minimize (keeps the route)',
+        blessExpand: 'Stops',
         blessByBoat: 'by boat (Pemaret, free)',
         blessByLevitate: 'levitate needed',
         blessNote: 'Shrines are ordered so the whole run walks the fewest tiles, starting from the city nearest your view. Two of them sit on ground you cannot walk onto: Eremo’s island is reached by Pemaret’s free boat from Cormaya, and Nomad’s ledge from the levitate spot below it.',
@@ -1596,6 +1643,51 @@ const resources = {
         raidPlotHint: 'Marcar {{name}} en el mapa',
         raidSource:
           'Casillas de spawn, oleadas y anuncios leídos de los scripts del servidor. Los anuncios se muestran en su inglés original, tal como los proclama el mundo.',
+        wcLayer: 'Mini world changes',
+        wcTitle: 'Mini world change',
+        wcPhrases: 'Lo que dice el mundo',
+        wcSpots: '{{count}} lugar posible',
+        wcSpots_other: '{{count}} lugares posibles',
+        wcSpotHint: 'Verlo en el mapa',
+        wcInside: 'Adónde lleva',
+        wcInstead: 'Ese día: {{creatures}}. El resto del mes: {{instead}}.',
+        wcRequirement: 'Premium, promovido, nivel {{level}}+',
+        wcAtNight: 'de noche',
+        wcByDay: 'de día',
+        wcCadenceDaily: 'Cada server save · uno de {{spots}} lugares',
+        wcCadenceDailyOne: 'Cada server save',
+        wcCadenceChance: '{{chance}}% de los días · uno de {{spots}} lugares',
+        wcCadenceMonthly: 'El día {{day}} de cada mes',
+        wcCadenceDayNight: 'Día y noche tibianos',
+        wcFrom: {
+          crier: 'Pregonero',
+          broadcast: 'Anuncio del mundo',
+          portal: 'En el portal',
+        },
+        wcName: {
+          fury_gates: 'Puertas de Furia',
+          nightmare_isles: 'Islas de Pesadilla',
+          oriental_trader: 'El mercader oriental (Yasir)',
+          full_moon: 'Luna llena sobre Grimvale',
+          their_masters_voice: 'La voz de su amo',
+          day_night_npcs: 'Visitantes de día y de noche',
+        },
+        wcDesc: {
+          fury_gates:
+            'Una puerta ardiente a Fury Hell se abre dentro de una ciudad, sorteada al arrancar el servidor. Al otro lado están las cuevas de fuego bajo Edron; al volver a salir apareces de nuevo en la casilla de la puerta.',
+          nightmare_isles:
+            'Una tormenta destapa el paso a las Islas de Pesadilla en una de tres costas. La rima del pregonero dice cuál: el desierto al norte de Ankrahmun, la costa al norte de Darashia o las montañas al oeste, junto a Drefia.',
+          oriental_trader:
+            'Yasir atraca en Carlin, Ankrahmun o Liberty Bay, y solo un tercio de los días. Paga muy por encima del precio normal por los productos de criatura, así que conviene estar atento a la rima.',
+          full_moon:
+            'El día 13 del mes la luna llena toma Grimvale: wereboars y werebadgers sustituyen a la fauna corriente del valle, y se puede pelear contra Feroxa en su arena, cuyo suelo va cambiando según avanza el combate.',
+          their_masters_voice:
+            'Sin pregonero ni anuncio: aproximadamente uno de cada cinco arranques del servidor, el suelo de piedra de las cuevas al este de Edron se cubre de slime fungus. Esa es toda la señal: o entras y lo ves, o nunca te enteras.',
+          day_night_npcs:
+            'No es un sorteo, pero es la misma idea: NPCs que el mundo saca y recoge según el día tibiano se hace noche. Talila y Valindara comparten casilla en Feyrist y nunca coinciden.',
+        },
+        wcSource:
+          'Lugares, probabilidades y anuncios leídos de los scripts del servidor, de las frases del pregonero y de los parches de mapa de cada cambio. Cuál está activo hoy en tu mundo no se puede saber desde fuera del juego, así que la capa muestra todos los sitios en los que puede caer cada cambio. Los anuncios se muestran en su inglés original, tal como los proclama el mundo.',
         zoneLayer: 'Analizar zona',
         zoneTitle: 'Análisis de zona',
         zoneHint: 'Clicka una esquina de la zona y luego la opuesta — entre medias puedes mover el mapa con normalidad',
@@ -1638,6 +1730,8 @@ const resources = {
         blessFloor: 'piso {{floor}}',
         blessTiles: '{{tiles}} casillas',
         blessNoWalk: 'sin ruta a pie',
+        blessCollapse: 'Minimizar (mantiene el camino)',
+        blessExpand: 'Paradas',
         blessByBoat: 'en barco (Pemaret, gratis)',
         blessByLevitate: 'requiere levitate',
         blessNote: 'Los santuarios van en el orden que menos casillas recorre en total, partiendo de la ciudad más cercana a tu vista. Dos no se pisan andando: a la isla de Eremo te lleva gratis el barco de Pemaret desde Cormaya, y a la repisa de Nomad se sube desde el levitate spot de abajo.',
