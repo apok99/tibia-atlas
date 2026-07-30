@@ -6,7 +6,7 @@ import { useQueries } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import type { SearchResult } from '../types'
 import { compact } from '../lib/format'
-import { useHuntLog } from '../hooks/useHuntLog'
+import { dayKey, useHuntLog } from '../hooks/useHuntLog'
 import HuntLog from './HuntLog'
 
 // Items Cledwyn (Feyrist) recharges for silver tokens — straight from the OT
@@ -100,6 +100,17 @@ function parseAnalyzer(text: string): Parsed {
     if (h > 0) hours = h
   }
 
+  // "From 2026-07-29, 23:19:58 to …" — when the session was actually hunted,
+  // which is what the log should file it under. Built as a LOCAL date: a hunt
+  // that ran 23:19 → 00:47 belongs to the night the player played, not to the
+  // calendar day it happened to end on (nor to whatever UTC says).
+  let startedAt: Date | null = null
+  const f = /\bFrom\s+(\d{4})-(\d{2})-(\d{2}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/i.exec(text)
+  if (f) {
+    const d = new Date(+f[1], +f[2] - 1, +f[3], +f[4], +f[5], +(f[6] ?? 0))
+    if (!Number.isNaN(d.getTime())) startedAt = d
+  }
+
   // List sections: "Killed Monsters: …" runs until "Looted Items: …".
   const km = /Killed Monsters:/i.exec(text)
   const li = /Looted Items:/i.exec(text)
@@ -107,6 +118,7 @@ function parseAnalyzer(text: string): Parsed {
   const items = li ? parseTallies(text.slice(li.index + li[0].length)) : []
 
   return {
+    startedAt,
     hours,
     loot: num(/\bLoot:\s*(-?[\d.,]+)/i),
     supplies: num(/\bSupplies:\s*(-?[\d.,]+)/i),
@@ -317,7 +329,7 @@ function BarRow({
 }
 
 export default function HuntProfitTool({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
 
   const [text, setText] = useState('')
   const [hoursDraft, setHoursDraft] = useState('') // manual override of the session length
@@ -747,7 +759,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
                   xp: parsed.xpGain,
                   kills: totalKills,
                   label: kills[0]?.name ?? '',
-                })
+                }, parsed.startedAt)
                 setSaved({ id, sig })
               }}
               disabled={isSaved}
@@ -769,6 +781,18 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
               </svg>
               {isSaved ? t('map.hpSaved') : t('map.hpSave')}
             </button>
+            {/* Say out loud which day the entry lands on when the paste is not
+                from today — otherwise a back-dated session looks misfiled. */}
+            {parsed.startedAt && dayKey(parsed.startedAt) !== dayKey(new Date()) && (
+              <p className="mt-1 text-center text-[11px] text-fg-mute">
+                {t('map.hpSaveDay', {
+                  day: parsed.startedAt.toLocaleDateString(i18n.language?.startsWith('en') ? 'en-GB' : 'es-ES', {
+                    day: 'numeric',
+                    month: 'long',
+                  }),
+                })}
+              </p>
+            )}
           </div>
         ) : (
           <p className="mt-2 text-sm text-fg-mute">{t('map.hpNoData')}</p>

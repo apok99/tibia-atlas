@@ -97,15 +97,21 @@ export function useHuntLog() {
     return () => window.removeEventListener('storage', onStorage)
   }, [])
 
-  /** Append a session and hand back its id, so the caller can show "saved". */
-  const save = useCallback((entry: NewHunt): string => {
-    const now = new Date()
+  /**
+   * Append a session and hand back its id, so the caller can show "saved".
+   * `when` is the moment the hunt was *played* — the analyzer's own start time
+   * when the paste carries one, so pasting yesterday's session files it under
+   * yesterday. Falls back to now.
+   */
+  const save = useCallback((entry: NewHunt, when?: Date | null): string => {
+    const at = when && !Number.isNaN(when.getTime()) ? when : new Date()
     const id =
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
         ? crypto.randomUUID()
-        : `${now.getTime()}-${Math.round(Math.random() * 1e6)}`
-    const hunt: SavedHunt = { ...entry, id, at: now.getTime(), day: dayKey(now) }
-    setHunts((prev) => [hunt, ...prev].slice(0, MAX_ENTRIES))
+        : `${at.getTime()}-${Math.round(Math.random() * 1e6)}`
+    const hunt: SavedHunt = { ...entry, id, at: at.getTime(), day: dayKey(at) }
+    // Newest first — a back-dated paste has to slot in by date, not by arrival.
+    setHunts((prev) => [hunt, ...prev].sort((a, b) => b.at - a.at).slice(0, MAX_ENTRIES))
     return id
   }, [])
 
