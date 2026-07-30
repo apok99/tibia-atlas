@@ -6,6 +6,8 @@ import { useQueries } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import type { SearchResult } from '../types'
 import { compact } from '../lib/format'
+import { useHuntLog } from '../hooks/useHuntLog'
+import HuntLog from './HuntLog'
 
 // Items Cledwyn (Feyrist) recharges for silver tokens — straight from the OT
 // server data (npc/cledwyn.lua + items.xml): tokens per recharge and how long
@@ -41,6 +43,8 @@ const STORE_KEY = 'atlas:map:huntProfit'
 type Tally = { name: string; count: number }
 
 type Parsed = {
+  /** Local start time of the session, from the analyzer's own "From …" line. */
+  startedAt: Date | null
   hours: number | null
   loot: number | null
   supplies: number | null
@@ -321,6 +325,12 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
   const [collapsed, setCollapsed] = useState(false) // hide the inputs, keep the verdict + charts
   const [calculated, setCalculated] = useState(false) // gate: no report until "Calcular" is hit
   const [lootSort, setLootSort] = useState<'total' | 'unit' | 'count'>('total') // loot list ordering
+  const [tab, setTab] = useState<'calc' | 'log'>('calc')
+  const { hunts, save, remove, clear } = useHuntLog()
+  // The last save, tagged with the numbers it captured: editing hours or any
+  // cost after saving changes the result, so the button must offer to save the
+  // new figure instead of claiming the old one is still on file.
+  const [saved, setSaved] = useState<{ id: string; sig: string } | null>(null)
 
   useEffect(() => {
     try {
@@ -408,6 +418,11 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
   const ready = hours != null && balance != null
   const realProfit = ready ? balance! - imbueTotal - tokenTotal - extraTotal : null
   const perHour = realProfit != null && hours != null ? realProfit / hours : null
+
+  // Fingerprint of the current result. It matching the last save — and that
+  // entry still being in the log — is what makes the button read "Guardada".
+  const sig = ready ? `${hours}|${balance}|${Math.round(realProfit!)}` : ''
+  const isSaved = !!saved && saved.sig === sig && sig !== '' && hunts.some((h) => h.id === saved.id)
 
   // --- report data -----------------------------------------------------------
   const kills = useMemo(() => [...parsed.kills].sort((a, b) => b.count - a.count), [parsed.kills])
@@ -506,7 +521,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
             <path d="m16.71 13.88.7.71-2.82 2.82" />
           </svg>
           <span className="text-xs font-bold uppercase tracking-widest">{t('map.hpTitle')}</span>
-          {hasReport && (
+          {hasReport && tab === 'calc' && (
             <button
               onClick={() => setCollapsed((v) => !v)}
               onPointerDown={(e) => e.stopPropagation()}
@@ -525,7 +540,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
             onClick={onClose}
             onPointerDown={(e) => e.stopPropagation()}
             aria-label={t('map.hpTitle')}
-            className={`${hasReport ? '' : 'ml-auto'} grid h-6 w-6 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:border-accent hover:text-accent`}
+            className={`${hasReport && tab === 'calc' ? '' : 'ml-auto'} grid h-6 w-6 place-items-center rounded-md border border-line-2 text-fg-mute transition hover:border-accent hover:text-accent`}
           >
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M18 6 6 18M6 6l12 12" />
@@ -533,9 +548,41 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
           </button>
         </div>
 
+        {/* Calculator ↔ saved-hunt history. Sits outside the scroller so the
+            switch is always reachable, like the close button. */}
+        <div className="mb-2 flex shrink-0 gap-1 rounded-lg border border-line p-0.5">
+          {([
+            ['calc', t('map.hpTabCalc'), null],
+            ['log', t('map.hpTabLog'), hunts.length],
+          ] as const).map(([id, label, badge]) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              aria-pressed={tab === id}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-1 text-[11px] font-bold uppercase tracking-widest transition ${
+                tab === id ? 'bg-accent text-bg-2' : 'text-fg-mute hover:text-fg'
+              }`}
+            >
+              {label}
+              {badge != null && badge > 0 && (
+                <span
+                  className={`rounded px-1 text-[10px] tabular-nums ${tab === id ? 'bg-bg-2/25' : 'bg-line/60 text-fg-dim'}`}
+                >
+                  {badge}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
         {/* Everything below the header scrolls; the card itself never grows past
             92vh, so the header (and its close button) always stays on screen. */}
         <div className="scroll-atlas min-h-0 flex-1 overflow-y-auto">
+
+        {tab === 'log' ? (
+          <HuntLog hunts={hunts} onRemove={remove} onClear={clear} />
+        ) : (
+        <>
 
         {/* Inputs — collapse into the results with a smooth grid-rows animation
             when you hit "Calcular", so the breakdown and charts take the card. */}
@@ -683,6 +730,45 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
                 <span className="ml-2 text-sm text-fg-dim">{gp(perHour!)}/h</span>
               </span>
             </div>
+
+            {/* Save the session into the local hunt log (the "Historial" tab).
+                Turns into a confirmation once these exact numbers are on file. */}
+            <button
+              onClick={() => {
+                if (isSaved) return
+                const id = save({
+                  hours: hours!,
+                  balance: balance!,
+                  imbues: imbueTotal,
+                  tokens: tokenTotal,
+                  charms: charmTotal,
+                  prey: preyTotal,
+                  profit: realProfit!,
+                  xp: parsed.xpGain,
+                  kills: totalKills,
+                  label: kills[0]?.name ?? '',
+                })
+                setSaved({ id, sig })
+              }}
+              disabled={isSaved}
+              className={`mt-2 flex w-full items-center justify-center gap-2 rounded-xl border-2 py-2 text-sm font-bold uppercase tracking-widest transition active:scale-[0.99] ${
+                isSaved
+                  ? 'cursor-default border-canon bg-canon/10 text-canon'
+                  : 'border-line-2 text-fg-dim hover:border-accent hover:text-accent'
+              }`}
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                {isSaved ? (
+                  <path d="M20 6 9 17l-5-5" />
+                ) : (
+                  <>
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" />
+                    <path d="M17 21v-8H7v8M7 3v5h8" />
+                  </>
+                )}
+              </svg>
+              {isSaved ? t('map.hpSaved') : t('map.hpSave')}
+            </button>
           </div>
         ) : (
           <p className="mt-2 text-sm text-fg-mute">{t('map.hpNoData')}</p>
@@ -774,6 +860,8 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
               )}
             </div>
           </div>
+        )}
+        </>
         )}
         </div>
       </div>
