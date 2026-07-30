@@ -28,6 +28,61 @@ function total(list: SavedHunt[]): Bucket {
   return list.reduce(add, EMPTY)
 }
 
+/**
+ * One saved session: when, what, and what it left you with — plus the × that
+ * deletes it. Shared by the per-day drill-down and the full list, which is why
+ * the date column is optional (inside a day it would repeat).
+ */
+function HuntRow({
+  hunt,
+  locale,
+  showDate,
+  onRemove,
+}: {
+  hunt: SavedHunt
+  locale: string
+  showDate?: boolean
+  onRemove: (id: string) => void
+}) {
+  const { t } = useTranslation()
+  const at = new Date(hunt.at)
+  return (
+    <div className="flex items-center gap-2 py-0.5 text-[11px]">
+      <span className={`shrink-0 tabular-nums text-fg-mute ${showDate ? 'w-24' : 'w-10'}`}>
+        {showDate && (
+          <span className="mr-1 font-semibold capitalize text-fg-dim">
+            {at.toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+          </span>
+        )}
+        {at.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
+      </span>
+      <span className="min-w-0 flex-1 truncate capitalize text-fg-dim">
+        {hunt.label || t('map.hlSession')}
+        {hunt.kills > 0 && <span className="text-fg-mute"> · {hunt.kills.toLocaleString()} kills</span>}
+      </span>
+      <span className="w-12 shrink-0 text-right tabular-nums text-fg-mute">{hunt.hours.toFixed(1)}h</span>
+      <span className="w-14 shrink-0 text-right tabular-nums text-fg-mute" title={t('map.hlWaste')}>
+        −{compact(waste(hunt))}
+      </span>
+      <span
+        className={`w-16 shrink-0 text-right font-bold tabular-nums ${hunt.profit >= 0 ? 'text-canon' : 'text-accent'}`}
+      >
+        {signed(hunt.profit)}
+      </span>
+      <button
+        onClick={() => onRemove(hunt.id)}
+        title={t('map.hlDelete')}
+        aria-label={t('map.hlDelete')}
+        className="grid h-5 w-5 shrink-0 place-items-center rounded text-fg-mute transition hover:bg-accent/10 hover:text-accent"
+      >
+        <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M18 6 6 18M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+  )
+}
+
 /** Headline number for the summary cards. */
 function Stat({ label, value, tone }: { label: string; value: string; tone?: 'good' | 'bad' }) {
   const color = tone === 'good' ? 'text-canon' : tone === 'bad' ? 'text-accent' : 'text-fg'
@@ -254,36 +309,7 @@ export default function HuntLog({
                 {open && (
                   <div className="mb-1 ml-5 flex flex-col gap-0.5 border-l border-line pl-2">
                     {(byDay.get(d.day) ?? []).map((h) => (
-                      <div key={h.id} className="flex items-center gap-2 py-0.5 text-[11px]">
-                        <span className="w-10 shrink-0 tabular-nums text-fg-mute">
-                          {new Date(h.at).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate capitalize text-fg-dim">
-                          {h.label || t('map.hlSession')}
-                          {h.kills > 0 && <span className="text-fg-mute"> · {h.kills.toLocaleString()} kills</span>}
-                        </span>
-                        <span className="w-12 shrink-0 text-right tabular-nums text-fg-mute">
-                          {h.hours.toFixed(1)}h
-                        </span>
-                        <span className="w-14 shrink-0 text-right tabular-nums text-fg-mute" title={t('map.hlWaste')}>
-                          −{compact(waste(h))}
-                        </span>
-                        <span
-                          className={`w-16 shrink-0 text-right font-bold tabular-nums ${h.profit >= 0 ? 'text-canon' : 'text-accent'}`}
-                        >
-                          {signed(h.profit)}
-                        </span>
-                        <button
-                          onClick={() => onRemove(h.id)}
-                          title={t('map.hlDelete')}
-                          aria-label={t('map.hlDelete')}
-                          className="grid h-5 w-5 shrink-0 place-items-center rounded text-fg-mute transition hover:text-accent"
-                        >
-                          <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M18 6 6 18M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
+                      <HuntRow key={h.id} hunt={h} locale={locale} onRemove={onRemove} />
                     ))}
                   </div>
                 )}
@@ -378,6 +404,22 @@ export default function HuntLog({
               </BarChart>
             </ResponsiveContainer>
           </div>
+        </div>
+      </div>
+
+      {/* --- every saved hunt ------------------------------------------------ */}
+      {/* The day list above only reaches 30 days back and hides sessions behind
+          a drill-down. This is the flat, complete register: every hunt ever
+          saved, newest first, each with its own × — no hunting for the day. */}
+      <div className="rounded-xl border border-line bg-bg-2 p-2.5">
+        <div className="mb-1.5 flex items-baseline justify-between gap-2">
+          <span className="text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hlAll')}</span>
+          <span className="text-[11px] font-semibold text-fg-mute">{t('map.hlHuntsN', { count: hunts.length })}</span>
+        </div>
+        <div className="scroll-atlas flex max-h-[16rem] flex-col gap-0.5 overflow-y-auto pr-1">
+          {hunts.map((h) => (
+            <HuntRow key={h.id} hunt={h} locale={locale} showDate onRemove={onRemove} />
+          ))}
         </div>
       </div>
     </div>
