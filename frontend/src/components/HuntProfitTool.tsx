@@ -7,6 +7,7 @@ import { api } from '../lib/api'
 import type { SearchResult } from '../types'
 import { compact } from '../lib/format'
 import { dayKey, useHuntLog } from '../hooks/useHuntLog'
+import { clearSharedSummary, readSharedSummary, type Summary } from '../lib/huntShare'
 import HuntLog from './HuntLog'
 
 // Items Cledwyn (Feyrist) recharges for silver tokens — straight from the OT
@@ -337,7 +338,10 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
   const [collapsed, setCollapsed] = useState(false) // hide the inputs, keep the verdict + charts
   const [calculated, setCalculated] = useState(false) // gate: no report until "Calcular" is hit
   const [lootSort, setLootSort] = useState<'total' | 'unit' | 'count'>('total') // loot list ordering
-  const [tab, setTab] = useState<'calc' | 'log'>('calc')
+  // A share link lands here: the summary rides in the URL, so it is read once
+  // on mount and the card opens straight onto it.
+  const [sharedSummary, setSharedSummary] = useState<Summary | null>(readSharedSummary)
+  const [tab, setTab] = useState<'calc' | 'log'>(sharedSummary ? 'log' : 'calc')
   const { hunts, save, remove, clear } = useHuntLog()
   // The last save, tagged with the numbers it captured: editing hours or any
   // cost after saving changes the result, so the button must offer to save the
@@ -608,7 +612,16 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
         <div className="scroll-atlas min-h-0 flex-1 overflow-y-auto">
 
         {tab === 'log' ? (
-          <HuntLog hunts={hunts} onRemove={remove} onClear={clear} />
+          <HuntLog
+            hunts={hunts}
+            onRemove={remove}
+            onClear={clear}
+            shared={sharedSummary}
+            onExitShared={() => {
+              setSharedSummary(null)
+              clearSharedSummary()
+            }}
+          />
         ) : (
         <>
 

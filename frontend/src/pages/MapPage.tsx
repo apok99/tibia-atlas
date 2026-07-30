@@ -77,6 +77,7 @@ import { TypeIcon } from '../components/TypeIcon'
 import { Skeleton } from '../components/Skeleton'
 import { MapTutorial, mapTourSeen } from '../components/MapTutorial'
 import HuntProfitTool from '../components/HuntProfitTool'
+import { hasSharedSummary } from '../lib/huntShare'
 import { MapKillPulse } from '../components/MapKillPulse'
 import { HouseBidChart, HousePriceIndex } from '../components/HousePrices'
 import {
@@ -2762,7 +2763,9 @@ export function MapPage() {
   // Level/vocation auto-fill from the saved character (below) but stay editable.
   const [huntOpen, setHuntOpen] = useState(false)
   // Hunt profit calculator — the draggable "real profit" card (analyzer paste).
-  const [profitOpen, setProfitOpen] = useState(false)
+  // A shared-summary link (?hunt=…) opens it on arrival: the payload rides in
+  // the URL, so there is nothing to fetch before showing it.
+  const [profitOpen, setProfitOpen] = useState(hasSharedSummary)
   const [huntLevel, setHuntLevel] = useState('')
   const [huntVoc, setHuntVoc] = useState('')
   const [huntZoneId, setHuntZoneId] = useState<number | null>(null)
