@@ -18,6 +18,8 @@ export type SavedHunt = {
   day: string
   hours: number
   balance: number
+  /** The analyzer's own Supplies line — the first term of the session's waste. */
+  supplies: number
   imbues: number
   tokens: number
   charms: number
@@ -30,6 +32,9 @@ export type SavedHunt = {
 }
 
 export type NewHunt = Omit<SavedHunt, 'id' | 'at' | 'day'>
+
+/** Everything the session burned: supplies plus the costs the analyzer misses. */
+export const waste = (h: SavedHunt) => h.supplies + h.imbues + h.tokens + h.charms + h.prey
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
@@ -58,6 +63,7 @@ function read(): SavedHunt[] {
         day: h.day,
         hours: numOr(h.hours),
         balance: numOr(h.balance),
+        supplies: numOr(h.supplies),
         imbues: numOr(h.imbues),
         tokens: numOr(h.tokens),
         charms: numOr(h.charms),

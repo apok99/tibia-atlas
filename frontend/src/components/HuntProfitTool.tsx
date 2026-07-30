@@ -368,6 +368,15 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
   // outruns the handle; position clamps to the viewport.
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
   const cardRef = useRef<HTMLDivElement | null>(null)
+  const textRef = useRef<HTMLTextAreaElement | null>(null)
+
+  // "Añadir otra" bumps this; the effect then puts the caret back in the paste
+  // box. It has to be an effect, not a rAF in the click handler — React commits
+  // the un-collapse after the frame callback, and the commit steals focus back.
+  const [focusPaste, setFocusPaste] = useState(0)
+  useEffect(() => {
+    if (focusPaste > 0) textRef.current?.focus()
+  }, [focusPaste])
   const dragOff = useRef<{ dx: number; dy: number } | null>(null)
   const startDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
     const card = cardRef.current
@@ -430,6 +439,13 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
   const ready = hours != null && balance != null
   const realProfit = ready ? balance! - imbueTotal - tokenTotal - extraTotal : null
   const perHour = realProfit != null && hours != null ? realProfit / hours : null
+
+  // Waste: every gp the session actually burned. The analyzer's own Supplies
+  // (runes, potions, ammo) plus the costs it never sees — imbuement wear, token
+  // recharges, charms and prey. This is the number that answers "how much did
+  // this hunt cost me", where Supplies alone always answers it too low.
+  const wasteTotal = (parsed.supplies ?? 0) + imbueTotal + tokenTotal + extraTotal
+  const wastePerHour = hours != null && wasteTotal > 0 ? wasteTotal / hours : null
 
   // Fingerprint of the current result. It matching the last save — and that
   // entry still being in the log — is what makes the button read "Guardada".
@@ -606,6 +622,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
 
         {/* Analyzer paste box */}
         <textarea
+          ref={textRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder={t('map.hpPaste')}
@@ -735,6 +752,22 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
               <dt className="text-fg-dim">{t('map.hpCostPrey')} <span className="text-fg-mute">×{preyCount}</span></dt>
               <dd className="text-right font-semibold text-fg">{preyTotal > 0 ? '-' + gp(preyTotal) : '0'}</dd>
             </dl>
+            {/* Waste: supplies + every real cost above, i.e. the whole spend. */}
+            <div className="mt-1.5 flex items-baseline justify-between border-t border-line pt-1.5">
+              <span className="text-xs font-bold uppercase tracking-widest text-fg-dim">
+                {t('map.hpWaste')}
+                {parsed.supplies != null && (
+                  <span className="ml-1 font-normal normal-case tracking-normal text-fg-mute">
+                    {t('map.hpWasteNote', { n: gp(parsed.supplies) })}
+                  </span>
+                )}
+              </span>
+              <span className="text-right">
+                <b className="text-accent">{gp(wasteTotal)} gp</b>
+                {wastePerHour != null && <span className="ml-2 text-sm text-fg-dim">{gp(wastePerHour)}/h</span>}
+              </span>
+            </div>
+
             <div className="mt-1.5 flex items-baseline justify-between border-t border-line pt-1.5">
               <span className="text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpReal')}</span>
               <span className="text-right">
@@ -745,6 +778,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
 
             {/* Save the session into the local hunt log (the "Historial" tab).
                 Turns into a confirmation once these exact numbers are on file. */}
+            <div className="mt-2 flex gap-2">
             <button
               onClick={() => {
                 if (isSaved) return
@@ -757,13 +791,14 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
                   prey: preyTotal,
                   profit: realProfit!,
                   xp: parsed.xpGain,
+                  supplies: parsed.supplies ?? 0,
                   kills: totalKills,
                   label: kills[0]?.name ?? '',
                 }, parsed.startedAt)
                 setSaved({ id, sig })
               }}
               disabled={isSaved}
-              className={`mt-2 flex w-full items-center justify-center gap-2 rounded-xl border-2 py-2 text-sm font-bold uppercase tracking-widest transition active:scale-[0.99] ${
+              className={`flex flex-1 items-center justify-center gap-2 rounded-xl border-2 py-2 text-sm font-bold uppercase tracking-widest transition active:scale-[0.99] ${
                 isSaved
                   ? 'cursor-default border-canon bg-canon/10 text-canon'
                   : 'border-line-2 text-fg-dim hover:border-accent hover:text-accent'
@@ -781,6 +816,28 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
               </svg>
               {isSaved ? t('map.hpSaved') : t('map.hpSave')}
             </button>
+
+            {/* Straight into the next session: wipes the paste and the report
+                but keeps your cost setup, which is the same hunt after hunt. */}
+            {isSaved && (
+              <button
+                onClick={() => {
+                  setText('')
+                  setHoursDraft('')
+                  setCalculated(false)
+                  setCollapsed(false)
+                  setSaved(null)
+                  setFocusPaste((n) => n + 1)
+                }}
+                className="flex shrink-0 items-center justify-center gap-2 rounded-xl border-2 border-accent bg-accent/10 px-4 py-2 text-sm font-bold uppercase tracking-widest text-accent transition hover:bg-accent hover:text-bg-2 active:scale-[0.99]"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                {t('map.hpAddAnother')}
+              </button>
+            )}
+            </div>
             {/* Say out loud which day the entry lands on when the paste is not
                 from today — otherwise a back-dated session looks misfiled. */}
             {parsed.startedAt && dayKey(parsed.startedAt) !== dayKey(new Date()) && (
@@ -804,9 +861,10 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
             <div className="mb-2 text-xs font-bold uppercase tracking-widest text-accent">{t('map.hpReport')}</div>
 
             {/* Headline tiles */}
-            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5">
               {xpH != null && <Tile label={t('map.hpXpH')} value={compact(xpH)} />}
               {perHour != null && <Tile label={t('map.hpProfitH')} value={compact(perHour)} tone={perHour >= 0 ? 'good' : 'bad'} />}
+              {wastePerHour != null && <Tile label={t('map.hpWasteH')} value={compact(wastePerHour)} tone="bad" />}
               {dmgH != null && <Tile label={t('map.hpDmgH')} value={compact(dmgH)} />}
               {healH != null && <Tile label={t('map.hpHealH')} value={compact(healH)} />}
             </div>

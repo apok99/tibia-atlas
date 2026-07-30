@@ -2,22 +2,23 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { chartTooltipStyle, useChartTheme } from '../hooks/useChartTheme'
-import { dayKey, type SavedHunt } from '../hooks/useHuntLog'
+import { dayKey, waste, type SavedHunt } from '../hooks/useHuntLog'
 import { compact } from '../lib/format'
 
 const gp = (n: number) => Math.round(n).toLocaleString()
 const signed = (n: number) => (n >= 0 ? '+' : '−') + compact(Math.abs(n))
 
 /** Bucket of sessions — one calendar day, one month, or a whole period. */
-type Bucket = { hunts: number; hours: number; profit: number; xp: number }
+type Bucket = { hunts: number; hours: number; profit: number; waste: number; xp: number }
 
-const EMPTY: Bucket = { hunts: 0, hours: 0, profit: 0, xp: 0 }
+const EMPTY: Bucket = { hunts: 0, hours: 0, profit: 0, waste: 0, xp: 0 }
 
 function add(b: Bucket, h: SavedHunt): Bucket {
   return {
     hunts: b.hunts + 1,
     hours: b.hours + h.hours,
     profit: b.profit + h.profit,
+    waste: b.waste + waste(h),
     xp: b.xp + (h.xp ?? 0),
   }
 }
@@ -76,7 +77,7 @@ export default function HuntLog({
   // The last 30 calendar days, oldest → newest, zero-filled: an empty day is
   // information too, and gaps would make the chart lie about the cadence.
   const days = useMemo(() => {
-    const out: { day: string; short: string; hunts: number; hours: number; profit: number }[] = []
+    const out: { day: string; short: string; hunts: number; hours: number; profit: number; waste: number }[] = []
     const now = new Date()
     for (let i = 29; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i)
@@ -88,6 +89,7 @@ export default function HuntLog({
         hunts: b.hunts,
         hours: b.hours,
         profit: b.profit,
+        waste: b.waste,
       })
     }
     return out
@@ -163,7 +165,7 @@ export default function HuntLog({
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5">
           <Stat label={t('map.hlHunts')} value={String(last30.hunts)} />
           <Stat label={t('map.hlHours')} value={`${last30.hours.toFixed(1)}h`} />
           <Stat
@@ -171,6 +173,7 @@ export default function HuntLog({
             value={signed(last30.profit)}
             tone={last30.profit >= 0 ? 'good' : 'bad'}
           />
+          <Stat label={t('map.hlWaste')} value={compact(last30.waste)} tone="bad" />
           <Stat
             label={t('map.hlPerHour')}
             value={perHour(last30) != null ? signed(perHour(last30)!) : '—'}
@@ -238,8 +241,11 @@ export default function HuntLog({
                     {t('map.hlHuntsN', { count: d.hunts })}
                   </span>
                   <span className="w-14 shrink-0 text-[11px] text-fg-mute">{d.hours.toFixed(1)}h</span>
+                  <span className="ml-auto shrink-0 text-right text-[11px] tabular-nums text-fg-mute" title={t('map.hlWaste')}>
+                    −{compact(d.waste)}
+                  </span>
                   <span
-                    className={`ml-auto shrink-0 text-right text-xs font-bold tabular-nums ${d.profit >= 0 ? 'text-canon' : 'text-accent'}`}
+                    className={`w-20 shrink-0 text-right text-xs font-bold tabular-nums ${d.profit >= 0 ? 'text-canon' : 'text-accent'}`}
                   >
                     {signed(d.profit)}
                   </span>
@@ -258,6 +264,9 @@ export default function HuntLog({
                         </span>
                         <span className="w-12 shrink-0 text-right tabular-nums text-fg-mute">
                           {h.hours.toFixed(1)}h
+                        </span>
+                        <span className="w-14 shrink-0 text-right tabular-nums text-fg-mute" title={t('map.hlWaste')}>
+                          −{compact(waste(h))}
                         </span>
                         <span
                           className={`w-16 shrink-0 text-right font-bold tabular-nums ${h.profit >= 0 ? 'text-canon' : 'text-accent'}`}
@@ -293,14 +302,20 @@ export default function HuntLog({
               {now.toLocaleDateString(locale, { month: 'long', year: 'numeric' })}
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-3 gap-1.5">
             <Stat label={t('map.hlHunts')} value={String(month.hunts)} />
             <Stat label={t('map.hlHours')} value={`${month.hours.toFixed(1)}h`} />
             <Stat label={t('map.hlProfit')} value={signed(month.profit)} tone={month.profit >= 0 ? 'good' : 'bad'} />
+            <Stat label={t('map.hlWaste')} value={compact(month.waste)} tone="bad" />
             <Stat
               label={t('map.hlPerHour')}
               value={perHour(month) != null ? signed(perHour(month)!) : '—'}
               tone={(perHour(month) ?? 0) >= 0 ? 'good' : 'bad'}
+            />
+            <Stat
+              label={t('map.hlWasteH')}
+              value={month.hours > 0 ? compact(month.waste / month.hours) : '—'}
+              tone="bad"
             />
           </div>
           <p className="mt-1.5 truncate text-[11px] text-fg-mute">
@@ -320,14 +335,20 @@ export default function HuntLog({
           <div className="mb-1.5 text-xs font-bold uppercase tracking-widest text-fg-dim">
             {t('map.hlYear')} <span className="text-fg-mute">{yearPrefix}</span>
           </div>
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-3 gap-1.5">
             <Stat label={t('map.hlHunts')} value={String(year.hunts)} />
             <Stat label={t('map.hlHours')} value={`${year.hours.toFixed(1)}h`} />
             <Stat label={t('map.hlProfit')} value={signed(year.profit)} tone={year.profit >= 0 ? 'good' : 'bad'} />
+            <Stat label={t('map.hlWaste')} value={compact(year.waste)} tone="bad" />
             <Stat
               label={t('map.hlPerHour')}
               value={perHour(year) != null ? signed(perHour(year)!) : '—'}
               tone={(perHour(year) ?? 0) >= 0 ? 'good' : 'bad'}
+            />
+            <Stat
+              label={t('map.hlWasteH')}
+              value={year.hours > 0 ? compact(year.waste / year.hours) : '—'}
+              tone="bad"
             />
           </div>
           {/* Twelve bars: the year's shape at a glance. */}
