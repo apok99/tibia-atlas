@@ -75,6 +75,19 @@ class KillStatsController extends Controller
     }
 
     /**
+     * Kill pulse for one creature on ONE world — yesterday + the rolling 30
+     * days, with daily bars. Powers the map's per-creature stats popover.
+     *
+     * Query: world=all|<Name>.
+     */
+    public function creature(Request $request, string $slug): JsonResponse
+    {
+        $world = trim((string) $request->string('world', 'all'));
+
+        return response()->json($this->stats->creatureWorld($slug, $world === '' ? 'all' : $world));
+    }
+
+    /**
      * Ranking of creatures by EXPERIENCE handed out (killed × exp-per-kill).
      *
      * Query: world=all|<Name>, window=day|week, limit=20.

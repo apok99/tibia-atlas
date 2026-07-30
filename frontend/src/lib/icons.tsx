@@ -43,6 +43,8 @@ export const ICON_INNER: Record<string, string> = {
   check: '<path d="M20 6 9 17l-5-5"/>',
   // Trade chips: "route me to this merchant"
   pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
+  // Kill pulse: daily kill counts behind a creature chip
+  bars: '<path d="M4 21h16M7.5 21v-4.5M12 21v-9M16.5 21v-13"/>',
 }
 
 export type IconName = keyof typeof ICON_INNER

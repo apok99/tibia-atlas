@@ -77,6 +77,7 @@ import { TypeIcon } from '../components/TypeIcon'
 import { Skeleton } from '../components/Skeleton'
 import { MapTutorial, mapTourSeen } from '../components/MapTutorial'
 import HuntProfitTool from '../components/HuntProfitTool'
+import { MapKillPulse } from '../components/MapKillPulse'
 import { HouseBidChart, HousePriceIndex } from '../components/HousePrices'
 import {
   SHRINE_ACCESS,
@@ -2556,6 +2557,11 @@ export function MapPage() {
   useEffect(() => {
     setCreaturePage((p) => Math.min(p, creaturePageCount - 1))
   }, [creaturePageCount])
+  // Which plotted creature has its kill pulse open (yesterday / last 30 days on
+  // the selected world). One at a time, docked under the creature bar; it hangs
+  // off a chip rather than the bottom-centre panel stack, so it lives outside
+  // openPanel's mutually-exclusive family.
+  const [killsSlug, setKillsSlug] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   // What the search box looks up: a creature (plot its spawns), an item (plot
@@ -5317,6 +5323,7 @@ export function MapPage() {
   function removeCreature(slug: string) {
     pendingRef.current.delete(slug)
     setCreatures((prev) => prev.filter((c) => c.slug !== slug))
+    setKillsSlug((s) => (s === slug ? null : s))
   }
 
   // "¿Dónde farmeo este objeto?" — plot every creature that drops the item.
@@ -8286,6 +8293,20 @@ export function MapPage() {
                   <Icon name="compass" size={16} />
                 </button>
               )}
+              {/* Kill pulse — how many died yesterday / last 30 days on the
+                  world selected on the map. Third sibling of the eye and the
+                  compass: look at it, walk to it, or read how hunted it is. */}
+              <button
+                onClick={() => setKillsSlug((s) => (s === cr.slug ? null : cr.slug))}
+                className={`grid h-8 w-8 place-items-center rounded-lg text-sm transition hover:bg-accent/10 hover:text-accent ${
+                  killsSlug === cr.slug ? 'bg-accent/15 text-accent' : 'text-fg-mute'
+                }`}
+                title={t('map.killStats')}
+                aria-label={t('map.killStats')}
+                aria-pressed={killsSlug === cr.slug}
+              >
+                <Icon name="bars" size={16} />
+              </button>
               <button
                 onClick={() => removeCreature(cr.slug)}
                 className="grid h-8 w-8 place-items-center rounded-lg text-sm text-fg-mute transition hover:bg-accent/10 hover:text-accent"
@@ -8298,6 +8319,24 @@ export function MapPage() {
           ))}
         </div>
       )}
+
+      {/* Kill pulse for the chip whose chart button is lit. Docked right under
+          the creature bar; the header repeats the sprite/name so it still reads
+          on its own when the bar has paged past that chip. */}
+      {(() => {
+        const cr = killsSlug ? creatures.find((c) => c.slug === killsSlug) : null
+        if (!cr) return null
+        return (
+          <MapKillPulse
+            slug={cr.slug}
+            name={cr.name}
+            image={cr.image}
+            world={world}
+            color={cr.color}
+            onClose={() => setKillsSlug(null)}
+          />
+        )
+      })()}
 
       {/* Directions bar — origin/destination pickers (city dropdown or map click).
           Quiet paper inset like the layer panel below, so it blends with the page

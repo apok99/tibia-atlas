@@ -15,6 +15,7 @@ use App\Support\KillStatsCache;
 use App\Transformers\KillStats\BossRespawnTransformer;
 use App\Transformers\KillStats\BossWatchTransformer;
 use App\Transformers\KillStats\CreatureKillStatsTransformer;
+use App\Transformers\KillStats\CreatureWorldKillsTransformer;
 use App\Transformers\KillStats\ExperienceRankingTransformer;
 use App\Transformers\KillStats\KillPointTransformer;
 use App\Transformers\KillStats\OverviewTransformer;
@@ -45,6 +46,7 @@ class KillStatsService
         private BossWatchTransformer $bossWatchTransformer,
         private BossRespawnTransformer $bossRespawnTransformer,
         private CreatureKillStatsTransformer $creatureTransformer,
+        private CreatureWorldKillsTransformer $worldKillsTransformer,
     ) {}
 
     /** @return array<string, mixed> */
@@ -120,6 +122,52 @@ class KillStatsService
                 'latest' => $latest,
                 'popularity' => $popularity,
                 'series' => $this->points->collection($this->creature->dailySeries($race->id), KillPointTransformer::DAY),
+            ];
+        });
+    }
+
+    /**
+     * The map's per-creature kill pulse, scoped to the world selected on the
+     * map: yesterday, the rolling 30 days, and the daily bars. Same creature
+     * resolution as {@see entry()} (lore slug → linked race).
+     *
+     * @param  string  $world  'all' or a world name
+     * @return array<string, mixed>
+     */
+    public function creatureWorld(string $slug, string $world): array
+    {
+        $key = 'creature-world:'.rawurlencode($slug).':'.rawurlencode($world);
+
+        return KillStatsCache::remember($key, function () use ($slug, $world) {
+            $race = $this->creature->raceForSlug($slug);
+            if (! $race) {
+                return [
+                    'linked' => false, 'race' => null, 'world' => $world,
+                    'yesterday' => null, 'month' => null, 'best' => null, 'rank' => null, 'series' => [],
+                ];
+            }
+
+            $worldId = $this->creature->worldId($world);
+            $global = $this->creature->dailySeries($race->id);
+            $rows = $worldId ? $this->creature->dailySeriesFor($race->id, $worldId) : $global;
+
+            $shaped = $this->worldKillsTransformer->build($rows, $global, Carbon::today(), (bool) $worldId);
+
+            // Where this world sits among the worlds that hunted the race that day.
+            $rank = null;
+            if ($worldId && $shaped['yesterday']) {
+                $row = $this->creature->worldRankOn($race->id, $shaped['yesterday']['date'], $worldId);
+                $rank = $row ? ['rank' => $row->rank, 'total' => $row->total] : null;
+            }
+
+            return [
+                'linked' => true,
+                'race' => $race->name,
+                // Echo back what was actually applied: an unknown world name
+                // degrades to the network-wide read rather than to zeros.
+                'world' => $worldId ? $world : 'all',
+                'rank' => $rank,
+                ...$shaped,
             ];
         });
     }

@@ -121,6 +121,7 @@ Route::prefix('killstats')->middleware(['throttle:public', 'cache.headers:public
     Route::get('/experience', [KillStatsController::class, 'experience']);
     Route::get('/bosses', [KillStatsController::class, 'bosses']);
     Route::get('/entry/{slug}', [KillStatsController::class, 'entry']);
+    Route::get('/creature/{slug}', [KillStatsController::class, 'creature']);
     Route::get('/boss/{slug}', [KillStatsController::class, 'boss']);
 });
 

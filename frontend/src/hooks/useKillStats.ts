@@ -179,6 +179,41 @@ export function useEntryKillStats(slug: string | undefined, enabled = true) {
   })
 }
 
+export interface CreatureWorldKills {
+  linked: boolean
+  race: string | null
+  /** The world actually applied ('all' when the requested one is unknown). */
+  world: string
+  /** Newest SEALED snapshot — the ETL rewrites today's row hourly, so today is partial. */
+  yesterday: { date: string; killed: number; players_killed: number; share: number | null; all_worlds: number } | null
+  month: {
+    from: string
+    to: string
+    days: number
+    killed: number
+    players_killed: number
+    per_day: number
+    share: number | null
+    all_worlds: number
+  } | null
+  best: { date: string; killed: number } | null
+  /** Where this world ranks among the worlds that hunted the race yesterday. */
+  rank: { rank: number; total: number } | null
+  series: SeriesPoint[]
+}
+
+/** Per-creature kill pulse for ONE world — the map's stats popover. */
+export function useCreatureWorldKills(slug: string | undefined, world: string, enabled = true) {
+  return useQuery({
+    queryKey: ['killstats', 'creature', slug, world],
+    enabled: !!slug && enabled,
+    queryFn: async () =>
+      (await api.get<CreatureWorldKills>(`/killstats/creature/${slug}`, { params: { world } })).data,
+    // Only moves when the hourly ETL lands a new snapshot.
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
 export interface ExpRow {
   race: string
   slug: string | null

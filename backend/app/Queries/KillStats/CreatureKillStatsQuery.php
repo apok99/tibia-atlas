@@ -2,6 +2,7 @@
 
 namespace App\Queries\KillStats;
 
+use App\Queries\KillStats\Concerns\ResolvesTibiaIds;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -11,6 +12,8 @@ use Illuminate\Support\Facades\DB;
  */
 class CreatureKillStatsQuery
 {
+    use ResolvesTibiaIds;
+
     /** The race linked to a lore entry, with its per-kill experience. */
     public function raceForSlug(string $slug): ?\stdClass
     {
@@ -81,8 +84,22 @@ class CreatureKillStatsQuery
      */
     public function dailySeries(int $raceId): Collection
     {
+        return $this->dailySeriesFor($raceId, null);
+    }
+
+    /**
+     * Same daily trend, optionally scoped to ONE world — what the map's kill
+     * pulse reads (the map has a selected world, so its numbers must be that
+     * world's, not the network's).
+     *
+     * @param  int|null  $worldId  null → every world summed
+     * @return Collection<int, \stdClass> rows of {period, players_killed, killed}
+     */
+    public function dailySeriesFor(int $raceId, ?int $worldId): Collection
+    {
         return DB::table('kill_daily')
             ->where('race_id', $raceId)
+            ->when($worldId, fn ($q) => $q->where('world_id', $worldId))
             ->groupBy('snapshot_date')
             ->select([
                 DB::raw('snapshot_date as period'),
@@ -91,5 +108,41 @@ class CreatureKillStatsQuery
             ])
             ->orderBy('snapshot_date')
             ->get();
+    }
+
+    /**
+     * Where one world ranks by creatures slain on a given day, among the worlds
+     * that killed this race at all. Cheap: the (race_id, snapshot_date) index
+     * narrows it to one row per world (~93).
+     *
+     * @return \stdClass|null {rank, total} — null when the race went unkilled
+     *                        everywhere that day.
+     */
+    public function worldRankOn(int $raceId, string $date, int $worldId): ?\stdClass
+    {
+        $killed = (int) DB::table('kill_daily')
+            ->where('race_id', $raceId)
+            ->where('snapshot_date', $date)
+            ->where('world_id', $worldId)
+            ->sum('day_killed');
+
+        $row = DB::table('kill_daily')
+            ->where('race_id', $raceId)
+            ->where('snapshot_date', $date)
+            ->selectRaw(
+                'COUNT(*) FILTER (WHERE day_killed > 0) AS total,
+                 COUNT(*) FILTER (WHERE day_killed > ?) AS above',
+                [$killed],
+            )
+            ->first();
+
+        if (! $row || (int) $row->total < 1 || $killed <= 0) {
+            return null;
+        }
+
+        return (object) [
+            'rank' => (int) $row->above + 1,
+            'total' => (int) $row->total,
+        ];
     }
 }
