@@ -312,57 +312,6 @@ function BarRow({
   )
 }
 
-// Waterfall from the analyzer's loot down to the real profit. Floating bars on
-// a shared scale; sign is triple-coded (position, +/− label, green/red).
-function Waterfall({ steps, realLabel }: { steps: { label: string; value: number }[]; realLabel: string }) {
-  const total = steps.reduce((s, x) => s + x.value, 0)
-  const cums: { label: string; from: number; to: number; value: number; final: boolean }[] = []
-  let run = 0
-  for (const s of steps) {
-    cums.push({ label: s.label, from: run, to: run + s.value, value: s.value, final: false })
-    run += s.value
-  }
-  cums.push({ label: realLabel, from: 0, to: total, value: total, final: true })
-  const top = Math.max(...cums.map((c) => Math.max(c.from, c.to, 0)))
-  const bottom = Math.min(...cums.map((c) => Math.min(c.from, c.to, 0)))
-  const span = Math.max(1, top - bottom)
-  // Bars top out at 85% so the value labels above them stay inside the chart.
-  const pct = (v: number) => ((v - bottom) / span) * 85
-  return (
-    <div className="flex items-stretch gap-1.5">
-      {cums.map((c) => {
-        const hi = Math.max(c.from, c.to)
-        const lo = Math.min(c.from, c.to)
-        const good = c.value >= 0
-        return (
-          <div key={c.label} className="flex min-w-0 flex-1 flex-col" title={`${c.label}: ${gp(c.value)}`}>
-            <div className="relative h-24">
-              <span
-                className="absolute inset-x-0 rounded-[4px]"
-                style={{
-                  bottom: `${pct(lo)}%`,
-                  height: `${Math.max(2, pct(hi) - pct(lo))}%`,
-                  background: good ? 'var(--color-canon)' : 'var(--color-accent)',
-                  opacity: c.final ? 1 : 0.85,
-                }}
-              />
-              <span
-                className="absolute inset-x-0 text-center text-[10px] font-bold text-fg"
-                style={{ bottom: `calc(${pct(hi)}% + 2px)` }}
-              >
-                {(good ? '+' : '−') + compact(Math.abs(c.value))}
-              </span>
-            </div>
-            <div className="mt-1 truncate text-center text-[10px] font-bold uppercase tracking-wide text-fg-mute">
-              {c.label}
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
 export default function HuntProfitTool({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useTranslation()
 
@@ -380,6 +329,17 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
       /* storage full/blocked — the tool still works, it just forgets */
     }
   }, [cfg])
+
+  // Esc closes the card — a second way out that never depends on where the
+  // header ended up after a drag.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
 
   // Draggable card: null = docked (centered above the hotbar); a point once the
   // user grabs the header. Pointer capture keeps the drag alive when the cursor
@@ -521,16 +481,23 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
     >
       <div
         ref={cardRef}
-        style={pos ? { position: 'absolute', left: pos.x, top: pos.y } : undefined}
-        className="scroll-atlas pointer-events-auto max-h-[92vh] w-[64rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border-2 border-line bg-bg-2/95 p-3.5 shadow-2xl backdrop-blur-md"
+        style={
+          pos
+            ? // Dragged: the card can't run past the bottom edge either, or its
+              // lower half (and the scroller inside it) would be unreachable.
+              { position: 'absolute', left: pos.x, top: pos.y, maxHeight: `calc(100vh - ${pos.y}px - 0.75rem)` }
+            : undefined
+        }
+        className="pointer-events-auto flex max-h-[92vh] w-[64rem] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border-2 border-line bg-bg-2/95 p-3.5 shadow-2xl backdrop-blur-md"
       >
-        {/* Header doubles as the drag handle — grab it to move the card. */}
+        {/* Header doubles as the drag handle — grab it to move the card. It sits
+            outside the scroller so the close button never scrolls out of reach. */}
         <div
           onPointerDown={startDrag}
           onPointerMove={moveDrag}
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
-          className="mb-2 flex cursor-grab touch-none select-none items-center gap-1.5 text-accent active:cursor-grabbing"
+          className="mb-2 flex shrink-0 cursor-grab touch-none select-none items-center gap-1.5 text-accent active:cursor-grabbing"
         >
           <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="8" cy="8" r="6" />
@@ -565,6 +532,10 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
             </svg>
           </button>
         </div>
+
+        {/* Everything below the header scrolls; the card itself never grows past
+            92vh, so the header (and its close button) always stays on screen. */}
+        <div className="scroll-atlas min-h-0 flex-1 overflow-y-auto">
 
         {/* Inputs — collapse into the results with a smooth grid-rows animation
             when you hit "Calcular", so the breakdown and charts take the card. */}
@@ -802,25 +773,9 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
                 </div>
               )}
             </div>
-
-            {/* Loot → real profit waterfall */}
-            {ready && parsed.loot != null && parsed.supplies != null && (
-              <div className="mt-2 rounded-xl border border-line bg-bg-2 p-2.5">
-                <div className="mb-1.5 text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpWaterfall')}</div>
-                <Waterfall
-                  steps={[
-                    { label: t('map.hpLoot'), value: parsed.loot },
-                    { label: t('map.hpSupplies'), value: -parsed.supplies },
-                    { label: t('map.hpImbues'), value: -imbueTotal },
-                    { label: t('map.hpCostTokensShort'), value: -tokenTotal },
-                    { label: t('map.hpCostExtraShort'), value: -extraTotal },
-                  ]}
-                  realLabel={t('map.hpReal')}
-                />
-              </div>
-            )}
           </div>
         )}
+        </div>
       </div>
     </div>
   )

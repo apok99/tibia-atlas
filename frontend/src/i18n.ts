@@ -501,6 +501,8 @@ const resources = {
         wcSpots: '{{count}} possible place',
         wcSpots_other: '{{count}} possible places',
         wcSpotHint: 'Show it on the map',
+        wcRouteTo: 'How to get to {{spot}}',
+        wcRouteNote: 'from the nearest city — pick another place above to route there instead',
         wcInside: 'Where it leads',
         wcInstead: 'That day: {{creatures}}. The rest of the month: {{instead}}.',
         wcRequirement: 'Premium, promoted, level {{level}}+',
@@ -523,6 +525,11 @@ const resources = {
           full_moon: 'Full Moon over Grimvale',
           their_masters_voice: "Their Master's Voice",
           day_night_npcs: 'Day and night visitors',
+        },
+        // Only for destinations whose OT name is descriptive rather than a
+        // proper noun — everything else keeps the name the game uses.
+        wcInsideName: {
+          full_moon: "Feroxa's arena",
         },
         wcDesc: {
           fury_gates:
@@ -797,9 +804,6 @@ const resources = {
         hpSort_count: 'Qty',
         hpCoins: '{{n}} gp in coins',
         hpOther: 'Others',
-        hpWaterfall: 'From loot to real profit',
-        hpCostTokensShort: 'Recharges',
-        hpCostExtraShort: 'Charms/prey',
         routeFrom: 'From…',
         routeTo: 'To…',
         routePoint: 'Map point',
@@ -1080,6 +1084,7 @@ const resources = {
         starts_in: 'Starts in',
         ruler: 'Ruler',
         near_places: 'Nearby places',
+        implemented: 'In game since',
         organizations: 'Organizations',
       },
       affinity: {
@@ -1649,6 +1654,8 @@ const resources = {
         wcSpots: '{{count}} lugar posible',
         wcSpots_other: '{{count}} lugares posibles',
         wcSpotHint: 'Verlo en el mapa',
+        wcRouteTo: 'Cómo llegar a {{spot}}',
+        wcRouteNote: 'desde la ciudad más cercana — elige otro lugar arriba para trazar la ruta hasta él',
         wcInside: 'Adónde lleva',
         wcInstead: 'Ese día: {{creatures}}. El resto del mes: {{instead}}.',
         wcRequirement: 'Premium, promovido, nivel {{level}}+',
@@ -1671,6 +1678,9 @@ const resources = {
           full_moon: 'Luna llena sobre Grimvale',
           their_masters_voice: 'La voz de su amo',
           day_night_npcs: 'Visitantes de día y de noche',
+        },
+        wcInsideName: {
+          full_moon: 'La arena de Feroxa',
         },
         wcDesc: {
           fury_gates:
@@ -1945,9 +1955,6 @@ const resources = {
         hpSort_count: 'Cantidad',
         hpCoins: '{{n}} gp en monedas',
         hpOther: 'Otros',
-        hpWaterfall: 'Del loot al profit real',
-        hpCostTokensShort: 'Recargas',
-        hpCostExtraShort: 'Charms/prey',
         routeFrom: 'Desde…',
         routeTo: 'Hasta…',
         routePoint: 'Punto en el mapa',
@@ -2228,6 +2235,7 @@ const resources = {
         starts_in: 'Comienza en',
         ruler: 'Gobernante',
         near_places: 'Lugares cercanos',
+        implemented: 'En el juego desde',
         organizations: 'Organizaciones',
       },
       affinity: {

@@ -2281,6 +2281,7 @@ function WorldChangePanel({
   spot,
   onClose,
   onSpot,
+  onRoute,
   onInside,
   onPlot,
 }: {
@@ -2288,11 +2289,15 @@ function WorldChangePanel({
   spot: string | null
   onClose: () => void
   onSpot: (s: WcSpot) => void
+  onRoute: (s: WcSpot) => void
   onInside: () => void
   onPlot: (name: string) => void
 }) {
   const { t } = useTranslation()
   const inside = change.inside
+  // The spot being read right now — the one a "how to get there" walks to. A
+  // change with a single candidate needs no picking, so it is that one.
+  const active = change.spots.find((s) => s.key === spot) ?? (change.spots.length === 1 ? change.spots[0] : null)
   // Which spot each announcement belongs to, so a rhyme that names a coast is
   // shown next to that coast instead of floating loose.
   const spotLabel = (key: string | null) =>
@@ -2387,6 +2392,24 @@ function WorldChangePanel({
           ))}
         </div>
 
+        {/* Walk there. The route starts from the city nearest the chosen spot,
+            which for the fury gates is the invaded city itself. */}
+        {active && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onRoute(active)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#8b6fd4]/70 bg-[#8b6fd4]/15 px-2.5 py-1.5 text-xs font-semibold text-[#b79df0] transition hover:bg-[#8b6fd4]/25"
+            >
+              <Icon name="compass" size={14} />
+              {t('map.wcRouteTo', { spot: active.label })}
+            </button>
+            {change.spots.length > 1 && (
+              <span className="text-[11px] text-fg-mute">{t('map.wcRouteNote')}</span>
+            )}
+          </div>
+        )}
+
         {/* The full moon swaps the wildlife in the vale rather than opening a
             portal, so its spot carries a before/after instead of a roster. */}
         {change.spots.map((s) =>
@@ -2411,7 +2434,10 @@ function WorldChangePanel({
               title={t('map.wcSpotHint')}
               className="mt-1.5 rounded-md border border-[#8b6fd4]/60 bg-[#8b6fd4]/10 px-2 py-1 text-[11px] font-semibold text-[#b79df0] transition hover:bg-[#8b6fd4]/20"
             >
-              {inside.label}
+              {/* Proper nouns (Fury Hell, the Nightmare Isles) read the same in
+                  both languages and stay as the OT names them; the odd
+                  descriptive one gets a translation. */}
+              {t(`map.wcInsideName.${change.id}`, { defaultValue: inside.label })}
               <span className="ml-1 font-normal text-fg-mute">
                 {t('map.raidFloors', { floors: inside.floors.join(', ') })}
               </span>
@@ -5462,6 +5488,26 @@ export function MapPage() {
     openPanel('yasir')
   }
 
+  // "Cómo llegar" to one candidate spot of a mini world change. Origin is reset
+  // first so it is always "from the nearest city" to THAT spot — the ten fury
+  // gates sit in ten different cities, and an origin left over from the previous
+  // one would trace a cross-continent walk. Only surface spots get this: what
+  // lies behind the portal (Fury Hell, Feroxa's arena) has no walking route,
+  // reaching it means stepping through the change itself.
+  function routeToWorldChangeSpot(c: WorldChange, s: WcSpot) {
+    const pt: RoutePoint = {
+      x: s.x,
+      y: s.y,
+      floor: s.z,
+      label: `${t(`map.wcName.${c.id}`)} · ${s.label}`,
+    }
+    setMapMode('route')
+    routeStartRef.current = null
+    setRouteStart(null)
+    ensureRouteStartNear(pt)
+    applyRouteEnd(pt)
+  }
+
   function goToYasirDock(dock: YasirDock) {
     const pt: RoutePoint = { x: dock.x, y: dock.y, floor: dock.z, label: `Yasir · ${dock.city}` }
     openYasir()
@@ -7143,6 +7189,7 @@ export function MapPage() {
             setWcSpot(null)
           }}
           onSpot={(s) => openWorldChange(wc, s)}
+          onRoute={(s) => routeToWorldChangeSpot(wc, s)}
           onInside={() => openWorldChange(wc, null)}
           onPlot={plotCreatureByName}
         />

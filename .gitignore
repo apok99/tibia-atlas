@@ -23,3 +23,6 @@
 /primal.json
 /shrines.json
 /targuna.json
+
+# Fresh OpenTibia (Canary) clone for the latest mob/spawn data — local only.
+/new ot/

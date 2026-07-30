@@ -146,6 +146,12 @@ function teleportLiteral(src) {
   return m ? { x: Number(m[1]), y: Number(m[2]), z: Number(m[3]) } : null
 }
 
+// The OT's own spelling of two city names differs from the site's ("Ab'dendriel"
+// with a small d). Fixed here so a spot label never contradicts the map label
+// sitting right next to the pin.
+const CITY_FIX = { "Ab'dendriel": "Ab'Dendriel" }
+const cityName = (s) => CITY_FIX[s] ?? s
+
 const changes = []
 
 // --- 1. Fury Gates ------------------------------------------------------------
@@ -163,7 +169,7 @@ const changes = []
       key: mapName,
       // The portal's EXIT is where the gate stands: stepping out of Fury Hell
       // drops you back on the gate tile.
-      label: city,
+      label: cityName(city),
       x: Number(x),
       y: Number(y),
       z: Number(z),
