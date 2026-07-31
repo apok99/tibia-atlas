@@ -10,9 +10,14 @@ import { dayKey, useHuntLog } from '../hooks/useHuntLog'
 import { clearSharedSummary, readSharedSummary, type Summary } from '../lib/huntShare'
 import HuntLog from './HuntLog'
 
-// Items Cledwyn (Feyrist) recharges for silver tokens — straight from the OT
-// server data (npc/cledwyn.lua + items.xml): tokens per recharge and how long
-// one recharge lasts while worn. Grouped cheap-first so the list reads sane.
+// Items Cledwyn (Feyrist) recharges for silver tokens: tokens per recharge and
+// how long one recharge lasts while worn. Grouped cheap-first so the list reads
+// sane.
+//
+// The first twelve come straight from the OT server data (npc/cledwyn.lua +
+// items.xml). The flamingo/swan amulets are NOT in that dump — it predates
+// them — so their 5 tokens / 3h come from TibiaWiki, which states it for
+// Valor, Destruction and Nature; Precision and the swan match their family.
 const RECHARGEABLES = [
   { id: 'sleep-shawl', name: 'Sleep shawl', tokens: 2, hours: 1 },
   { id: 'blister-ring', name: 'Blister ring', tokens: 2, hours: 1 },
@@ -26,6 +31,11 @@ const RECHARGEABLES = [
   { id: 'arcanomancer-sigil', name: 'Arcanomancer sigil', tokens: 5, hours: 3 },
   { id: 'arboreal-ring', name: 'Arboreal ring', tokens: 5, hours: 3 },
   { id: 'ethereal-ring', name: 'Ethereal ring', tokens: 5, hours: 3 },
+  { id: 'flamingo-valor', name: 'Flamingo amulet of valor', tokens: 5, hours: 3 },
+  { id: 'flamingo-precision', name: 'Flamingo amulet of precision', tokens: 5, hours: 3 },
+  { id: 'flamingo-destruction', name: 'Flamingo amulet of destruction', tokens: 5, hours: 3 },
+  { id: 'flamingo-nature', name: 'Flamingo amulet of nature', tokens: 5, hours: 3 },
+  { id: 'swan-balance', name: 'Swan amulet of balance', tokens: 5, hours: 3 },
 ] as const
 
 // Tier 3 ("Powerful") imbuement defaults: ~500k of materials + fees, 20h of
@@ -694,6 +704,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
                 return (
                   <label
                     key={r.id}
+                    title={r.name}
                     className={`flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-sm transition ${on ? 'bg-accent/10 text-fg' : 'text-fg-dim hover:bg-surface-2/60'}`}
                   >
                     <input type="checkbox" checked={on} onChange={() => toggleItem(r.id)} className="h-3.5 w-3.5 accent-accent" />

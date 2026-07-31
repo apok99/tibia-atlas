@@ -100,16 +100,19 @@ function Stat({
   sub,
   tone,
   hero,
+  title,
 }: {
   label: string
   value: string
   sub?: string
   tone?: 'good' | 'bad'
   hero?: boolean
+  title?: string
 }) {
   const color = tone === 'good' ? 'text-canon' : tone === 'bad' ? 'text-accent' : 'text-fg'
   return (
     <div
+      title={title}
       className={`min-w-0 rounded-lg border px-2 py-1.5 text-center ${hero ? 'border-line-2 bg-surface-2/40' : 'border-line bg-bg-2'}`}
     >
       <div className={`truncate font-bold leading-tight tabular-nums ${hero ? 'text-xl' : 'text-base'} ${color}`}>
@@ -124,30 +127,49 @@ function Stat({
 const perHour = (b: Roll) => (b.hours > 0 ? b.profit / b.hours : null)
 
 /**
- * The four figures every rollup shows: how many, how long, what you kept and
- * what it burned — each total carrying its own per-hour rate underneath.
+ * Every rollup, in two rows: how many sessions and how long on top, then the
+ * money as the equation people actually reason with —
+ *
+ *     total (everything looted) − waste (everything it cost) = profit
+ *
+ * The operators live in the labels so the three tiles read left to right as one
+ * sentence. Total is never stored: profit + waste *is* the gross loot, because
+ * profit = balance − extras and waste = supplies + extras.
  */
 function RollStats({ roll }: { roll: Roll }) {
   const { t } = useTranslation()
   const ph = perHour(roll)
+  const gross = roll.profit + roll.waste
+  /** Wrap an already-formatted figure as this rollup's per-hour sub-line. */
+  const rate = (gp: string) => (roll.hours > 0 ? t('map.hlPerHourSub', { gp }) : undefined)
   return (
-    <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-      <Stat label={t('map.hlHunts')} value={String(roll.hunts)} />
-      <Stat label={t('map.hlHours')} value={`${roll.hours.toFixed(1)}h`} />
-      <Stat
-        hero
-        label={t('map.hlProfit')}
-        value={signed(roll.profit)}
-        sub={ph != null ? t('map.hlPerHourSub', { gp: signed(ph) }) : undefined}
-        tone={roll.profit >= 0 ? 'good' : 'bad'}
-      />
-      <Stat
-        label={t('map.hlWaste')}
-        value={`−${compact(roll.waste)}`}
-        sub={roll.hours > 0 ? t('map.hlPerHourSub', { gp: `−${compact(roll.waste / roll.hours)}` }) : undefined}
-        tone="bad"
-      />
-    </div>
+    <>
+      <div className="grid grid-cols-2 gap-1.5">
+        <Stat label={t('map.hlHunts')} value={String(roll.hunts)} />
+        <Stat label={t('map.hlHours')} value={`${roll.hours.toFixed(1)}h`} />
+      </div>
+      <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+        <Stat
+          label={t('map.hlTotal')}
+          title={t('map.hlTotalHint')}
+          value={compact(gross)}
+          sub={roll.hours > 0 ? rate(compact(gross / roll.hours)) : undefined}
+        />
+        <Stat
+          label={`− ${t('map.hlWaste')}`}
+          value={`−${compact(roll.waste)}`}
+          sub={roll.hours > 0 ? rate(`−${compact(roll.waste / roll.hours)}`) : undefined}
+          tone="bad"
+        />
+        <Stat
+          hero
+          label={`= ${t('map.hlProfit')}`}
+          value={signed(roll.profit)}
+          sub={ph != null ? rate(signed(ph)) : undefined}
+          tone={roll.profit >= 0 ? 'good' : 'bad'}
+        />
+      </div>
+    </>
   )
 }
 
