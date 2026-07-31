@@ -38,8 +38,43 @@ const RECHARGEABLES = [
   { id: 'swan-balance', name: 'Swan amulet of balance', tokens: 5, hours: 3 },
 ] as const
 
-// Tier 3 ("Powerful") imbuement defaults: ~500k of materials + fees, 20h of
-// hunting per application. Both are editable in the panel.
+// Every tier 3 ("Powerful") imbuement, straight from the OT server data
+// (data/XML/imbuements.xml): the 24 types and what each one actually does at
+// that tier. Ordered damage → leech → crit → protections → skills → utility,
+// which is the order the in-game shrine lists them.
+//
+// The gold each one costs is NOT in that file and cannot be: it is materials
+// bought on the player market, so it moves by server and by week. Every type
+// therefore starts at IMBUE_DEFAULT_COST and is edited (and remembered) per
+// type — which is the point of listing them separately.
+const IMBUEMENTS = [
+  { id: 'scorch', name: 'Scorch', effect: '50% fire' },
+  { id: 'venom', name: 'Venom', effect: '50% earth' },
+  { id: 'frost', name: 'Frost', effect: '50% ice' },
+  { id: 'electrify', name: 'Electrify', effect: '50% energy' },
+  { id: 'reap', name: 'Reap', effect: '50% death' },
+  { id: 'vampirism', name: 'Vampirism', effect: '25% life leech' },
+  { id: 'void', name: 'Void', effect: '8% mana leech' },
+  { id: 'strike', name: 'Strike', effect: '+50% crit · +10% chance' },
+  { id: 'lich-shroud', name: 'Lich Shroud', effect: '−10% death' },
+  { id: 'snake-skin', name: 'Snake Skin', effect: '−15% earth' },
+  { id: 'dragon-hide', name: 'Dragon Hide', effect: '−15% fire' },
+  { id: 'quara-scale', name: 'Quara Scale', effect: '−15% ice' },
+  { id: 'cloud-fabric', name: 'Cloud Fabric', effect: '−15% energy' },
+  { id: 'demon-presence', name: 'Demon Presence', effect: '−15% holy' },
+  { id: 'chop', name: 'Chop', effect: '+4 axe' },
+  { id: 'slash', name: 'Slash', effect: '+4 sword' },
+  { id: 'bash', name: 'Bash', effect: '+4 club' },
+  { id: 'punch', name: 'Punch', effect: '+4 fist' },
+  { id: 'precision', name: 'Precision', effect: '+4 distance' },
+  { id: 'blockade', name: 'Blockade', effect: '+4 shielding' },
+  { id: 'epiphany', name: 'Epiphany', effect: '+4 magic level' },
+  { id: 'swiftness', name: 'Swiftness', effect: '+30 speed' },
+  { id: 'featherweight', name: 'Featherweight', effect: '+15 cap' },
+  { id: 'vibrancy', name: 'Vibrancy', effect: '50% anti-paralyse' },
+] as const
+
+// Tier 3 defaults: ~500k of materials + fee, 20h of hunting per application.
 const IMBUE_DEFAULT_COST = 500_000
 const IMBUE_DURATION_H = 20
 const SILVER_TOKEN_DEFAULT = 50_000
@@ -56,6 +91,8 @@ type Tally = { name: string; count: number }
 type Parsed = {
   /** Local start time of the session, from the analyzer's own "From …" line. */
   startedAt: Date | null
+  /** Party size read off the paste: 1 for a solo analyzer. */
+  players: number
   hours: number | null
   loot: number | null
   supplies: number | null
@@ -122,6 +159,12 @@ function parseAnalyzer(text: string): Parsed {
     if (!Number.isNaN(d.getTime())) startedAt = d
   }
 
+  // Party size. A shared analyzer prints the party totals and then repeats
+  // Loot/Supplies/Balance under each player's name, so "Balance:" appears once
+  // for the session plus once per player. A solo paste has exactly one.
+  const balances = text.match(/\bBalance:/gi)?.length ?? 0
+  const players = balances > 1 ? balances - 1 : 1
+
   // List sections: "Killed Monsters: …" runs until "Looted Items: …".
   const km = /Killed Monsters:/i.exec(text)
   const li = /Looted Items:/i.exec(text)
@@ -130,6 +173,7 @@ function parseAnalyzer(text: string): Parsed {
 
   return {
     startedAt,
+    players,
     hours,
     loot: num(/\bLoot:\s*(-?[\d.,]+)/i),
     supplies: num(/\bSupplies:\s*(-?[\d.,]+)/i),
@@ -173,14 +217,27 @@ function useResolvedRows(names: string[], type: 'creature' | 'item') {
 }
 
 type Config = {
-  imbueCount: number
-  imbueCost: number
+  /** Imbuement id → what one 20h application costs you, for the active ones. */
+  imbues: Record<string, number>
   silverPrice: number
   charmCount: number
   charmCost: number
   preyCount: number
   preyCost: number
   items: string[]
+  /** Party size the analyzer's balance is split between (1 = solo). */
+  players: number
+}
+
+const DEFAULTS: Config = {
+  imbues: {},
+  silverPrice: SILVER_TOKEN_DEFAULT,
+  charmCount: 1,
+  charmCost: CHARM_REMOVAL_DEFAULT,
+  preyCount: 1,
+  preyCost: PREY_REROLL_DEFAULT,
+  items: [],
+  players: 1,
 }
 
 function loadConfig(): Config {
@@ -188,30 +245,31 @@ function loadConfig(): Config {
     const raw = localStorage.getItem(STORE_KEY)
     if (raw) {
       const c = JSON.parse(raw)
+      // Only ids we still know about, priced with a finite number.
+      const imbues: Record<string, number> = {}
+      if (c.imbues && typeof c.imbues === 'object') {
+        for (const im of IMBUEMENTS) {
+          const v = Number(c.imbues[im.id])
+          if (Number.isFinite(v) && v >= 0) imbues[im.id] = v
+        }
+      }
       return {
-        imbueCount: Number.isFinite(c.imbueCount) ? c.imbueCount : 3,
-        imbueCost: Number.isFinite(c.imbueCost) ? c.imbueCost : IMBUE_DEFAULT_COST,
+        // The old config held a bare slot count + one shared price; there is no
+        // way to guess WHICH imbuements those were, so the picker starts empty.
+        imbues,
         silverPrice: Number.isFinite(c.silverPrice) ? c.silverPrice : SILVER_TOKEN_DEFAULT,
         charmCount: Number.isFinite(c.charmCount) ? c.charmCount : 1,
         charmCost: Number.isFinite(c.charmCost) ? c.charmCost : CHARM_REMOVAL_DEFAULT,
         preyCount: Number.isFinite(c.preyCount) ? c.preyCount : 1,
         preyCost: Number.isFinite(c.preyCost) ? c.preyCost : PREY_REROLL_DEFAULT,
         items: Array.isArray(c.items) ? c.items.filter((i: unknown) => typeof i === 'string') : [],
+        players: Number.isFinite(c.players) && c.players >= 1 ? Math.round(c.players) : 1,
       }
     }
   } catch {
     /* corrupted storage — fall through to defaults */
   }
-  return {
-    imbueCount: 3,
-    imbueCost: IMBUE_DEFAULT_COST,
-    silverPrice: SILVER_TOKEN_DEFAULT,
-    charmCount: 1,
-    charmCost: CHARM_REMOVAL_DEFAULT,
-    preyCount: 1,
-    preyCost: PREY_REROLL_DEFAULT,
-    items: [],
-  }
+  return DEFAULTS
 }
 
 const gp = (n: number) => Math.round(n).toLocaleString()
@@ -431,17 +489,24 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
     return Number.isFinite(h) && h > 0 ? h : null
   })()
 
-  const balance = parsed.balance ?? (parsed.loot != null && parsed.supplies != null ? parsed.loot - parsed.supplies : null)
+  // A party analyzer reports the WHOLE party's loot/supplies/balance, so what
+  // you actually took home is that balance over the number of players. Your own
+  // imbuements, recharges, charms and rerolls are never split — you paid those
+  // alone — so the division happens here and nowhere else.
+  const players = Math.max(1, Math.round(Number(cfg.players) || 1))
+  const rawBalance = parsed.balance ?? (parsed.loot != null && parsed.supplies != null ? parsed.loot - parsed.supplies : null)
+  const balance = rawBalance != null ? rawBalance / players : null
 
-  const imbueCount = Math.max(0, Math.round(Number(cfg.imbueCount) || 0))
-  const imbueCost = Math.max(0, Number(cfg.imbueCost) || 0)
+  const activeImbues = IMBUEMENTS.filter((im) => im.id in cfg.imbues)
+  const imbueSum = activeImbues.reduce((s, im) => s + Math.max(0, Number(cfg.imbues[im.id]) || 0), 0)
   const silverPrice = Math.max(0, Number(cfg.silverPrice) || 0)
   const charmCount = Math.max(0, Math.round(Number(cfg.charmCount) || 0))
   const charmCost = Math.max(0, Number(cfg.charmCost) || 0)
   const preyCount = Math.max(0, Math.round(Number(cfg.preyCount) || 0))
   const preyCost = Math.max(0, Number(cfg.preyCost) || 0)
 
-  const imbueTotal = hours != null ? imbueCount * (imbueCost / IMBUE_DURATION_H) * hours : 0
+  // Each active imbuement wears at its own price / 20h.
+  const imbueTotal = hours != null ? (imbueSum / IMBUE_DURATION_H) * hours : 0
   const wornItems = RECHARGEABLES.filter((r) => cfg.items.includes(r.id))
   const tokenTotal =
     hours != null ? wornItems.reduce((sum, r) => sum + (hours / r.hours) * r.tokens * silverPrice, 0) : 0
@@ -458,7 +523,13 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
   // (runes, potions, ammo) plus the costs it never sees — imbuement wear, token
   // recharges, charms and prey. This is the number that answers "how much did
   // this hunt cost me", where Supplies alone always answers it too low.
-  const wasteTotal = (parsed.supplies ?? 0) + imbueTotal + tokenTotal + extraTotal
+  //
+  // Supplies is split by the same party size as the balance: a party settles up
+  // so everyone ends level, so your share of the consumables is the party's
+  // over N. Splitting one and not the other would leave profit + waste bigger
+  // than your actual share of the loot, and the history's Total tile is exactly
+  // that sum.
+  const wasteTotal = (parsed.supplies ?? 0) / players + imbueTotal + tokenTotal + extraTotal
   const wastePerHour = hours != null && wasteTotal > 0 ? wasteTotal / hours : null
 
   // Fingerprint of the current result. It matching the last save — and that
@@ -525,6 +596,15 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
       ...c,
       items: c.items.includes(id) ? c.items.filter((i) => i !== id) : [...c.items, id],
     }))
+
+  // Ticking an imbuement gives it the default price; unticking forgets it.
+  const toggleImbue = (id: string) =>
+    setCfg((c) => {
+      const next = { ...c.imbues }
+      if (id in next) delete next[id]
+      else next[id] = IMBUE_DEFAULT_COST
+      return { ...c, imbues: next }
+    })
 
   if (!open) return null
 
@@ -657,6 +737,15 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
         {/* What we read from the paste + the editable session length */}
         <div className="mt-2 flex flex-wrap items-end gap-x-3 gap-y-2">
           <NumField big w="w-24" label={t('map.hpHours')} value={hoursDraft} onChange={setHoursDraft} suffix="h" min={0} step={0.25} />
+          {/* Party split — a shared analyzer's balance is the whole party's. */}
+          <NumField
+            big
+            w="w-20"
+            label={t('map.hpPlayers')}
+            value={String(cfg.players)}
+            onChange={(v) => setCfg((c) => ({ ...c, players: Math.max(1, parseInt(v, 10) || 1) }))}
+            min={1}
+          />
           <div className="flex flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-sm">
             {parsed.loot != null && (
               <span className="text-fg-dim">
@@ -672,32 +761,85 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
               <span className="text-fg-dim">
                 {t('map.hpBalance')}{' '}
                 <b className={balance >= 0 ? 'text-canon' : 'text-accent'}>{gp(balance)}</b>
+                {players > 1 && rawBalance != null && (
+                  <span className="ml-1 text-xs text-fg-mute">{t('map.hpSplitOf', { n: gp(rawBalance), p: players })}</span>
+                )}
               </span>
             )}
           </div>
         </div>
 
         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {/* Imbuements — slots x (cost / 20h) x session hours */}
-          <div className="rounded-xl border border-line bg-bg-2 p-2.5">
-            <div className="mb-1.5 text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpImbues')}</div>
-            <div className="flex items-end gap-2">
-              <NumField label={t('map.hpImbueCount')} value={String(cfg.imbueCount)} onChange={(v) => setCfg((c) => ({ ...c, imbueCount: Math.max(0, parseInt(v, 10) || 0) }))} min={0} />
-              <NumField wide label={t('map.hpImbueCost')} value={String(cfg.imbueCost)} onChange={(v) => setCfg((c) => ({ ...c, imbueCost: Math.max(0, parseInt(v, 10) || 0) }))} suffix="gp" min={0} step={1000} />
-              <div className="pb-1 text-right text-sm font-bold text-fg">
+          {/* Imbuements — tick the ones you ran and price each one. They are
+              not interchangeable: a Vampirism costs several times a Chop, and
+              a single averaged price was quietly wrong for everyone. */}
+          <div className="rounded-xl border border-line bg-bg-2 p-2.5 sm:col-span-2">
+            <div className="mb-1.5 flex items-baseline justify-between gap-2">
+              <div className="text-xs font-bold uppercase tracking-widest text-fg-dim">
+                {t('map.hpImbues')}
+                <span className="ml-1.5 font-normal normal-case tracking-normal text-fg-mute">
+                  {t('map.hpImbueActive', { n: activeImbues.length })}
+                </span>
+              </div>
+              <div className="text-right text-sm font-bold text-accent">
                 {hours != null && imbueTotal > 0 ? '-' + gp(imbueTotal) : '—'}
               </div>
+            </div>
+            <div className="scroll-atlas grid max-h-[13rem] grid-cols-1 gap-x-3 gap-y-0.5 overflow-y-auto pr-1 sm:grid-cols-2">
+              {IMBUEMENTS.map((im) => {
+                const on = im.id in cfg.imbues
+                const price = on ? cfg.imbues[im.id] : IMBUE_DEFAULT_COST
+                // What this one alone costs the session, at its own price.
+                const cost = hours != null && on ? (price / IMBUE_DURATION_H) * hours : null
+                return (
+                  <div
+                    key={im.id}
+                    className={`flex items-center gap-1.5 rounded-md px-1.5 py-1 text-sm transition ${on ? 'bg-accent/10 text-fg' : 'text-fg-dim hover:bg-surface-2/60'}`}
+                  >
+                    <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5" title={im.effect}>
+                      <input type="checkbox" checked={on} onChange={() => toggleImbue(im.id)} className="h-3.5 w-3.5 shrink-0 accent-accent" />
+                      <span className="min-w-0 truncate">{im.name}</span>
+                      <span className="shrink-0 text-[10px] text-fg-mute">{im.effect}</span>
+                    </label>
+                    {on ? (
+                      <>
+                        <input
+                          type="number"
+                          value={String(price)}
+                          min={0}
+                          step={1000}
+                          aria-label={`${im.name} — ${t('map.hpImbueCost')}`}
+                          onChange={(e) =>
+                            setCfg((c) => ({
+                              ...c,
+                              imbues: { ...c.imbues, [im.id]: Math.max(0, parseInt(e.target.value, 10) || 0) },
+                            }))
+                          }
+                          className="h-6 w-20 shrink-0 rounded-md border border-line bg-bg-2 px-1 text-right text-xs font-semibold tabular-nums outline-none transition focus:border-accent"
+                        />
+                        <span className="w-16 shrink-0 text-right text-[11px] font-semibold tabular-nums text-accent">
+                          {cost != null ? '-' + compact(cost) : ''}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="w-[9.25rem] shrink-0 text-right text-[11px] text-fg-mute">
+                        {compact(IMBUE_DEFAULT_COST)}/20h
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
             </div>
             <p className="mt-1.5 text-xs text-fg-mute">{t('map.hpImbueNote')}</p>
           </div>
 
           {/* Silver-token rechargeables — tick what you wore for the session */}
-          <div className="rounded-xl border border-line bg-bg-2 p-2.5">
+          <div className="rounded-xl border border-line bg-bg-2 p-2.5 sm:col-span-2">
             <div className="mb-1.5 flex items-end justify-between gap-2">
               <div className="text-xs font-bold uppercase tracking-widest text-fg-dim">{t('map.hpTokens')}</div>
               <NumField w="w-32" label={t('map.hpTokenPrice')} value={String(cfg.silverPrice)} onChange={(v) => setCfg((c) => ({ ...c, silverPrice: Math.max(0, parseInt(v, 10) || 0) }))} suffix="gp" min={0} step={1000} />
             </div>
-            <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+            <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 sm:grid-cols-3">
               {RECHARGEABLES.map((r) => {
                 const on = cfg.items.includes(r.id)
                 const cost = hours != null ? (hours / r.hours) * r.tokens * silverPrice : null
@@ -765,9 +907,14 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
         {calculated && (ready ? (
           <div className="mt-2 rounded-xl border border-line bg-bg-2 p-2.5">
             <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 text-sm">
-              <dt className="text-fg-dim">{t('map.hpBalanceRow')}</dt>
+              <dt className="text-fg-dim">
+                {t('map.hpBalanceRow')}
+                {players > 1 && <span className="text-fg-mute"> ÷{players}</span>}
+              </dt>
               <dd className="text-right font-semibold text-fg">{gp(balance!)}</dd>
-              <dt className="text-fg-dim">{t('map.hpCostImbues')}</dt>
+              <dt className="text-fg-dim">
+                {t('map.hpCostImbues')} <span className="text-fg-mute">×{activeImbues.length}</span>
+              </dt>
               <dd className="text-right font-semibold text-fg">{imbueTotal > 0 ? '-' + gp(imbueTotal) : '0'}</dd>
               <dt className="text-fg-dim">{t('map.hpCostTokens')}</dt>
               <dd className="text-right font-semibold text-fg">{tokenTotal > 0 ? '-' + gp(tokenTotal) : '0'}</dd>
@@ -782,7 +929,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
                 {t('map.hpWaste')}
                 {parsed.supplies != null && (
                   <span className="ml-1 font-normal normal-case tracking-normal text-fg-mute">
-                    {t('map.hpWasteNote', { n: gp(parsed.supplies) })}
+                    {t('map.hpWasteNote', { n: gp(parsed.supplies / players) })}
                   </span>
                 )}
               </span>
@@ -815,7 +962,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
                   prey: preyTotal,
                   profit: realProfit!,
                   xp: parsed.xpGain,
-                  supplies: parsed.supplies ?? 0,
+                  supplies: (parsed.supplies ?? 0) / players,
                   kills: totalKills,
                   label: kills[0]?.name ?? '',
                 }, parsed.startedAt)
