@@ -46,7 +46,7 @@ import {
   loadCharProfile,
   saveCharProfile,
 } from '../lib/charProfile'
-import { useItems, useSetStats, useEntry } from '../hooks/useEntries'
+import { useItems, useSetStats, useEntry, logSearchClick } from '../hooks/useEntries'
 import { LoreText } from '../components/LoreText'
 import { LORE_POIS, type LorePoi } from '../lib/lorePois'
 import {
@@ -5254,6 +5254,18 @@ export function MapPage() {
     },
   })
 
+  /**
+   * A result picked from the map's search box. The map is the most-used search
+   * on the site, so it feeds the same "most searched" log as the header box
+   * (killstats). Logged HERE and not inside addCreature/addItem/goToNpc: those
+   * also run for shared links, raid rosters, item droppers and house events —
+   * none of which are searches. NPCs without a lore page have no slug to log.
+   */
+  function pickFromSearch(slug: string | null, plot: () => void) {
+    if (slug) logSearchClick(slug)
+    plot()
+  }
+
   // Restore creatures + a shared route from the link (once, StrictMode-safe).
   useEffect(() => {
     if (restoredRef.current) return
@@ -6168,7 +6180,7 @@ export function MapPage() {
                 <li key={r.slug}>
                   <button
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => addCreature(r.slug)}
+                    onClick={() => pickFromSearch(r.slug, () => addCreature(r.slug))}
                     className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-surface-2"
                   >
                     {r.image ? (
@@ -6198,7 +6210,7 @@ export function MapPage() {
                 <li key={r.slug}>
                   <button
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => addItem(r.slug)}
+                    onClick={() => pickFromSearch(r.slug, () => addItem(r.slug))}
                     className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-surface-2"
                   >
                     {r.primary_image ? (
@@ -6230,7 +6242,7 @@ export function MapPage() {
                   <li key={`${r.npc}-${i}`}>
                     <button
                       onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => routable && goToNpc(r)}
+                      onClick={() => routable && pickFromSearch(r.slug, () => goToNpc(r))}
                       disabled={!routable}
                       className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition ${
                         routable ? 'hover:bg-surface-2' : 'cursor-not-allowed opacity-50'

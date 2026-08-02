@@ -319,6 +319,9 @@ class EtlKillStatistics extends Command
      *    the race links to the huntable creature, not the lore concept.
      *  - Entry names carry disambiguators ("Monk (Creature)") — we also index a
      *    parenthetical-stripped variant.
+     *  - The inflector only touches the LAST word and knows no exotic irregulars,
+     *    so {@see self::singularCandidates()} adds head-noun and irregular-plural
+     *    variants ("hands of cursed fate", "sabreteeth", "cyclopes drone").
      *
      * Re-evaluates all races each run (cheap) so links stay correct as creatures
      * are imported later. Returns the number of links it changed.
@@ -357,15 +360,7 @@ class EtlKillStatistics extends Command
         $maps = [$creatureExact, $creatureStripped, $anyExact, $anyStripped];
 
         $resolve = function (string $raceName) use ($maps): ?int {
-            $l = mb_strtolower(trim($raceName));
-            // Singular FIRST: killstats race names are plural ("demons"), and a
-            // plural-named duplicate entry ("Demons") must not beat the real
-            // singular creature ("Demon"). Exact is the fallback for proper-noun
-            // bosses whose name the inflector would mangle ("Cyclops").
-            $candidates = [mb_strtolower(Str::singular($l)), $l];
-            if (str_ends_with($l, 'ae')) {
-                $candidates[] = substr($l, 0, -2).'a';   // medusae → medusa (Latin)
-            }
+            $candidates = self::singularCandidates($raceName);
             foreach ($maps as $map) {
                 foreach ($candidates as $c) {
                     if (isset($map[$c])) {
@@ -392,5 +387,84 @@ class EtlKillStatistics extends Command
         });
 
         return $changed;
+    }
+
+    /**
+     * Every singular form a killstatistics race name could plausibly take.
+     *
+     * Over-generating is safe: a candidate is only ever accepted on an EXACT
+     * match against a real entry name, so a nonsense variant simply never hits.
+     * Order is priority, and the first two entries are the historical behaviour
+     * — they must stay first so already-correct links can never change.
+     *
+     * @return list<string>
+     */
+    public static function singularCandidates(string $raceName): array
+    {
+        $l = mb_strtolower(trim($raceName));
+
+        // Singular FIRST: killstats race names are plural ("demons"), and a
+        // plural-named duplicate entry ("Demons") must not beat the real
+        // singular creature ("Demon"). Exact is the fallback for proper-noun
+        // bosses whose name the inflector would mangle ("Cyclops").
+        $candidates = [mb_strtolower(Str::singular($l)), $l];
+
+        $words = explode(' ', $l);
+
+        // Singular forms of ONE word. The inflector is right most of the time,
+        // but Tibia is full of names it mangles, so we offer alternatives too.
+        $singularsOf = function (string $w): array {
+            $v = [mb_strtolower(Str::singular($w))];
+
+            if (str_ends_with($w, 'ies')) {
+                $v[] = substr($w, 0, -3).'ie';    // pixies → pixie (not "pixy")
+            }
+            if (str_ends_with($w, 'ae')) {
+                $v[] = substr($w, 0, -2).'a';     // medusae → medusa (Latin)
+            }
+
+            // Irregulars the inflector doesn't know. Matched as a plain
+            // substring because they also show up mid-compound, where no
+            // word-boundary rule would catch them: "sabreteeth", "feetman".
+            $irregulars = [
+                'cyclopes' => 'cyclops',
+                'teeth' => 'tooth',
+                'feet' => 'foot',
+                'geese' => 'goose',
+                'mice' => 'mouse',
+                'lice' => 'louse',
+                'oxen' => 'ox',
+                'children' => 'child',
+            ];
+
+            foreach ($irregulars as $plural => $singular) {
+                if (str_contains($w, $plural)) {
+                    $v[] = str_replace($plural, $singular, $w);
+                }
+            }
+
+            return array_unique($v);
+        };
+
+        // Head-noun plurals. Str::singular only touches the LAST word, but
+        // killstats pluralises the head noun: "hands of cursed fate" →
+        // "Hand of Cursed Fate", "memories of a wolf" → "Memory of a Wolf".
+        if (preg_match('/^(\S+)(\s+(?:of|from|in)\s+.*)$/u', $l, $m) === 1) {
+            foreach ($singularsOf($m[1]) as $head) {
+                $candidates[] = $head.$m[2];
+            }
+        }
+
+        // A plural on any single word, in place: "cyclopes drone" → "Cyclops
+        // Drone", "pixies" → "Pixie", "muglex clan feetman" → "…footman".
+        foreach (array_keys($words) as $i) {
+            foreach ($singularsOf($words[$i]) as $singular) {
+                $variant = $words;
+                $variant[$i] = $singular;
+                $candidates[] = implode(' ', $variant);
+            }
+        }
+
+        return array_values(array_unique(array_filter($candidates)));
     }
 }
