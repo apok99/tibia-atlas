@@ -30,11 +30,13 @@ class EtlHouses extends Command
     /**
      * Towns that actually contain rentable houses/guildhalls (matches the towns
      * present in houses.json). TibiaData 404s on townless towns, so we only ask
-     * for these.
+     * for these. Krailos is deliberately absent: it has no rentable houses, so
+     * TibiaData answers "the provided town does not exist" (HTTP 400) — asking
+     * cost one failed request per world, every run.
      */
     private const TOWNS = [
         'Ab\'Dendriel', 'Ankrahmun', 'Candia', 'Carlin', 'Darashia', 'Edron',
-        'Farmine', 'Gray Beach', 'Issavi', 'Kazordoon', 'Krailos', 'Liberty Bay',
+        'Farmine', 'Gray Beach', 'Issavi', 'Kazordoon', 'Liberty Bay',
         'Moonfall', 'Port Hope', 'Rathleton', 'Silvertides', 'Svargrond', 'Thais',
         'Venore', 'Yalahar',
     ];

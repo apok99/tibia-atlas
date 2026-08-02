@@ -5,10 +5,19 @@
 // TibiaData house_id=40112). So we bake coords+meta from the XML here and let the
 // backend ETL layer live rent/auction status on top, joined by id.
 //
+// The XML's `size` is NOT real Tibia's: otservbr counts every tile the house
+// region covers (walls, doorways, decorative edges), so 810 of 993 houses came
+// out too big — "Paupers Palace, Flat 27" read 23 sqm against the real 13. Rent,
+// beds, town and the guildhall flag DO match (verified against TibiaData: rent
+// 993/993, beds 40/40 sampled), so only name/size are taken from TibiaData,
+// which reports exactly what the in-game house list shows.
+//
 //   node tools/otbm/bake-houses.mjs
+//   node tools/otbm/bake-houses.mjs --world=Secura   # any world: sizes are global
 //
 // Source (fetched, not committed):
 //   opentibiabr/canary  data-otservbr-global/world/otservbr-house.xml
+//   api.tibiadata.com   /v4/houses/{world}/{town}   (authoritative name + size)
 // Output (committed, served to the browser):
 //   frontend/public/houses.json → { updated, houses: [{ id, name, x, y, z,
 //                                    town, rent, size, beds, guild }] }
@@ -21,6 +30,8 @@ import { fileURLToPath } from 'url'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const OUT = path.join(root, 'frontend', 'public', 'houses.json')
 const HOUSE_XML = 'https://raw.githubusercontent.com/opentibiabr/canary/main/data-otservbr-global/world/otservbr-house.xml'
+const TIBIADATA = 'https://api.tibiadata.com'
+const WORLD = (process.argv.find(a => a.startsWith('--world=')) || '--world=Antica').slice(8)
 
 // Same rendered region as bake-walk.mjs — pins outside it have no map tile.
 const X0 = 31744, X1 = 34304, Y0 = 30976, Y1 = 33024
@@ -71,10 +82,60 @@ async function main() {
   const towns = {}
   for (const h of houses) towns[h.town || '?'] = (towns[h.town || '?'] || 0) + 1
   console.log('  by town:', JSON.stringify(towns))
+
+  await applyRealSizes(houses, Object.keys(towns).filter(t => t !== '?'))
+
   console.log('  sample:', JSON.stringify(houses.slice(0, 3)))
 
   fs.writeFileSync(OUT, JSON.stringify({ updated: null, houses }))
   console.log('wrote', path.relative(root, OUT), `(${houses.length} houses)`)
+}
+
+/**
+ * Overwrite name + size in place with what TibiaData reports for the real game.
+ * One request per town of a single world — house names and sizes are identical
+ * on every world, only rent status differs, so Antica stands in for all of them.
+ * A town the API doesn't know (otservbr has towns real Tibia never rented houses
+ * in) is reported, not fatal: those houses keep their XML values.
+ */
+async function applyRealSizes(houses, townNames) {
+  console.log(`checking sizes against TibiaData (${WORLD}) …`)
+  const real = new Map()
+  const failed = []
+  for (const town of townNames) {
+    const url = `${TIBIADATA}/v4/houses/${encodeURIComponent(WORLD)}/${encodeURIComponent(town)}`
+    let list = null
+    for (let attempt = 0; attempt < 3 && list === null; attempt++) {
+      try {
+        const r = await fetch(url, { headers: { 'User-Agent': 'TibiaAtlas-ETL' } })
+        // 400 = "the provided town does not exist"; retrying can't fix that.
+        if (r.status === 400) break
+        if (!r.ok) throw new Error('HTTP ' + r.status)
+        const j = await r.json()
+        list = [...(j.houses?.house_list ?? []), ...(j.houses?.guildhall_list ?? [])]
+      } catch (e) {
+        if (attempt === 2) console.warn(`  ${town}: ${e.message}`)
+        else await new Promise(s => setTimeout(s, 1500))
+      }
+    }
+    if (!list) { failed.push(town); continue }
+    for (const h of list) if (h.house_id) real.set(h.house_id, h)
+    await new Promise(s => setTimeout(s, 200))
+  }
+  // Nothing came back at all → the API is down. Writing XML sizes would silently
+  // reintroduce the very numbers this step exists to correct.
+  if (!real.size) throw new Error('TibiaData returned no houses — refusing to bake XML sizes')
+
+  let sizeFixed = 0, nameFixed = 0, unmatched = 0
+  for (const h of houses) {
+    const r = real.get(h.id)
+    if (!r) { unmatched++; continue }
+    if (r.size && r.size !== h.size) { h.size = r.size; sizeFixed++ }
+    if (r.name && r.name !== h.name) { h.name = r.name; nameFixed++ }
+  }
+  console.log(`  ${real.size} houses from TibiaData: ${sizeFixed} sizes corrected, ${nameFixed} names corrected`)
+  if (unmatched) console.log(`  ${unmatched} house(s) not in TibiaData — kept XML values`)
+  if (failed.length) console.log(`  towns skipped (unknown to TibiaData): ${failed.join(', ')}`)
 }
 
 main().catch(e => { console.error(e); process.exit(1) })
