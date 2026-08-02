@@ -8009,24 +8009,23 @@ export function MapPage() {
                           <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" />
                         </svg>
                       </button>
-                      {/* Bid trail — only houses under auction have one to show. */}
-                      {status === 'auctioned' && (
-                        <button
-                          onClick={() => setBidChartFor((v) => (v === h.id ? null : h.id))}
-                          title={t('map.bidChartOpen')}
-                          aria-label={t('map.bidChartOpen')}
-                          aria-pressed={bidChartFor === h.id}
-                          className={`shrink-0 rounded-md border p-1.5 transition ${
-                            bidChartFor === h.id
-                              ? 'border-[#d08a1e] bg-[#d08a1e]/15 text-[#d08a1e]'
-                              : 'border-line-2 text-fg-mute hover:border-line hover:text-fg'
-                          }`}
-                        >
-                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M3 3v18h18M7 15l4-5 3 3 5-7" />
-                          </svg>
-                        </button>
-                      )}
+                      {/* Price history — open on any house: a rented one has no live
+                          bid trail, but it still carries the sales behind it. */}
+                      <button
+                        onClick={() => setBidChartFor((v) => (v === h.id ? null : h.id))}
+                        title={t('map.bidChartOpen')}
+                        aria-label={t('map.bidChartOpen')}
+                        aria-pressed={bidChartFor === h.id}
+                        className={`shrink-0 rounded-md border p-1.5 transition ${
+                          bidChartFor === h.id
+                            ? 'border-[#d08a1e] bg-[#d08a1e]/15 text-[#d08a1e]'
+                            : 'border-line-2 text-fg-mute hover:border-line hover:text-fg'
+                        }`}
+                      >
+                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 3v18h18M7 15l4-5 3 3 5-7" />
+                        </svg>
+                      </button>
                     </div>
                     {bidChartFor === h.id && (
                       <div className="border-t border-line px-2 pb-1.5 pt-1">

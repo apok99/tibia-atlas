@@ -216,9 +216,16 @@ function useResolvedRows(names: string[], type: 'creature' | 'item') {
   return map
 }
 
+/**
+ * An active imbuement: how many of it you are wearing and what one 20h
+ * application costs. The count matters because the same imbuement can sit on
+ * two different pieces at once — two Vampirisms wear twice as fast in gold.
+ */
+type ImbueSlot = { n: number; price: number }
+
 type Config = {
-  /** Imbuement id → what one 20h application costs you, for the active ones. */
-  imbues: Record<string, number>
+  /** Imbuement id → count + unit price, for the ones you actually ran. */
+  imbues: Record<string, ImbueSlot>
   silverPrice: number
   charmCount: number
   charmCost: number
@@ -245,12 +252,18 @@ function loadConfig(): Config {
     const raw = localStorage.getItem(STORE_KEY)
     if (raw) {
       const c = JSON.parse(raw)
-      // Only ids we still know about, priced with a finite number.
-      const imbues: Record<string, number> = {}
+      // Only ids we still know about, priced with a finite number. A bare
+      // number is the earlier one-per-type format — read it as a single unit.
+      const imbues: Record<string, ImbueSlot> = {}
       if (c.imbues && typeof c.imbues === 'object') {
         for (const im of IMBUEMENTS) {
-          const v = Number(c.imbues[im.id])
-          if (Number.isFinite(v) && v >= 0) imbues[im.id] = v
+          const raw = c.imbues[im.id]
+          if (raw == null) continue
+          const price = Number(typeof raw === 'object' ? raw.price : raw)
+          const n = typeof raw === 'object' ? Math.round(Number(raw.n)) : 1
+          if (Number.isFinite(price) && price >= 0) {
+            imbues[im.id] = { n: Number.isFinite(n) && n >= 1 ? n : 1, price }
+          }
         }
       }
       return {
@@ -484,6 +497,13 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
     if (parsed.hours != null) setHoursDraft((parsed.hours * 60) % 60 === 0 ? String(parsed.hours) : parsed.hours.toFixed(2))
   }, [parsed.hours])
 
+  // The paste knows how many of you there were — one player section per member.
+  // Auto-fill it, but leave it editable: a solo paste from a party hunt, or a
+  // member who left early, is the player's call to correct.
+  useEffect(() => {
+    setCfg((c) => (c.players === parsed.players ? c : { ...c, players: parsed.players }))
+  }, [parsed.players])
+
   const hours = (() => {
     const h = parseFloat(hoursDraft.replace(',', '.'))
     return Number.isFinite(h) && h > 0 ? h : null
@@ -498,7 +518,13 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
   const balance = rawBalance != null ? rawBalance / players : null
 
   const activeImbues = IMBUEMENTS.filter((im) => im.id in cfg.imbues)
-  const imbueSum = activeImbues.reduce((s, im) => s + Math.max(0, Number(cfg.imbues[im.id]) || 0), 0)
+  // Total gold per 20h application across everything worn — a type counts as
+  // many times as you carry it.
+  const imbueSum = activeImbues.reduce((s, im) => {
+    const slot = cfg.imbues[im.id]
+    return s + Math.max(1, Math.round(slot.n) || 1) * Math.max(0, Number(slot.price) || 0)
+  }, 0)
+  const imbueCount = activeImbues.reduce((n, im) => n + Math.max(1, Math.round(cfg.imbues[im.id].n) || 1), 0)
   const silverPrice = Math.max(0, Number(cfg.silverPrice) || 0)
   const charmCount = Math.max(0, Math.round(Number(cfg.charmCount) || 0))
   const charmCost = Math.max(0, Number(cfg.charmCost) || 0)
@@ -597,14 +623,18 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
       items: c.items.includes(id) ? c.items.filter((i) => i !== id) : [...c.items, id],
     }))
 
-  // Ticking an imbuement gives it the default price; unticking forgets it.
+  // Ticking an imbuement gives it one unit at the default price; unticking
+  // forgets it entirely, price and count.
   const toggleImbue = (id: string) =>
     setCfg((c) => {
       const next = { ...c.imbues }
       if (id in next) delete next[id]
-      else next[id] = IMBUE_DEFAULT_COST
+      else next[id] = { n: 1, price: IMBUE_DEFAULT_COST }
       return { ...c, imbues: next }
     })
+
+  const setImbue = (id: string, patch: Partial<ImbueSlot>) =>
+    setCfg((c) => (c.imbues[id] ? { ...c, imbues: { ...c.imbues, [id]: { ...c.imbues[id], ...patch } } } : c))
 
   if (!open) return null
 
@@ -778,7 +808,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
               <div className="text-xs font-bold uppercase tracking-widest text-fg-dim">
                 {t('map.hpImbues')}
                 <span className="ml-1.5 font-normal normal-case tracking-normal text-fg-mute">
-                  {t('map.hpImbueActive', { n: activeImbues.length })}
+                  {t('map.hpImbueActive', { n: imbueCount })}
                 </span>
               </div>
               <div className="text-right text-sm font-bold text-accent">
@@ -787,10 +817,13 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
             </div>
             <div className="scroll-atlas grid max-h-[13rem] grid-cols-1 gap-x-3 gap-y-0.5 overflow-y-auto pr-1 sm:grid-cols-2">
               {IMBUEMENTS.map((im) => {
-                const on = im.id in cfg.imbues
-                const price = on ? cfg.imbues[im.id] : IMBUE_DEFAULT_COST
-                // What this one alone costs the session, at its own price.
-                const cost = hours != null && on ? (price / IMBUE_DURATION_H) * hours : null
+                const slot = cfg.imbues[im.id]
+                const on = !!slot
+                const price = slot?.price ?? IMBUE_DEFAULT_COST
+                const n = Math.max(1, Math.round(slot?.n ?? 1) || 1)
+                // What this type alone costs the session: unit price × how many
+                // of it you wear, worn down over the 20h application.
+                const cost = hours != null && on ? ((n * price) / IMBUE_DURATION_H) * hours : null
                 return (
                   <div
                     key={im.id}
@@ -803,26 +836,36 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
                     </label>
                     {on ? (
                       <>
+                        {/* How many pieces carry this same imbuement. */}
+                        <span className="flex shrink-0 items-center text-[11px] text-fg-mute">
+                          ×
+                          <input
+                            type="number"
+                            value={String(n)}
+                            min={1}
+                            step={1}
+                            aria-label={`${im.name} — ${t('map.hpImbueQty')}`}
+                            title={t('map.hpImbueQty')}
+                            onChange={(e) => setImbue(im.id, { n: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+                            className="h-6 w-10 rounded-md border border-line bg-bg-2 px-1 text-center text-xs font-semibold tabular-nums outline-none transition focus:border-accent"
+                          />
+                        </span>
                         <input
                           type="number"
                           value={String(price)}
                           min={0}
                           step={1000}
                           aria-label={`${im.name} — ${t('map.hpImbueCost')}`}
-                          onChange={(e) =>
-                            setCfg((c) => ({
-                              ...c,
-                              imbues: { ...c.imbues, [im.id]: Math.max(0, parseInt(e.target.value, 10) || 0) },
-                            }))
-                          }
+                          title={t('map.hpImbueCost')}
+                          onChange={(e) => setImbue(im.id, { price: Math.max(0, parseInt(e.target.value, 10) || 0) })}
                           className="h-6 w-20 shrink-0 rounded-md border border-line bg-bg-2 px-1 text-right text-xs font-semibold tabular-nums outline-none transition focus:border-accent"
                         />
-                        <span className="w-16 shrink-0 text-right text-[11px] font-semibold tabular-nums text-accent">
+                        <span className="w-14 shrink-0 text-right text-[11px] font-semibold tabular-nums text-accent">
                           {cost != null ? '-' + compact(cost) : ''}
                         </span>
                       </>
                     ) : (
-                      <span className="w-[9.25rem] shrink-0 text-right text-[11px] text-fg-mute">
+                      <span className="w-[10.5rem] shrink-0 text-right text-[11px] text-fg-mute">
                         {compact(IMBUE_DEFAULT_COST)}/20h
                       </span>
                     )}
@@ -913,7 +956,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
               </dt>
               <dd className="text-right font-semibold text-fg">{gp(balance!)}</dd>
               <dt className="text-fg-dim">
-                {t('map.hpCostImbues')} <span className="text-fg-mute">×{activeImbues.length}</span>
+                {t('map.hpCostImbues')} <span className="text-fg-mute">×{imbueCount}</span>
               </dt>
               <dd className="text-right font-semibold text-fg">{imbueTotal > 0 ? '-' + gp(imbueTotal) : '0'}</dd>
               <dt className="text-fg-dim">{t('map.hpCostTokens')}</dt>
@@ -963,6 +1006,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
                   profit: realProfit!,
                   xp: parsed.xpGain,
                   supplies: (parsed.supplies ?? 0) / players,
+                  players,
                   kills: totalKills,
                   label: kills[0]?.name ?? '',
                 }, parsed.startedAt)

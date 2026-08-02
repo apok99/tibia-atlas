@@ -20,6 +20,8 @@ export type SavedHunt = {
   balance: number
   /** The analyzer's own Supplies line — the first term of the session's waste. */
   supplies: number
+  /** Party size the balance was split between. 1 = solo. */
+  players: number
   imbues: number
   tokens: number
   charms: number
@@ -64,6 +66,7 @@ function read(): SavedHunt[] {
         hours: numOr(h.hours),
         balance: numOr(h.balance),
         supplies: numOr(h.supplies),
+        players: Math.max(1, Math.round(numOr(h.players, 1))),
         imbues: numOr(h.imbues),
         tokens: numOr(h.tokens),
         charms: numOr(h.charms),

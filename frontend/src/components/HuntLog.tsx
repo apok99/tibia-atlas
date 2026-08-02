@@ -64,6 +64,15 @@ function HuntRow({
         {hunt.label || t('map.hlSession')}
         {hunt.kills > 0 && <span className="text-fg-mute"> · {hunt.kills.toLocaleString()} kills</span>}
       </span>
+      {/* Party hunts carry their split, so a shared session never looks solo. */}
+      {hunt.players > 1 && (
+        <span
+          title={t('map.hlPartyOf', { n: hunt.players })}
+          className="shrink-0 rounded border border-line-2 px-1 text-[10px] font-bold tabular-nums text-fg-mute"
+        >
+          ÷{hunt.players}
+        </span>
+      )}
       <span className="w-12 shrink-0 text-right tabular-nums text-fg-mute">{hunt.hours.toFixed(1)}h</span>
       <span className="w-14 shrink-0 text-right tabular-nums text-fg-mute" title={t('map.hlWaste')}>
         −{compact(waste(hunt))}

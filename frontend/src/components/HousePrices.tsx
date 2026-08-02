@@ -34,6 +34,7 @@ import { chartTooltipStyle, useChartTheme } from '../hooks/useChartTheme'
 
 type PricePoint = { day: string; sales: number; median: number; low: number; high: number }
 type BidPoint = { bid: number; time_left: string | null; at: string }
+type SalePoint = { price: number; at: string }
 
 const dayLabel = (d: string) => d.slice(5, 10)
 
@@ -132,7 +133,11 @@ export function HousePriceIndex({ world }: { world?: string }) {
   )
 }
 
-/** One house's bid trail — only meaningful while it is under auction. */
+/**
+ * One house's own price history: the live bid trail while an auction runs, plus
+ * every past auction it closed at. A rented house has no bids to draw, but it
+ * still has the sales behind it — which is the number people actually want.
+ */
 export function HouseBidChart({ world, houseId }: { world: string; houseId: number }) {
   const { t } = useTranslation()
   const chart = useChartTheme()
@@ -141,39 +146,63 @@ export function HouseBidChart({ world, houseId }: { world: string; houseId: numb
     queryKey: ['house-bids', world, houseId],
     staleTime: 60 * 1000,
     queryFn: async () =>
-      (await api.get<{ bids: BidPoint[] }>(`/houses/${encodeURIComponent(world)}/${houseId}/bids`))
-        .data.bids,
+      (
+        await api.get<{ bids: BidPoint[]; sales: SalePoint[] }>(
+          `/houses/${encodeURIComponent(world)}/${houseId}/bids`,
+        )
+      ).data,
   })
 
-  const points = (data ?? []).map((b) => ({ ...b, at: b.at.slice(5, 16).replace('T', ' ') }))
+  const points = (data?.bids ?? []).map((b) => ({ ...b, at: b.at.slice(5, 16).replace('T', ' ') }))
+  const sales = data?.sales ?? []
 
   if (isLoading) return <p className="py-2 text-center text-[11px] text-fg-dim">{t('common.loading')}</p>
-  if (!points.length)
+  if (!points.length && !sales.length)
     return <p className="py-2 text-center text-[11px] text-fg-mute">{t('map.bidChartEmpty')}</p>
 
   return (
     <>
-      <ResponsiveContainer width="100%" height={110}>
-        <LineChart data={points} margin={{ top: 4, right: 4, bottom: 0, left: -8 }}>
-          <CartesianGrid stroke={chart.grid} strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="at" tick={{ fill: chart.tick, fontSize: 9 }} stroke={chart.axis} />
-          <YAxis
-            tickFormatter={(v) => compact(Number(v))}
-            tick={{ fill: chart.tick, fontSize: 9 }}
-            stroke={chart.axis}
-            width={44}
-          />
-          <Tooltip
-            contentStyle={chartTooltipStyle(chart)}
-            formatter={(v) => [`${Number(v).toLocaleString()} gp`, t('map.priceBid')]}
-          />
-          {/* A step line: a bid holds its value until someone outbids it. */}
-          <Line type="stepAfter" dataKey="bid" stroke={chart.gold} strokeWidth={2} dot={{ r: 2 }} />
-        </LineChart>
-      </ResponsiveContainer>
-      <p className="mt-0.5 text-center text-[10px] text-fg-mute">
-        {t('map.bidChartFoot', { count: points.length })}
-      </p>
+      {points.length > 0 && (
+        <>
+          <ResponsiveContainer width="100%" height={110}>
+            <LineChart data={points} margin={{ top: 4, right: 4, bottom: 0, left: -8 }}>
+              <CartesianGrid stroke={chart.grid} strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="at" tick={{ fill: chart.tick, fontSize: 9 }} stroke={chart.axis} />
+              <YAxis
+                tickFormatter={(v) => compact(Number(v))}
+                tick={{ fill: chart.tick, fontSize: 9 }}
+                stroke={chart.axis}
+                width={44}
+              />
+              <Tooltip
+                contentStyle={chartTooltipStyle(chart)}
+                formatter={(v) => [`${Number(v).toLocaleString()} gp`, t('map.priceBid')]}
+              />
+              {/* A step line: a bid holds its value until someone outbids it. */}
+              <Line type="stepAfter" dataKey="bid" stroke={chart.gold} strokeWidth={2} dot={{ r: 2 }} />
+            </LineChart>
+          </ResponsiveContainer>
+          <p className="mt-0.5 text-center text-[10px] text-fg-mute">
+            {t('map.bidChartFoot', { count: points.length })}
+          </p>
+        </>
+      )}
+
+      {sales.length > 0 && (
+        <div className={points.length > 0 ? 'mt-1.5 border-t border-line pt-1.5' : ''}>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-fg-mute">
+            {t('map.saleHistoryTitle')}
+          </p>
+          <ul className="mt-0.5 flex flex-col gap-0.5">
+            {[...sales].reverse().map((s, i) => (
+              <li key={`${s.at}-${i}`} className="flex items-baseline justify-between gap-2 text-[11px]">
+                <span className="text-fg-dim">{s.at ? s.at.slice(0, 10) : '—'}</span>
+                <span className="font-semibold text-fg">{s.price.toLocaleString()} gp</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </>
   )
 }
