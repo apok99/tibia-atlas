@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
@@ -638,7 +639,11 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
 
   if (!open) return null
 
-  return (
+  // Portal to <body>: MapPage's root is a `z-20` stacking context, so a z-index
+  // set in here can never climb above the `z-30` header — dragged up, the card
+  // (and its close button) ends up buried under the navbar. Outside that root
+  // the z-[1002] finally means what it says.
+  return createPortal(
     <div
       className={
         pos
@@ -1162,6 +1167,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
         )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
