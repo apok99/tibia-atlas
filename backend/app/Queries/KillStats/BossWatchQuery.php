@@ -42,7 +42,16 @@ class BossWatchQuery
     /**
      * @param  string  $type  'raid' → present in ≤ $maxWorlds worlds (rare world
      *                        bosses); 'daily' → present in ≥10 worlds (per-cooldown
-     *                        bosses killed across most worlds every day).
+     *                        bosses killed across most worlds every day); 'all' →
+     *                        no rarity cut at all.
+     *
+     * 'all' exists for the map's boss rail, which wants a heat read for EVERY boss
+     * we track, not just the rare-world slice. The `raid` cut is a dashboard
+     * distinction ("rare world bosses" vs "daily bosses") and it silently starved
+     * the rail: 228 of the 401 tracked bosses sit above the 60-world cap — Lloyd,
+     * Scarlett Etzel, Grand Master Oberon, Midnight Panther, every Goshnar — so
+     * they fell through to the glossary bucket and rendered as "no recent spawn
+     * data" forever, even though kill_daily had them killed that very day.
      * @param  string|null  $world  when given, the roster still qualifies by
      *                              cross-world rarity, but the transformer scopes
      *                              each boss's heat/status to just this world
@@ -58,7 +67,6 @@ class BossWatchQuery
             ->where('e.status', 'published')
             ->whereRaw(BossRule::sql('e'))
             ->groupBy('r.name', 'e.slug', 'e.primary_image', DB::raw("e.meta->'spawn_type'"), DB::raw("e.meta->>'rank'"))
-            ->having(DB::raw('COUNT(*)'), $type === 'daily' ? '>=' : '<=', $type === 'daily' ? 10 : $maxWorlds)
             ->select([
                 'r.name as race',
                 'e.slug',
@@ -80,6 +88,13 @@ class BossWatchQuery
                 DB::raw("array_to_string((array_agg(w.name ORDER BY kd.week_killed DESC) FILTER (WHERE kd.day_killed > 0))[1:4], ',') AS cooldown_worlds"),
                 DB::raw("array_to_string((array_agg(w.name ORDER BY kd.week_killed DESC) FILTER (WHERE kd.day_killed = 0))[1:4], ',') AS open_worlds"),
             ]);
+
+        // Rarity cut — 'all' skips it and returns the whole tracked roster.
+        if ($type === 'daily') {
+            $query->having(DB::raw('COUNT(*)'), '>=', 10);
+        } elseif ($type === 'raid') {
+            $query->having(DB::raw('COUNT(*)'), '<=', $maxWorlds);
+        }
 
         // Per-world scope: whether this boss was killed today on the chosen world
         // (so it's on cooldown there) and how many days ago its LAST kill there

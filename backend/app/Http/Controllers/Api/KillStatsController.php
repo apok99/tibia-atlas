@@ -113,19 +113,22 @@ class KillStatsController extends Controller
      * RAID-boss roster for the "Raid Boss Watch" module, with a spawn
      * "temperature" (heat 0-100 = probability it is up / about to spawn).
      *
-     * Query: limit (1-200, default 24), type=raid|daily, world=all|<Name>.
-     * A specific world scopes each boss's heat/status to that world. The cap
-     * covers the whole tracked raid roster (~164): the map's boss rail needs it
-     * complete — a cut used to spill tracked bosses (e.g. Gaz'haragoth) into the
-     * "no recent data" glossary bucket even though we had kills for them.
+     * Query: limit (1-600, default 24), type=raid|daily|all, world=all|<Name>.
+     * A specific world scopes each boss's heat/status to that world.
+     *
+     * type=all drops the rarity cut and returns every tracked boss (~400) — what
+     * the map's boss rail needs. Both narrower buckets ('raid' ≤60 worlds,
+     * 'daily' ≥10) are dashboard cuts, and 'raid' hid 228 tracked bosses from the
+     * rail, which then rendered them as "no recent spawn data" permanently.
      */
     public function bosses(Request $request): JsonResponse
     {
         $world = trim((string) $request->string('world', 'all'));
+        $type = (string) $request->string('type', 'raid');
 
         return response()->json($this->stats->bosses(
-            limit: $this->clamp($request, 'limit', 24, 1, 200),
-            type: (string) $request->string('type', 'raid') === 'daily' ? 'daily' : 'raid',
+            limit: $this->clamp($request, 'limit', 24, 1, 600),
+            type: in_array($type, ['daily', 'all'], true) ? $type : 'raid',
             world: ($world === '' || $world === 'all') ? null : $world,
         ));
     }

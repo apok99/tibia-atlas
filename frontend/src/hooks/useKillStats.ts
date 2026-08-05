@@ -84,16 +84,21 @@ export interface BossRow {
   week_killed: number
   /** 0-100 respawn progress; null when world-scoped with no recorded kill there. */
   heat: number | null
+  /** Cross-world reading (never null) — the fallback when `heat` is null. */
+  heat_global: number
   worlds: string[]
   iconic: boolean
   rank: number
 }
 
 /**
- * Boss roster. type='raid' → rare world bosses; type='daily' → daily-cooldown bosses.
+ * Boss roster. type='raid' → rare world bosses; type='daily' → daily-cooldown
+ * bosses; type='all' → every tracked boss, no rarity cut (what the map rail wants,
+ * so bosses like Midnight Panther or Lloyd get a real heat read instead of
+ * falling through to the glossary's "no recent spawn data").
  * `world` scopes each boss's heat/status to a single world ('all' = aggregate).
  */
-export function useBosses(type: 'raid' | 'daily' = 'raid', limit = 24, enabled = true, world = 'all') {
+export function useBosses(type: 'raid' | 'daily' | 'all' = 'raid', limit = 24, enabled = true, world = 'all') {
   return useQuery({
     queryKey: ['killstats', 'bosses', type, limit, world],
     enabled,

@@ -5614,10 +5614,14 @@ export function MapPage() {
   // being up right now / about to spawn). Powers both the ☠-mode strip and the
   // always-on right-edge boss rail, so it's fetched on every map view.
   // Plottable bosses (slug + sprite) sorted hottest first.
-  // Full tracked roster (~164), not a top-N cut: a cut spilled tracked bosses
-  // into the "no recent data" glossary bucket (Gaz'haragoth had kills 2 days
-  // ago yet read "sin datos"). The rail still displays pins + hottest 16.
-  const { data: bossWatch, isLoading: bossLoading } = useBosses('raid', 200, true, world)
+  // type='all', not 'raid': the 'raid' bucket only admits bosses present in ≤60
+  // worlds, which quietly excluded 228 of the 401 bosses we actually track
+  // (Midnight Panther, Lloyd, Scarlett Etzel, Grand Master Oberon, the Goshnars…).
+  // They fell through to the glossary bucket and read "sin datos de spawn
+  // recientes" permanently, even on days kill_daily had them killed.
+  // Full roster, not a top-N cut, for the same reason (Gaz'haragoth had kills 2
+  // days ago yet read "sin datos"). The rail still displays pins + hottest 16.
+  const { data: bossWatch, isLoading: bossLoading } = useBosses('all', 600, true, world)
   const bosses = useMemo(
     () =>
       (bossWatch ?? [])
@@ -5636,7 +5640,11 @@ export function MapPage() {
   // Rail row shape — heat-tracked bosses carry a heat/worlds read; bosses pulled
   // from the glossary (rare ones with no kill-stats) carry heat = null. spawn_type
   // (from the glossary) drives the category tabs.
-  type RailBoss = { race: string; slug: string; image: string | null; heat: number | null; worlds: string[]; spawn_type: string[] | null }
+  // heatGlobal = the cross-world reading, used when the selected world has no
+  // recorded kill to anchor a per-world estimate (Orshabaal & co. have never been
+  // killed on Antica in our window). Shown as a cross-world read, not as if it
+  // were a reading for this world. null only for glossary-only bosses.
+  type RailBoss = { race: string; slug: string; image: string | null; heat: number | null; heatGlobal: number | null; worlds: string[]; spawn_type: string[] | null }
   // slug → spawntypes, so the heat-tracked list (which the kill-stats API doesn't
   // tag) can be classified for the tabs by borrowing the glossary's spawn_type.
   const spawnTypeBySlug = useMemo(() => {
@@ -5652,6 +5660,7 @@ export function MapPage() {
       slug: b.slug,
       image: b.image,
       heat: b.heat,
+      heatGlobal: b.heat_global ?? null,
       worlds: b.worlds,
       spawn_type: spawnTypeBySlug.get(b.slug) ?? null,
     }))
@@ -5659,7 +5668,7 @@ export function MapPage() {
     // Published bosses the heat roster doesn't cover (floor-independent).
     const glossaryBosses: RailBoss[] = (glossary ?? [])
       .filter((g) => g.boss && g.type === 'creature' && !heatSlugs.has(g.slug))
-      .map((g) => ({ race: g.name, slug: g.slug, image: g.image, heat: null, worlds: [], spawn_type: g.spawn_type ?? null }))
+      .map((g) => ({ race: g.name, slug: g.slug, image: g.image, heat: null, heatGlobal: null, worlds: [], spawn_type: g.spawn_type ?? null }))
     return [...heatList, ...glossaryBosses]
   }, [bosses, glossary, spawnTypeBySlug])
   // Count per tab, for the little badges. A boss counts toward every spawntype it
@@ -5950,9 +5959,13 @@ export function MapPage() {
           {bosses.length > 0
             ? shownBosses.length > 0
               ? shownBosses.map((b) => {
-                // Glossary-sourced bosses have no kill-stats heat (heat === null):
-                // render them as a plain "follow/plot" row without the heat read.
-                const hs = b.heat !== null ? HEAT_STYLE[heatBucket(b.heat)] : null
+                // Per-world read when this world has a kill to anchor it; else the
+                // cross-world one, flagged so the row never claims to know THIS
+                // world. Only glossary-only bosses (no kill-stats at all) end up
+                // with neither and render as a plain "follow/plot" row.
+                const shownHeat = b.heat ?? b.heatGlobal
+                const crossWorld = b.heat === null && b.heatGlobal !== null
+                const hs = shownHeat !== null ? HEAT_STYLE[heatBucket(shownHeat)] : null
                 const on = activeSlugs.has(b.slug)
                 const pinned = pinnedBosses.has(b.slug)
                 const worlds = b.worlds.slice(0, 3).join(', ')
@@ -5965,10 +5978,19 @@ export function MapPage() {
                     } ${bossRailOpen ? '' : 'justify-center'}`}
                   >
                     <button
-                      onClick={() => (on ? removeCreature(b.slug) : addCreature(b.slug))}
+                      onClick={() =>
+                        on
+                          ? removeCreature(b.slug)
+                          : // Plotting a boss the user FILTERED for is a search too
+                            // (the rail is the other search box on the map). With no
+                            // query typed it's just browsing the roster — don't log it.
+                            bossQuery.trim().length >= 2
+                            ? pickFromSearch(b.slug, () => addCreature(b.slug))
+                            : addCreature(b.slug)
+                      }
                       title={
                         hs
-                          ? `${b.race} · ${t(hs.label)}${b.worlds.length ? ` · ${b.worlds.join(', ')}` : ''}`
+                          ? `${b.race} · ${t(hs.label)}${crossWorld ? ` (${t('map.bossCrossWorld')})` : ''}${b.worlds.length ? ` · ${b.worlds.join(', ')}` : ''}`
                           : `${b.race} · ${t('map.bossNoHeat')}`
                       }
                       className={`flex min-w-0 flex-1 items-center gap-2 text-left ${bossRailOpen ? '' : 'justify-center'}`}
@@ -5985,7 +6007,7 @@ export function MapPage() {
                         />
                         <span
                           className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-bg ${
-                            b.heat === null ? 'bg-line-2' : b.heat >= 66 ? 'bg-accent' : b.heat >= 33 ? 'bg-gold' : 'bg-interp'
+                            shownHeat === null ? 'bg-line-2' : shownHeat >= 66 ? 'bg-accent' : shownHeat >= 33 ? 'bg-gold' : 'bg-interp'
                           }`}
                         />
                       </span>
@@ -5996,6 +6018,11 @@ export function MapPage() {
                             <span className={`flex items-center gap-1 text-[15px] font-bold ${hs.cls}`}>
                               <span aria-hidden>{hs.glyph}</span>
                               <span className="truncate">{t(hs.label)}</span>
+                              {crossWorld && (
+                                <span className="shrink-0 text-[10px] font-normal uppercase tracking-wide text-fg-mute">
+                                  {t('map.bossCrossWorld')}
+                                </span>
+                              )}
                             </span>
                           ) : (
                             <span className="block truncate text-xs italic text-fg-mute">{t('map.bossNoHeat')}</span>

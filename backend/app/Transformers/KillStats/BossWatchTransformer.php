@@ -46,6 +46,8 @@ class BossWatchTransformer
             ->reject(fn ($r) => $r->rank === 'Boss' && mb_strtolower($r->race) === $r->race)
             ->map(fn ($r) => $this->shape($r, $iconic, $world, $worldCount));
 
+        // 'all' shares the raid ordering below (fame first, then heat) — it only
+        // differs upstream, in which bosses the query lets through.
         if ($type === 'daily') {
             // Daily bosses: killed (<24h) in most of the worlds they appear in,
             // ordered by how many were defeated today.
@@ -109,6 +111,12 @@ class BossWatchTransformer
         $weekWorlds = (int) $r->week_worlds;     // killed in last 7d
         // Spawn "temperature": worlds where it wasn't killed in 24h.
         $heat = (int) round(100 * ($worlds - $cooldown) / $worlds);
+        // Kept aside: the cross-world reading never goes null, so the UI can fall
+        // back to it (labelled as cross-world) for a boss that has simply never
+        // been killed on the selected world — Orshabaal, Ferumbras and ~35 others
+        // have no Antica anchor, and "no data" is a worse answer than "quiet on
+        // 91 of 93 worlds".
+        $globalHeat = $heat;
 
         // Worlds shown under the boss: where it just died (cold) or where it's
         // quiet today and so likely up (hot).
@@ -136,6 +144,10 @@ class BossWatchTransformer
             if ($days === null) {
                 $heat = null;
             } else {
+                // Anchored here → the world chip should name THIS world. (When it
+                // isn't, the cross-world sample built above stays, so the row's
+                // "all worlds" fallback reading and its world list agree.)
+                $list = [$world];
                 $cycle = max(1.0, min(self::MAX_CYCLE_DAYS, 7.0 * max(1, $worldCount) / max(1, (int) $r->week_killed)));
                 $heat = (int) min(100, round(100 * max(0, (int) $days) / $cycle));
                 // Raid bosses (TibiaWiki spawntype "Raid", plus the famous iconic
@@ -147,7 +159,6 @@ class BossWatchTransformer
                     $heat = min($heat, self::RAID_WORLD_HEAT_CAP);
                 }
             }
-            $list = [$world];
         }
 
         // Fame rank (position in the iconic list) so the famous ones come first
@@ -165,6 +176,7 @@ class BossWatchTransformer
             'day_killed' => (int) $r->day_killed,
             'week_killed' => (int) $r->week_killed,
             'heat' => $heat,
+            'heat_global' => $globalHeat,
             'worlds' => array_values($list),
             'iconic' => $rank !== false,
             'rank' => $rank === false ? 999 : $rank,
