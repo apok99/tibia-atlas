@@ -33,8 +33,8 @@ class EntryReadService
     /** Rolling window for the "trending" carousel. */
     private const TRENDING_WINDOW_HOURS = 72;
 
-    /** A searched term must resolve to at least this many before we trust the log. */
-    private const MIN_TERMS = 3;
+    /** Distinct searches the window needs before "most searched" beats "most viewed". */
+    private const MIN_SEARCH_ROWS = 5;
 
     public function __construct(
         private EntryListingQuery $listing,
@@ -88,6 +88,12 @@ class EntryReadService
         $this->searchLog->recordClick($slug);
     }
 
+    /** Same, for a merchant NPC picked on the map that has no lore page. */
+    public function logNpcSearchClick(string $npc): void
+    {
+        $this->searchLog->recordNpcClick($npc);
+    }
+
     /**
      * Most-searched (most-opened) entries, falling back to most-viewed while the
      * search log is still sparse.
@@ -114,17 +120,20 @@ class EntryReadService
     {
         $terms = $this->searchTerms->topTerms($days, $limit);
 
-        // Only show the "most searched" view once the log can fill the whole
-        // module with real opened-entry searches; until then show "most viewed"
-        // so the widget is always a full list of real entries (never a stub of 3-4).
-        if ($terms->count() >= $limit) {
+        // Show "most searched" once the window holds enough real searches to be
+        // a ranking rather than a stub; below that "most viewed" is the honest
+        // answer. Deliberately NOT the full limit: the window now counts only
+        // searches inside it, so demanding a full module kept the panel on the
+        // views fallback for days after every reset.
+        if ($terms->count() >= min($limit, self::MIN_SEARCH_ROWS)) {
             // Resolve every slug at once for the sprite + link + localised name.
-            $entries = $this->search->bySlugs($terms->pluck('slug')->all());
+            // NPC rows carry no slug (no lore page) and render as a plain term.
+            $entries = $this->search->bySlugs($terms->pluck('slug')->filter()->values()->all());
 
             $data = $terms->map(fn ($row) => $this->topSearches->term(
                 $row->term,
                 (int) $row->hits,
-                $entries[$row->slug] ?? null,
+                $row->slug !== null ? ($entries[$row->slug] ?? null) : null,
                 $locale,
             ))->values();
 

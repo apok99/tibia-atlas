@@ -46,7 +46,7 @@ import {
   loadCharProfile,
   saveCharProfile,
 } from '../lib/charProfile'
-import { useItems, useSetStats, useEntry, logSearchClick } from '../hooks/useEntries'
+import { useItems, useSetStats, useEntry, logSearchClick, logNpcSearchClick } from '../hooks/useEntries'
 import { LoreText } from '../components/LoreText'
 import { LORE_POIS, type LorePoi } from '../lib/lorePois'
 import {
@@ -5259,10 +5259,12 @@ export function MapPage() {
    * on the site, so it feeds the same "most searched" log as the header box
    * (killstats). Logged HERE and not inside addCreature/addItem/goToNpc: those
    * also run for shared links, raid rosters, item droppers and house events —
-   * none of which are searches. NPCs without a lore page have no slug to log.
+   * none of which are searches. A merchant NPC with no lore page has no slug,
+   * so it logs by name instead (the server resolves it against the directory).
    */
-  function pickFromSearch(slug: string | null, plot: () => void) {
+  function pickFromSearch(slug: string | null, plot: () => void, npc?: string) {
     if (slug) logSearchClick(slug)
+    else if (npc) logNpcSearchClick(npc)
     plot()
   }
 
@@ -5614,14 +5616,14 @@ export function MapPage() {
   // being up right now / about to spawn). Powers both the ☠-mode strip and the
   // always-on right-edge boss rail, so it's fetched on every map view.
   // Plottable bosses (slug + sprite) sorted hottest first.
-  // type='all', not 'raid': the 'raid' bucket only admits bosses present in ≤60
-  // worlds, which quietly excluded 228 of the 401 bosses we actually track
-  // (Midnight Panther, Lloyd, Scarlett Etzel, Grand Master Oberon, the Goshnars…).
-  // They fell through to the glossary bucket and read "sin datos de spawn
-  // recientes" permanently, even on days kill_daily had them killed.
-  // Full roster, not a top-N cut, for the same reason (Gaz'haragoth had kills 2
-  // days ago yet read "sin datos"). The rail still displays pins + hottest 16.
-  const { data: bossWatch, isLoading: bossLoading } = useBosses('all', 600, true, world)
+  // type='world' — the roster whose heat reading actually means something. NOT
+  // 'raid': that bucket caps at 60 worlds, which excluded 228 of the 401 tracked
+  // bosses (Midnight Panther, Gaz'haragoth…) and left them reading "sin datos de
+  // spawn recientes" forever. NOT 'all' either: unfiltered, the rail fills with
+  // lever and quest bosses that are permanently available on a per-PLAYER
+  // cooldown, where "probablemente viva" is meaningless. See WorldBossRule.
+  // Full roster, not a top-N cut — the rail still displays pins + hottest 16.
+  const { data: bossWatch, isLoading: bossLoading } = useBosses('world', 600, true, world)
   const bosses = useMemo(
     () =>
       (bossWatch ?? [])
@@ -5665,9 +5667,13 @@ export function MapPage() {
       spawn_type: spawnTypeBySlug.get(b.slug) ?? null,
     }))
     const heatSlugs = new Set(heatList.map((b) => b.slug))
-    // Published bosses the heat roster doesn't cover (floor-independent).
+    // Published bosses the heat roster doesn't cover (floor-independent) — e.g.
+    // Morgaroth, absent from the latest kill_daily snapshot. `world_boss`, not
+    // `boss`: without it this bucket would re-admit every lever and quest boss
+    // the heat roster deliberately drops, and they'd sit in the rail reading
+    // "sin datos de spawn recientes" — the exact bug the roster cut just fixed.
     const glossaryBosses: RailBoss[] = (glossary ?? [])
-      .filter((g) => g.boss && g.type === 'creature' && !heatSlugs.has(g.slug))
+      .filter((g) => g.world_boss && g.type === 'creature' && !heatSlugs.has(g.slug))
       .map((g) => ({ race: g.name, slug: g.slug, image: g.image, heat: null, heatGlobal: null, worlds: [], spawn_type: g.spawn_type ?? null }))
     return [...heatList, ...glossaryBosses]
   }, [bosses, glossary, spawnTypeBySlug])
@@ -6269,7 +6275,7 @@ export function MapPage() {
                   <li key={`${r.npc}-${i}`}>
                     <button
                       onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => routable && pickFromSearch(r.slug, () => goToNpc(r))}
+                      onClick={() => routable && pickFromSearch(r.slug, () => goToNpc(r), r.npc)}
                       disabled={!routable}
                       className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition ${
                         routable ? 'hover:bg-surface-2' : 'cursor-not-allowed opacity-50'
@@ -7130,9 +7136,12 @@ export function MapPage() {
                           {t('map.charArmor')}
                         </div>
                       </div>
-                      <div className="rounded-lg border border-line-2 bg-bg-2 px-1 py-2">
+                      <div
+                        className="rounded-lg border border-line-2 bg-bg-2 px-1 py-2"
+                        title={t('map.charPhysRedHint')}
+                      >
                         <div className="text-xl font-black leading-none text-accent">
-                          −{setStats.physical_reduction}%
+                          −{setStats.armor_absorb}
                         </div>
                         <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-fg-dim">
                           {t('map.charPhysRed')}
@@ -7152,7 +7161,8 @@ export function MapPage() {
                       </div>
                     </div>
 
-                    {/* Resist bars, scaled to the 60% set cap; maluses paint red. */}
+                    {/* Resist bars: the compounded protection per element (60% is
+                        just the bar scale, not a cap); maluses paint red. */}
                     {Object.entries(setStats.resists).filter(([, p]) => p !== 0).length > 0 && (
                       <div className="mt-2 space-y-1">
                         <div className="text-[10px] font-bold uppercase tracking-wide text-fg-dim">

@@ -10,6 +10,13 @@ export interface GlossaryItem {
   image: string | null
   /** Present (true) only for boss creatures — powers the map's boss search. */
   boss?: boolean
+  /**
+   * Present (true) for the subset with a real server-side respawn — world and
+   * raid bosses. Lever/quest bosses are `boss` but not `world_boss`: they're
+   * permanently up on a per-player cooldown, so a respawn reading is meaningless
+   * and the map rail leaves them out.
+   */
+  world_boss?: boolean
   /** Boss spawntypes (Raid/Unique/Unblockable/Triggered/Regular/Event) — for the Boss Watch tabs. Multi-valued. */
   spawn_type?: string[]
 }

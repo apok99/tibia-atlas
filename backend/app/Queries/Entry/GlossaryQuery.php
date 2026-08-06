@@ -4,6 +4,7 @@ namespace App\Queries\Entry;
 
 use App\Models\Entry;
 use App\Support\BossRule;
+use App\Support\WorldBossRule;
 use Illuminate\Support\Collection;
 
 /**
@@ -24,6 +25,11 @@ class GlossaryQuery
             // {@see BossRule} owns what qualifies; the kill-stats side applies the
             // same rule so the rail can't list a boss the tracker won't track.
             ->selectRaw('CASE WHEN '.BossRule::sql('entries').' THEN 1 ELSE 0 END as is_boss')
+            // Narrower: of those, the ones with a real server-side respawn. The
+            // map's rail lists only these, so a lever/quest boss (permanently up,
+            // per-player cooldown) can't slip in through the glossary fallback and
+            // sit there reading "no recent spawn data" forever. {@see WorldBossRule}
+            ->selectRaw('CASE WHEN ('.BossRule::sql('entries').') AND ('.WorldBossRule::sql('entries').') THEN 1 ELSE 0 END as is_world_boss')
             // How the boss enters the world (Raid/Unique/Unblockable/Triggered/…) —
             // a JSON list, since a boss can carry several at once. Powers the Boss
             // Watch's per-spawntype tabs. Null for non-bosses / not-yet-backfilled.

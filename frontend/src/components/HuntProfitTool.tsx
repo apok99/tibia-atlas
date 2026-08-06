@@ -7,6 +7,7 @@ import { useQueries } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import type { SearchResult } from '../types'
 import { compact } from '../lib/format'
+import { loadCharProfile } from '../lib/charProfile'
 import { dayKey, useHuntLog } from '../hooks/useHuntLog'
 import { clearSharedSummary, readSharedSummary, type Summary } from '../lib/huntShare'
 import HuntLog from './HuntLog'
@@ -89,11 +90,23 @@ const STORE_KEY = 'atlas:map:huntProfit'
 
 type Tally = { name: string; count: number }
 
+/** One player's own block in a Party Hunt Analyzer. */
+type Member = {
+  name: string
+  loot: number
+  supplies: number
+  balance: number
+  damage: number | null
+  healing: number | null
+}
+
 type Parsed = {
   /** Local start time of the session, from the analyzer's own "From …" line. */
   startedAt: Date | null
   /** Party size read off the paste: 1 for a solo analyzer. */
   players: number
+  /** Per-player blocks of a Party Hunt Analyzer; empty for a solo one. */
+  members: Member[]
   hours: number | null
   loot: number | null
   supplies: number | null
@@ -160,11 +173,53 @@ function parseAnalyzer(text: string): Parsed {
     if (!Number.isNaN(d.getTime())) startedAt = d
   }
 
-  // Party size. A shared analyzer prints the party totals and then repeats
-  // Loot/Supplies/Balance under each player's name, so "Balance:" appears once
-  // for the session plus once per player. A solo paste has exactly one.
-  const balances = text.match(/\bBalance:/gi)?.length ?? 0
-  const players = balances > 1 ? balances - 1 : 1
+  // Party Hunt Analyzer: the party totals come first, then one block per member
+  // — "<name> Loot: … Supplies: … Balance: … Damage: … Healing: …". The paste
+  // often arrives with the newlines stripped, so the blocks are found by
+  // walking the Loot/Supplies/Balance triples rather than by line: the first
+  // triple is the session, every later one is a player, and the player's name
+  // is whatever text sits between the previous block and their own "Loot:".
+  const members: Member[] = []
+  const TRIPLE = /\bLoot:\s*(-?[\d.,]+)\s+Supplies:\s*(-?[\d.,]+)\s+Balance:\s*(-?[\d.,]+)/gi
+  let m: RegExpExecArray | null
+  let prevEnd = -1
+  while ((m = TRIPLE.exec(text))) {
+    if (prevEnd < 0) {
+      // First triple = the party totals, already read above.
+      prevEnd = m.index + m[0].length
+      continue
+    }
+    const gap = text.slice(prevEnd, m.index)
+    // What's left of the gap once the previous block's trailing stats and any
+    // stray header are stripped is the player's name.
+    const name = gap
+      .replace(/\b(?:Damage|Healing|Damage\/h|Healing\/h|XP Gain|XP\/h|Raw XP Gain|Raw XP\/h):\s*-?[\d.,]+/gi, '')
+      .replace(/\bLoot Type:\s*\w+/gi, '')
+      .replace(/[\s\n\r\t]+/g, ' ')
+      .trim()
+    const tail = text.slice(m.index + m[0].length, m.index + m[0].length + 200)
+    const stat = (label: string) => {
+      const hit = new RegExp(`\\b${label}:\\s*(-?[\\d.,]+)`, 'i').exec(tail)
+      if (!hit) return null
+      const v = parseInt(hit[1].replace(/[^\d]/g, ''), 10)
+      return Number.isFinite(v) ? v : null
+    }
+    const gold = (s: string) => {
+      const neg = s.trim().startsWith('-')
+      const v = parseInt(s.replace(/[^\d]/g, ''), 10)
+      return Number.isFinite(v) ? (neg ? -v : v) : 0
+    }
+    members.push({
+      name: name || `#${members.length + 1}`,
+      loot: gold(m[1]),
+      supplies: gold(m[2]),
+      balance: gold(m[3]),
+      damage: stat('Damage'),
+      healing: stat('Healing'),
+    })
+    prevEnd = m.index + m[0].length
+  }
+  const players = Math.max(1, members.length)
 
   // List sections: "Killed Monsters: …" runs until "Looted Items: …".
   const km = /Killed Monsters:/i.exec(text)
@@ -175,6 +230,7 @@ function parseAnalyzer(text: string): Parsed {
   return {
     startedAt,
     players,
+    members,
     hours,
     loot: num(/\bLoot:\s*(-?[\d.,]+)/i),
     supplies: num(/\bSupplies:\s*(-?[\d.,]+)/i),
@@ -505,6 +561,21 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
     setCfg((c) => (c.players === parsed.players ? c : { ...c, players: parsed.players }))
   }, [parsed.players])
 
+  // Which member of a party paste is you. Pre-picked from the saved character
+  // when the names match, since that is nearly always the answer.
+  const [meName, setMeName] = useState<string | null>(null)
+  useEffect(() => {
+    if (parsed.members.length === 0) {
+      setMeName(null)
+      return
+    }
+    const saved = loadCharProfile()?.name?.trim().toLowerCase()
+    const hit = saved ? parsed.members.find((p) => p.name.toLowerCase() === saved) : undefined
+    setMeName(hit?.name ?? null)
+  }, [parsed.members])
+
+  const me = parsed.members.find((p) => p.name === meName) ?? null
+
   const hours = (() => {
     const h = parseFloat(hoursDraft.replace(',', '.'))
     return Number.isFinite(h) && h > 0 ? h : null
@@ -555,8 +626,15 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
   // so everyone ends level, so your share of the consumables is the party's
   // over N. Splitting one and not the other would leave profit + waste bigger
   // than your actual share of the loot, and the history's Total tile is exactly
-  // that sum.
-  const wasteTotal = (parsed.supplies ?? 0) / players + imbueTotal + tokenTotal + extraTotal
+  // that sum. When the paste names you, your OWN supplies line is used instead
+  // of the average — it is the gold that actually left your pocket, and the
+  // sum still lands on your share of the loot once the party transfer settles.
+  const mySupplies = me ? me.supplies : (parsed.supplies ?? 0) / players
+  const wasteTotal = mySupplies + imbueTotal + tokenTotal + extraTotal
+
+  // Party settle-up: everyone ends on the same net, so what you owe (or are
+  // owed) is the gap between what you personally banked and that fair share.
+  const transfer = me && balance != null ? balance - me.balance : null
   const wastePerHour = hours != null && wasteTotal > 0 ? wasteTotal / hours : null
 
   // Fingerprint of the current result. It matching the last save — and that
@@ -585,8 +663,23 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
   )
 
   const xpH = parsed.xpPerHour ?? (parsed.xpGain != null && hours != null ? parsed.xpGain / hours : null)
-  const dmgH = parsed.damagePerHour ?? (parsed.damage != null && hours != null ? parsed.damage / hours : null)
-  const healH = parsed.healingPerHour ?? (parsed.healing != null && hours != null ? parsed.healing / hours : null)
+  // A party analyzer has no session-wide Damage/Healing — only per-player ones,
+  // so the generic parse would report whoever happens to come first. Use your
+  // own block when the paste names you.
+  const myDamage = me ? me.damage : parsed.damage
+  const myHealing = me ? me.healing : parsed.healing
+  const dmgH =
+    me != null
+      ? myDamage != null && hours != null
+        ? myDamage / hours
+        : null
+      : parsed.damagePerHour ?? (parsed.damage != null && hours != null ? parsed.damage / hours : null)
+  const healH =
+    me != null
+      ? myHealing != null && hours != null
+        ? myHealing / hours
+        : null
+      : parsed.healingPerHour ?? (parsed.healing != null && hours != null ? parsed.healing / hours : null)
   const hasReport = kills.length > 0 || lootBase.length > 0 || xpH != null || dmgH != null
 
   // Sprite + page link for each visible row ("Others" is a label, not a name).
@@ -768,6 +861,36 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
           rows={hasReport ? 3 : 4}
           className="w-full resize-y rounded-lg border border-line bg-bg-2 px-2.5 py-2 font-mono text-xs leading-relaxed outline-none transition placeholder:font-sans placeholder:text-sm placeholder:text-fg-mute focus:border-accent"
         />
+
+        {/* Party paste: say who you are. Your own supplies and damage are then
+            read off your block instead of averaged across the party. */}
+        {parsed.members.length > 1 && (
+          <div className="mt-2 rounded-xl border border-accent/40 bg-accent/5 p-2">
+            <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-accent">
+              {t('map.hpPartyDetected', { n: parsed.members.length })}
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {parsed.members.map((p) => (
+                <button
+                  key={p.name}
+                  onClick={() => setMeName(meName === p.name ? null : p.name)}
+                  aria-pressed={meName === p.name}
+                  title={`${t('map.hpBalance')} ${gp(p.balance)}`}
+                  className={`rounded-lg border px-2 py-1 text-xs font-semibold transition ${
+                    meName === p.name
+                      ? 'border-accent bg-accent text-bg-2'
+                      : 'border-line-2 text-fg-dim hover:border-accent hover:text-accent'
+                  }`}
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[11px] text-fg-mute">
+              {me ? t('map.hpPartyYouAre', { name: me.name, gp: gp(me.supplies) }) : t('map.hpPartyPick')}
+            </p>
+          </div>
+        )}
 
         {/* What we read from the paste + the editable session length */}
         <div className="mt-2 flex flex-wrap items-end gap-x-3 gap-y-2">
@@ -971,13 +1094,29 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
               <dt className="text-fg-dim">{t('map.hpCostPrey')} <span className="text-fg-mute">×{preyCount}</span></dt>
               <dd className="text-right font-semibold text-fg">{preyTotal > 0 ? '-' + gp(preyTotal) : '0'}</dd>
             </dl>
+
+            {/* Who owes whom, so the party actually ends level. */}
+            {transfer != null && Math.round(transfer) !== 0 && (
+              <p className="mt-1.5 border-t border-line pt-1.5 text-xs text-fg-dim">
+                {transfer > 0 ? (
+                  <>
+                    {t('map.hpPartyReceive')} <b className="text-canon">{gp(transfer)} gp</b>
+                  </>
+                ) : (
+                  <>
+                    {t('map.hpPartyOwe')} <b className="text-accent">{gp(-transfer)} gp</b>
+                  </>
+                )}
+                <span className="ml-1 text-fg-mute">{t('map.hpPartyTransferNote', { gp: gp(me!.balance) })}</span>
+              </p>
+            )}
             {/* Waste: supplies + every real cost above, i.e. the whole spend. */}
             <div className="mt-1.5 flex items-baseline justify-between border-t border-line pt-1.5">
               <span className="text-xs font-bold uppercase tracking-widest text-fg-dim">
                 {t('map.hpWaste')}
                 {parsed.supplies != null && (
                   <span className="ml-1 font-normal normal-case tracking-normal text-fg-mute">
-                    {t('map.hpWasteNote', { n: gp(parsed.supplies / players) })}
+                    {t('map.hpWasteNote', { n: gp(mySupplies) })}
                   </span>
                 )}
               </span>
@@ -1010,7 +1149,7 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
                   prey: preyTotal,
                   profit: realProfit!,
                   xp: parsed.xpGain,
-                  supplies: (parsed.supplies ?? 0) / players,
+                  supplies: mySupplies,
                   players,
                   kills: totalKills,
                   label: kills[0]?.name ?? '',

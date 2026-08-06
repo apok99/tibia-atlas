@@ -63,7 +63,14 @@ class EntryController extends Controller
      */
     public function logSearchClick(Request $request): Response
     {
-        $this->read->logSearchClick((string) $request->string('slug'));
+        // `npc` is the map's NPC search: merchants mostly have no lore page, so
+        // there is no slug to log — the name is resolved server-side instead.
+        $npc = (string) $request->string('npc');
+        if ($npc !== '') {
+            $this->read->logNpcSearchClick($npc);
+        } else {
+            $this->read->logSearchClick((string) $request->string('slug'));
+        }
 
         return response()->noContent();
     }

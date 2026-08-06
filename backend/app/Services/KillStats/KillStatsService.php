@@ -210,8 +210,10 @@ class KillStatsService
     }
 
     /**
-     * @param  string  $type  'raid' (rare world bosses) or 'daily' (per-cooldown
-     *                        bosses killed across most worlds every day).
+     * @param  string  $type  'raid' (rare world bosses) / 'daily' (per-cooldown
+     *                        bosses killed across most worlds every day) — the two
+     *                        dashboard cuts; 'world' (map rail: everything with a
+     *                        real respawn) or 'all' (no cut, for debugging).
      * @param  string|null  $world  null → heat aggregated across all worlds;
      *                              a world name → heat scoped to that world.
      * @return array<string, mixed>

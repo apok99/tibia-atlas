@@ -113,13 +113,13 @@ class KillStatsController extends Controller
      * RAID-boss roster for the "Raid Boss Watch" module, with a spawn
      * "temperature" (heat 0-100 = probability it is up / about to spawn).
      *
-     * Query: limit (1-600, default 24), type=raid|daily|all, world=all|<Name>.
+     * Query: limit (1-600, default 24), type=raid|daily|world|all, world=all|<Name>.
      * A specific world scopes each boss's heat/status to that world.
      *
-     * type=all drops the rarity cut and returns every tracked boss (~400) — what
-     * the map's boss rail needs. Both narrower buckets ('raid' ≤60 worlds,
-     * 'daily' ≥10) are dashboard cuts, and 'raid' hid 228 tracked bosses from the
-     * rail, which then rendered them as "no recent spawn data" permanently.
+     * The map rail uses type=world: no rarity cut, but only bosses with a real
+     * server-side respawn ({@see \App\Support\WorldBossRule}). 'raid' (≤60 worlds)
+     * and 'daily' (≥10) are dashboard cuts; 'all' is the unfiltered roster, kept
+     * for debugging the other three.
      */
     public function bosses(Request $request): JsonResponse
     {
@@ -128,7 +128,7 @@ class KillStatsController extends Controller
 
         return response()->json($this->stats->bosses(
             limit: $this->clamp($request, 'limit', 24, 1, 600),
-            type: in_array($type, ['daily', 'all'], true) ? $type : 'raid',
+            type: in_array($type, ['daily', 'world', 'all'], true) ? $type : 'raid',
             world: ($world === '' || $world === 'all') ? null : $world,
         ));
     }

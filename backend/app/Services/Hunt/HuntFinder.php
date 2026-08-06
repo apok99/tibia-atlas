@@ -173,7 +173,7 @@ class HuntFinder
      * hunter carries out of it: the damage elements they can deal and the
      * elemental resistances they wear.
      *
-     * @return array{elements: list<string>, resists: array<string,int>, armor: int, weapon: ?string, weapon_type: ?string, source: string}
+     * @return array{elements: list<string>, resists: array<string,float>, armor: int, weapon: ?string, weapon_type: ?string, source: string}
      */
     private function deriveSet(int $level, string $vocation): array
     {
@@ -245,7 +245,7 @@ class HuntFinder
      * the ids resolves to a wearable item (caller falls back to deriveSet).
      *
      * @param  list<int>  $gearIds
-     * @return ?array{elements: list<string>, resists: array<string,int>, armor: int, weapon: ?string, weapon_type: ?string, source: string}
+     * @return ?array{elements: list<string>, resists: array<string,float>, armor: int, weapon: ?string, weapon_type: ?string, source: string}
      */
     private function setFromGear(array $gearIds, string $vocation): ?array
     {
@@ -295,7 +295,7 @@ class HuntFinder
      * by creature id, each holding the display fields, the composite hunt score
      * and its spawn points.
      *
-     * @param  array{elements: list<string>, resists: array<string,int>, armor: int, weapon: ?string}  $set
+     * @param  array{elements: list<string>, resists: array<string,float>, armor: int, weapon: ?string}  $set
      */
     private function scoreCreatures(array $set, int $level, string $vocation, bool $team, string $locale): array
     {
@@ -487,24 +487,26 @@ class HuntFinder
      * (~3.1·hp^0.71, fit to real creatures) or the wiki's max_damage — needed
      * for ~20 harmless critters only.
      *
-     * @param  array{resists: array<string,int>, armor: int}  $set
+     * @param  array{resists: array<string,float>, armor: int}  $set
      */
     private function danger(array $meta, array $set, float $ehp, bool $team, string $vocation = ''): float
     {
-        $armorRelief = SetStats::armorRelief((int) $set['armor']);
+        $armorAbsorb = SetStats::armorAbsorb((int) $set['armor']);
         $burstByEl = (array) (($meta['ot'] ?? [])['burst_by_element'] ?? []);
         $melee = self::MELEE_EXPOSURE[$vocation] ?? self::MELEE_EXPOSURE[''];
 
         $incoming = 0.0;
         foreach ($burstByEl as $el => $dmg) {
-            $resist = (int) ($set['resists'][$el] ?? 0);
-            $frac = in_array($el, SetStats::ELEMENTS, true) ? max(0.0, 1 - $resist / 100) : 1.0;
+            $resist = (float) ($set['resists'][$el] ?? 0);
+            $hit = (float) $dmg * (in_array($el, SetStats::ELEMENTS, true) ? max(0.0, 1 - $resist / 100) : 1.0);
             if ($el === 'physical') {
-                // Physical is overwhelmingly the melee attack: armour blunts it,
-                // and a ranged vocation mostly isn't standing there to receive it.
-                $frac *= (1 - $armorRelief) * $melee;
+                // Physical is overwhelmingly the melee attack: armour eats a
+                // FLAT chunk of whatever the protections let through (game order:
+                // protections first, then armor), and a ranged vocation mostly
+                // isn't standing there to receive it.
+                $hit = max(0.0, $hit - $armorAbsorb) * $melee;
             }
-            $incoming += (float) $dmg * $frac;
+            $incoming += $hit;
         }
 
         // A table with nothing beyond melee declared usually means the
@@ -514,7 +516,7 @@ class HuntFinder
         // HP-based estimate when it's larger. (Genuine pure-melee creatures
         // are mostly low-HP trash, where the overshoot is harmless.)
         if (count($burstByEl) <= 1) {
-            $incoming = max($incoming, $this->estimatedIncoming($meta, $set, $armorRelief, $melee));
+            $incoming = max($incoming, $this->estimatedIncoming($meta, $set, $armorAbsorb, $melee));
         }
 
         $effective = self::BAD_TURN * $incoming;
@@ -530,9 +532,9 @@ class HuntFinder
      * fit to real creatures) or the recorded max_damage, through the element
      * the set stops the least (its attack abilities' elements plus physical).
      *
-     * @param  array{resists: array<string,int>, armor: int}  $set
+     * @param  array{resists: array<string,float>, armor: int}  $set
      */
-    private function estimatedIncoming(array $meta, array $set, float $armorRelief, float $melee = 1.0): float
+    private function estimatedIncoming(array $meta, array $set, float $armorAbsorb, float $melee = 1.0): float
     {
         $hp = (int) ($meta['hitpoints'] ?? 0);
         $estHit = 3.1 * ($hp > 0 ? $hp ** 0.71 : 0);
@@ -547,15 +549,15 @@ class HuntFinder
         }
         $worst = 0.0;
         foreach (array_unique($elements) as $el) {
-            $resist = (int) ($set['resists'][$el] ?? 0);
-            $frac = max(0.0, 1 - $resist / 100);
+            $resist = (float) ($set['resists'][$el] ?? 0);
+            $hit = $maxDamage * max(0.0, 1 - $resist / 100);
             if ($el === 'physical') {
-                $frac *= (1 - $armorRelief) * $melee;
+                $hit = max(0.0, $hit - $armorAbsorb) * $melee;
             }
-            $worst = max($worst, $frac);
+            $worst = max($worst, $hit);
         }
 
-        return $maxDamage * $worst;
+        return $worst;
     }
 
     /**

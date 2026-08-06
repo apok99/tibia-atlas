@@ -67,6 +67,15 @@ export function logSearchClick(slug: string) {
   api.post('/search/click', { slug }).catch(() => {})
 }
 
+/**
+ * Same, for a merchant NPC picked in the map's NPC search. Most merchants have
+ * no lore page (no slug), so the name goes instead — the server only logs it if
+ * it matches a real NPC in the trade directory.
+ */
+export function logNpcSearchClick(npc: string) {
+  api.post('/search/click', { npc }).catch(() => {})
+}
+
 /** Available filter facets (classifications, boss count) for a given entry type. */
 export function useFacets(type?: string) {
   const { i18n } = useTranslation()
@@ -196,9 +205,10 @@ export type SetStats = {
   vocation: string
   items: { id: number; slug: string; slot: string }[]
   armor: number
+  /** Per element, the compounded protection of the worn pieces (Tibia stacks them multiplicatively). */
   resists: Record<string, number>
-  /** % of an incoming physical hit the armor absorbs in the hunt model. */
-  physical_reduction: number
+  /** Damage the armor swallows from each physical hit (armor is a flat subtraction, not a %). */
+  armor_absorb: number
   damage_elements: string[]
   bonuses: Record<string, number>
   weapon: {

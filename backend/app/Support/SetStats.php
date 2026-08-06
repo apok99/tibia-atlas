@@ -31,8 +31,11 @@ final class SetStats
         'monk' => ['physical', 'holy'],
     ];
 
-    /** Combined elemental resistance a full set can realistically reach (game-ish cap). */
-    public const RESIST_CAP = 60;
+    /**
+     * Scale the UI draws resist bars against — NOT a cap: protections compound,
+     * they are never clamped.
+     */
+    public const RESIST_SCALE = 60;
 
     /**
      * Sum what a set of worn items gives its wearer. `$metas` holds one item
@@ -41,7 +44,7 @@ final class SetStats
      * @param  list<array<string, mixed>>  $metas
      * @return array{
      *     elements: list<string>,
-     *     resists: array<string, int>,
+     *     resists: array<string, float>,
      *     armor: int,
      *     bonuses: array<string, int>,
      *     weapon_meta: ?array<string, mixed>,
@@ -49,14 +52,17 @@ final class SetStats
      */
     public static function aggregate(array $metas, string $vocation): array
     {
-        $resists = [];
+        $resistFactors = [];
         $bonuses = [];
         $armor = 0;
         $weaponMeta = null;
         foreach ($metas as $meta) {
             $armor += (int) ($meta['armor'] ?? 0);
             foreach ((array) ($meta['resists'] ?? []) as $el => $pct) {
-                $resists[$el] = ($resists[$el] ?? 0) + (int) $pct;
+                // Tibia applies each piece's protection to whatever the previous
+                // piece let through — protections do NOT add up. Six pieces of
+                // +5% stop 26.5%, not 30%, and the gap widens with every piece.
+                $resistFactors[$el] = ($resistFactors[$el] ?? 1.0) * (1 - (int) $pct / 100);
             }
             foreach ((array) ($meta['bonuses'] ?? []) as $skill => $points) {
                 $bonuses[$skill] = ($bonuses[$skill] ?? 0) + (int) $points;
@@ -65,8 +71,11 @@ final class SetStats
                 $weaponMeta = $meta;
             }
         }
-        foreach ($resists as $el => $pct) {
-            $resists[$el] = min(self::RESIST_CAP, $pct);
+        // One decimal: compounding rarely lands on a round number, and rounding
+        // to int made the card disagree with an in-game check.
+        $resists = [];
+        foreach ($resistFactors as $el => $factor) {
+            $resists[$el] = round(100 * (1 - $factor), 1);
         }
 
         // Damage elements: vocation spell schools + the weapon's element + physical
@@ -92,12 +101,17 @@ final class SetStats
     }
 
     /**
-     * Fraction of incoming PHYSICAL damage the set's armor absorbs in the hunt
-     * danger model. Kept here so the "physical reduction" the character card
+     * Damage the set's armor swallows from ONE physical hit. Armor in Tibia is
+     * a flat subtraction — the hit drops by a random amount between half the
+     * armor value and the full value — so the honest single number is the
+     * average, 0.75·armor. (The old model expressed armor as a fixed % of any
+     * hit, which over-credited it against the big hits the danger score cares
+     * about and, shown next to the resist bars, looked like a second, disagreeing
+     * physical-resistance figure.) Kept here so the number the character card
      * shows is the exact relief HuntFinder::danger() applies.
      */
-    public static function armorRelief(int $armor): float
+    public static function armorAbsorb(int $armor): float
     {
-        return min(0.45, $armor / 400);
+        return 0.75 * max(0, $armor);
     }
 }

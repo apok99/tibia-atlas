@@ -3,6 +3,7 @@
 namespace App\Queries\KillStats;
 
 use App\Support\BossRule;
+use App\Support\WorldBossRule;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -42,16 +43,18 @@ class BossWatchQuery
     /**
      * @param  string  $type  'raid' → present in ≤ $maxWorlds worlds (rare world
      *                        bosses); 'daily' → present in ≥10 worlds (per-cooldown
-     *                        bosses killed across most worlds every day); 'all' →
-     *                        no rarity cut at all.
+     *                        bosses killed across most worlds every day); 'world' →
+     *                        no rarity cut, but only bosses with a real server-side
+     *                        respawn ({@see WorldBossRule}); 'all' → no cut at all.
      *
-     * 'all' exists for the map's boss rail, which wants a heat read for EVERY boss
-     * we track, not just the rare-world slice. The `raid` cut is a dashboard
-     * distinction ("rare world bosses" vs "daily bosses") and it silently starved
-     * the rail: 228 of the 401 tracked bosses sit above the 60-world cap — Lloyd,
-     * Scarlett Etzel, Grand Master Oberon, Midnight Panther, every Goshnar — so
-     * they fell through to the glossary bucket and rendered as "no recent spawn
-     * data" forever, even though kill_daily had them killed that very day.
+     * 'raid' and 'daily' are DASHBOARD cuts, for KillStatsPage. The map rail must
+     * use 'world': the 60-world cap on 'raid' silently starved it (228 of the 401
+     * tracked bosses sit above it — Midnight Panther, Lloyd, Scarlett Etzel — so
+     * they read "no recent spawn data" forever, even on days kill_daily had them
+     * killed), but dropping the cap entirely then let in every lever and quest
+     * boss, where a respawn heat is meaningless because the boss is always up and
+     * the cooldown is per player. 'world' is the cut that actually matches the
+     * question the rail asks.
      * @param  string|null  $world  when given, the roster still qualifies by
      *                              cross-world rarity, but the transformer scopes
      *                              each boss's heat/status to just this world
@@ -66,6 +69,7 @@ class BossWatchQuery
             ->where('kd.snapshot_date', $latest)
             ->where('e.status', 'published')
             ->whereRaw(BossRule::sql('e'))
+            ->when($type === 'world', fn ($q) => $q->whereRaw(WorldBossRule::sql('e')))
             ->groupBy('r.name', 'e.slug', 'e.primary_image', DB::raw("e.meta->'spawn_type'"), DB::raw("e.meta->>'rank'"))
             ->select([
                 'r.name as race',
@@ -89,7 +93,8 @@ class BossWatchQuery
                 DB::raw("array_to_string((array_agg(w.name ORDER BY kd.week_killed DESC) FILTER (WHERE kd.day_killed = 0))[1:4], ',') AS open_worlds"),
             ]);
 
-        // Rarity cut — 'all' skips it and returns the whole tracked roster.
+        // Rarity cut — 'world' and 'all' skip it (the rail's cut is by boss KIND,
+        // applied above, not by how many worlds report the boss).
         if ($type === 'daily') {
             $query->having(DB::raw('COUNT(*)'), '>=', 10);
         } elseif ($type === 'raid') {

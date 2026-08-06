@@ -39,6 +39,8 @@ class GlossaryTransformer
                     // Only tag bosses (keeps the payload lean for the ~thousands of
                     // non-boss entries the auto-linker doesn't care about).
                     ...($isBoss ? ['boss' => true] : []),
+                    // Has a real respawn (world/raid boss) — the map rail's cut.
+                    ...((int) $e->is_world_boss === 1 ? ['world_boss' => true] : []),
                     // Its spawntypes — drives the Boss Watch's category tabs.
                     ...($spawn ? ['spawn_type' => $spawn] : []),
                 ];

@@ -93,12 +93,12 @@ export interface BossRow {
 
 /**
  * Boss roster. type='raid' → rare world bosses; type='daily' → daily-cooldown
- * bosses; type='all' → every tracked boss, no rarity cut (what the map rail wants,
- * so bosses like Midnight Panther or Lloyd get a real heat read instead of
- * falling through to the glossary's "no recent spawn data").
+ * bosses (both are the KillStatsPage dashboard cuts); type='world' → every boss
+ * with a real server-side respawn, which is what the map rail wants; type='all' →
+ * no cut at all, for debugging the other three.
  * `world` scopes each boss's heat/status to a single world ('all' = aggregate).
  */
-export function useBosses(type: 'raid' | 'daily' | 'all' = 'raid', limit = 24, enabled = true, world = 'all') {
+export function useBosses(type: 'raid' | 'daily' | 'world' | 'all' = 'raid', limit = 24, enabled = true, world = 'all') {
   return useQuery({
     queryKey: ['killstats', 'bosses', type, limit, world],
     enabled,

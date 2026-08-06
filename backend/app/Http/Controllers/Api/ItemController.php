@@ -324,7 +324,8 @@ class ItemController extends Controller
      * Aggregate combat stats for a worn equipment set — the map's "your
      * character" gear readout. `items` is a comma-separated list of entry ids
      * (one per slot; duplicates per slot are dropped). Returns total armor,
-     * per-element resistances, the estimated physical damage reduction, the
+     * per-element resistances (compounded the way Tibia stacks protections,
+     * not summed), the damage the armor absorbs per physical hit, the
      * damage elements the wearer can deal, summed skill bonuses and the
      * weapon's identity — all through the same SetStats math the Hunt Finder
      * scores with, so the card shows exactly what the ranking assumes.
@@ -376,8 +377,9 @@ class ItemController extends Controller
             'items' => $pieces,
             'armor' => $agg['armor'],
             'resists' => $agg['resists'],
-            // % of an incoming physical hit the armor absorbs in the hunt model.
-            'physical_reduction' => (int) round(100 * SetStats::armorRelief($agg['armor'])),
+            // Damage the armor swallows from each physical hit (armor is a flat
+            // subtraction in Tibia, not a %), the same relief the hunt model applies.
+            'armor_absorb' => (int) round(SetStats::armorAbsorb($agg['armor'])),
             'damage_elements' => $agg['elements'],
             'bonuses' => $agg['bonuses'],
             'weapon' => $weapon === null || $wMeta === null ? null : [

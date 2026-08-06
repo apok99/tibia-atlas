@@ -7,27 +7,34 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Read of the most-searched entries log (one row per opened slug). The write
- * side lives in {@see SearchLogService}.
+ * Read of the most-searched log. The write side lives in
+ * {@see SearchLogService}.
+ *
+ * Ranks by how many searches landed INSIDE the window, counted from the event
+ * log — not by the lifetime counter in `search_terms`. With the counter, one
+ * popular week pinned an entry to the top forever and nothing searched today
+ * could overtake it, which is exactly what made the panel look frozen.
  */
 class SearchTermsQuery
 {
     /**
-     * Most-opened entries within the trailing window, most hits first.
+     * Most-searched entries within the trailing window, most searches first.
      *
      * @return Collection<int, \stdClass> rows of {slug, term, hits}
      */
     public function topTerms(int $days, int $limit): Collection
     {
-        return DB::table('search_terms')
-            // Legacy rows logged raw typed fragments (e.g. "mord") with no slug;
-            // they can't resolve to an entry, so skip them — only real opened
-            // entries count, and the service falls back to "most viewed" until
-            // enough genuine slug-based searches accumulate.
-            ->whereNotNull('slug')
-            ->where('last_searched_at', '>=', now()->subDays($days))
+        return DB::table('search_clicks')
+            ->where('searched_at', '>=', now()->subDays($days))
+            // NPC searches have no slug and group by name; everything else
+            // groups by slug, so a rename can't split one entry in two.
+            ->groupBy(DB::raw('coalesce(slug, term)'))
             ->orderByDesc('hits')
             ->limit($limit)
-            ->get(['slug', 'term', 'hits']);
+            ->get([
+                DB::raw('max(slug) as slug'),
+                DB::raw('max(term) as term'),
+                DB::raw('count(*) as hits'),
+            ]);
     }
 }
