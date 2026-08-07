@@ -441,9 +441,10 @@ class TibiaWikiImporter
             ->get(self::API, [
                 'action' => 'query',
                 'format' => 'json',
-                'prop' => 'extracts|info|pageimages',
+                'prop' => 'extracts|info|pageimages|images',
                 'inprop' => 'url',
                 'piprop' => 'original',
+                'imlimit' => 'max',
                 'explaintext' => 1,
                 'redirects' => 1,
                 'titles' => $title,
@@ -468,8 +469,8 @@ class TibiaWikiImporter
         // Profile image = the in-game SPRITE (File:<Name>.gif), not the big
         // "Official Artwork". pageimages returns the artwork, which we keep
         // separately to show below the lore.
-        $spriteName = preg_replace('/\s*\([^)]*\)\s*$/', '', $page['title']);
-        $sprite = 'https://tibia.fandom.com/wiki/Special:FilePath/'.rawurlencode($spriteName).'.gif';
+        $sprite = 'https://tibia.fandom.com/wiki/Special:FilePath/'
+            .rawurlencode($this->spriteName($page)).'.gif';
 
         $original = $page['original']['source'] ?? null;
         // The pageimages original is artwork only when it's not the sprite gif.
@@ -483,6 +484,45 @@ class TibiaWikiImporter
             'image' => $sprite,
             'artwork' => $artwork,
         ];
+    }
+
+    /**
+     * The File: base name of the page's own sprite.
+     *
+     * TibiaWiki names a sprite after the FULL page title, disambiguation
+     * included: "Avalanche (Creature)" → File:Avalanche (Creature).gif, while
+     * File:Avalanche.gif is the *rune*. Stripping the parenthesis unconditionally
+     * therefore hands the creature the item's icon, so we only fall back to the
+     * stripped name when the page really has no file of its own — some pages
+     * (e.g. "Monk (Creature)") do reuse the undisambiguated sprite.
+     *
+     * `prop=images` lists every file used on the page, so both candidates are
+     * checked without an extra request.
+     *
+     * @param  array<string, mixed>  $page
+     */
+    private function spriteName(array $page): string
+    {
+        $title = $page['title'];
+        $stripped = preg_replace('/\s*\([^)]*\)\s*$/', '', $title) ?? $title;
+
+        if ($stripped === $title) {
+            return $title;
+        }
+
+        // Normalised (underscores → spaces) set of files embedded in the page.
+        $files = collect($page['images'] ?? [])
+            ->pluck('title')
+            ->map(fn ($f) => strtolower(str_replace('_', ' ', Str::after($f, 'File:'))))
+            ->all();
+
+        foreach ([$title, $stripped] as $candidate) {
+            if (in_array(strtolower($candidate).'.gif', $files, true)) {
+                return $candidate;
+            }
+        }
+
+        return $stripped;
     }
 
     /**
