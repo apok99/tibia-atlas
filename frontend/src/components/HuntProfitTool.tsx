@@ -10,7 +10,9 @@ import { compact } from '../lib/format'
 import { loadCharProfile } from '../lib/charProfile'
 import { dayKey, useHuntLog } from '../hooks/useHuntLog'
 import { clearSharedSummary, readSharedSummary, type Summary } from '../lib/huntShare'
+import { parseAnalyzer } from '../lib/huntAnalyzer'
 import HuntLog from './HuntLog'
+import PartySplitTool from './PartySplitTool'
 
 // Items Cledwyn (Feyrist) recharges for silver tokens: tokens per recharge and
 // how long one recharge lasts while worn. Grouped cheap-first so the list reads
@@ -87,164 +89,6 @@ const CHARM_REMOVAL_DEFAULT = 35_000
 const PREY_REROLL_DEFAULT = 75_000
 
 const STORE_KEY = 'atlas:map:huntProfit'
-
-type Tally = { name: string; count: number }
-
-/** One player's own block in a Party Hunt Analyzer. */
-type Member = {
-  name: string
-  loot: number
-  supplies: number
-  balance: number
-  damage: number | null
-  healing: number | null
-}
-
-type Parsed = {
-  /** Local start time of the session, from the analyzer's own "From …" line. */
-  startedAt: Date | null
-  /** Party size read off the paste: 1 for a solo analyzer. */
-  players: number
-  /** Per-player blocks of a Party Hunt Analyzer; empty for a solo one. */
-  members: Member[]
-  hours: number | null
-  loot: number | null
-  supplies: number | null
-  balance: number | null
-  xpGain: number | null
-  xpPerHour: number | null
-  damage: number | null
-  damagePerHour: number | null
-  healing: number | null
-  healingPerHour: number | null
-  kills: Tally[]
-  items: Tally[]
-}
-
-// "667x candy horror 72x honey elemental …" → tallies. Works for one-per-line
-// pastes too (whitespace is normalised first). Names never start with a digit,
-// so the next "NNNx " marks the end of the previous name.
-function parseTallies(section: string): Tally[] {
-  const out: Tally[] = []
-  const flat = section.replace(/\s+/g, ' ').trim()
-  const re = /(\d+)x\s+(.+?)(?=\s+\d+x\s|$)/g
-  let m: RegExpExecArray | null
-  while ((m = re.exec(flat))) {
-    const count = parseInt(m[1], 10)
-    const name = m[2].replace(/^(?:a|an)\s+/i, '').trim()
-    if (name && Number.isFinite(count)) out.push({ name, count })
-  }
-  return out
-}
-
-// Pull the numbers out of a pasted (party) hunt analyzer. Per-player sections
-// repeat "Loot:/Supplies:/Balance:" below the totals, so the FIRST match of
-// each label is always the session total. Numbers keep their thousand
-// separators ("1,234,567") and Balance may be negative. The paste often
-// arrives as ONE long line (the client strips newlines), so labels are matched
-// anywhere in the text — each number simply ends at the next space or word.
-// Word boundaries keep "Looted Items:" / "Loot Type:" from matching "Loot:",
-// and the lookbehinds keep "Raw XP Gain"/"Raw XP/h" from stealing the boosted
-// "XP Gain"/"XP/h" values.
-function parseAnalyzer(text: string): Parsed {
-  const num = (re: RegExp): number | null => {
-    const m = re.exec(text)
-    if (!m) return null
-    const neg = m[1].trim().startsWith('-')
-    const v = parseInt(m[1].replace(/[^\d]/g, ''), 10)
-    if (!Number.isFinite(v)) return null
-    return neg ? -v : v
-  }
-  let hours: number | null = null
-  const s = /\bSession:\s*(\d+):(\d{2})\s*h/i.exec(text)
-  if (s) {
-    const h = parseInt(s[1], 10) + parseInt(s[2], 10) / 60
-    if (h > 0) hours = h
-  }
-
-  // "From 2026-07-29, 23:19:58 to …" — when the session was actually hunted,
-  // which is what the log should file it under. Built as a LOCAL date: a hunt
-  // that ran 23:19 → 00:47 belongs to the night the player played, not to the
-  // calendar day it happened to end on (nor to whatever UTC says).
-  let startedAt: Date | null = null
-  const f = /\bFrom\s+(\d{4})-(\d{2})-(\d{2}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/i.exec(text)
-  if (f) {
-    const d = new Date(+f[1], +f[2] - 1, +f[3], +f[4], +f[5], +(f[6] ?? 0))
-    if (!Number.isNaN(d.getTime())) startedAt = d
-  }
-
-  // Party Hunt Analyzer: the party totals come first, then one block per member
-  // — "<name> Loot: … Supplies: … Balance: … Damage: … Healing: …". The paste
-  // often arrives with the newlines stripped, so the blocks are found by
-  // walking the Loot/Supplies/Balance triples rather than by line: the first
-  // triple is the session, every later one is a player, and the player's name
-  // is whatever text sits between the previous block and their own "Loot:".
-  const members: Member[] = []
-  const TRIPLE = /\bLoot:\s*(-?[\d.,]+)\s+Supplies:\s*(-?[\d.,]+)\s+Balance:\s*(-?[\d.,]+)/gi
-  let m: RegExpExecArray | null
-  let prevEnd = -1
-  while ((m = TRIPLE.exec(text))) {
-    if (prevEnd < 0) {
-      // First triple = the party totals, already read above.
-      prevEnd = m.index + m[0].length
-      continue
-    }
-    const gap = text.slice(prevEnd, m.index)
-    // What's left of the gap once the previous block's trailing stats and any
-    // stray header are stripped is the player's name.
-    const name = gap
-      .replace(/\b(?:Damage|Healing|Damage\/h|Healing\/h|XP Gain|XP\/h|Raw XP Gain|Raw XP\/h):\s*-?[\d.,]+/gi, '')
-      .replace(/\bLoot Type:\s*\w+/gi, '')
-      .replace(/[\s\n\r\t]+/g, ' ')
-      .trim()
-    const tail = text.slice(m.index + m[0].length, m.index + m[0].length + 200)
-    const stat = (label: string) => {
-      const hit = new RegExp(`\\b${label}:\\s*(-?[\\d.,]+)`, 'i').exec(tail)
-      if (!hit) return null
-      const v = parseInt(hit[1].replace(/[^\d]/g, ''), 10)
-      return Number.isFinite(v) ? v : null
-    }
-    const gold = (s: string) => {
-      const neg = s.trim().startsWith('-')
-      const v = parseInt(s.replace(/[^\d]/g, ''), 10)
-      return Number.isFinite(v) ? (neg ? -v : v) : 0
-    }
-    members.push({
-      name: name || `#${members.length + 1}`,
-      loot: gold(m[1]),
-      supplies: gold(m[2]),
-      balance: gold(m[3]),
-      damage: stat('Damage'),
-      healing: stat('Healing'),
-    })
-    prevEnd = m.index + m[0].length
-  }
-  const players = Math.max(1, members.length)
-
-  // List sections: "Killed Monsters: …" runs until "Looted Items: …".
-  const km = /Killed Monsters:/i.exec(text)
-  const li = /Looted Items:/i.exec(text)
-  const kills = km ? parseTallies(text.slice(km.index + km[0].length, li ? li.index : undefined)) : []
-  const items = li ? parseTallies(text.slice(li.index + li[0].length)) : []
-
-  return {
-    startedAt,
-    players,
-    members,
-    hours,
-    loot: num(/\bLoot:\s*(-?[\d.,]+)/i),
-    supplies: num(/\bSupplies:\s*(-?[\d.,]+)/i),
-    balance: num(/\bBalance:\s*(-?[\d.,]+)/i),
-    xpGain: num(/(?<!Raw )\bXP Gain:\s*(-?[\d.,]+)/i),
-    xpPerHour: num(/(?<!Raw )\bXP\/h:\s*(-?[\d.,]+)/i),
-    damage: num(/\bDamage:\s*(-?[\d.,]+)/i),
-    damagePerHour: num(/\bDamage\/h:\s*(-?[\d.,]+)/i),
-    healing: num(/\bHealing:\s*(-?[\d.,]+)/i),
-    healingPerHour: num(/\bHealing\/h:\s*(-?[\d.,]+)/i),
-    kills,
-    items,
-  }
-}
 
 // Loose coins in the loot list, folded to raw gold.
 const COIN_VALUE: Record<string, number> = { 'gold coin': 1, 'platinum coin': 100, 'crystal coin': 10_000 }
@@ -480,6 +324,8 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
   // on mount and the card opens straight onto it.
   const [sharedSummary, setSharedSummary] = useState<Summary | null>(readSharedSummary)
   const [tab, setTab] = useState<'calc' | 'log'>(sharedSummary ? 'log' : 'calc')
+  // The party settle-up panel, opened from the icon beside the paste box.
+  const [splitOpen, setSplitOpen] = useState(false)
   const { hunts, save, remove, clear } = useHuntLog()
   // The last save, tagged with the numbers it captured: editing hours or any
   // cost after saving changes the result, so the button must offer to save the
@@ -495,15 +341,16 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
   }, [cfg])
 
   // Esc closes the card — a second way out that never depends on where the
-  // header ended up after a drag.
+  // header ended up after a drag. While the split panel is up, Esc is its to
+  // handle: closing both at once would throw away the paste behind it.
   useEffect(() => {
-    if (!open) return
+    if (!open || splitOpen) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
+  }, [open, onClose, splitOpen])
 
   // Draggable card: null = docked (centered above the hotbar); a point once the
   // user grabs the header. Pointer capture keeps the drag alive when the cursor
@@ -851,16 +698,36 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
           <div className="min-h-0 overflow-hidden">
         <p className="mb-2 text-sm text-fg-dim">{t('map.hpHint')}</p>
 
-        {/* Analyzer paste box */}
-        <textarea
-          ref={textRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={t('map.hpPaste')}
-          spellCheck={false}
-          rows={hasReport ? 3 : 4}
-          className="w-full resize-y rounded-lg border border-line bg-bg-2 px-2.5 py-2 font-mono text-xs leading-relaxed outline-none transition placeholder:font-sans placeholder:text-sm placeholder:text-fg-mute focus:border-accent"
-        />
+        {/* Analyzer paste box, with the party settle-up panel one click to its
+            right — same paste, different question ("what do I owe the others"). */}
+        <div className="flex items-stretch gap-2">
+          <textarea
+            ref={textRef}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={t('map.hpPaste')}
+            spellCheck={false}
+            rows={hasReport ? 3 : 4}
+            className="min-w-0 flex-1 resize-y rounded-lg border border-line bg-bg-2 px-2.5 py-2 font-mono text-xs leading-relaxed outline-none transition placeholder:font-sans placeholder:text-sm placeholder:text-fg-mute focus:border-accent"
+          />
+          <button
+            onClick={() => setSplitOpen(true)}
+            title={t('map.psOpenHint')}
+            aria-label={t('map.psTitle')}
+            className={`flex w-14 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed px-1 py-2 transition ${
+              parsed.members.length > 1
+                ? 'border-accent bg-accent/10 text-accent hover:bg-accent hover:text-bg-2'
+                : 'border-line-2 text-fg-mute hover:border-accent hover:text-accent'
+            }`}
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13A4 4 0 0 1 16 11" />
+            </svg>
+            <span className="text-center text-[9px] font-bold uppercase leading-tight tracking-wide">{t('map.psOpen')}</span>
+          </button>
+        </div>
 
         {/* Party paste: say who you are. Your own supplies and damage are then
             read off your block instead of averaged across the party. */}
@@ -1306,6 +1173,9 @@ export default function HuntProfitTool({ open, onClose }: { open: boolean; onClo
         )}
         </div>
       </div>
+
+      {/* Party settle-up — its own small modal on top of the card. */}
+      <PartySplitTool open={splitOpen} onClose={() => setSplitOpen(false)} initialText={text} meName={meName} />
     </div>,
     document.body,
   )
