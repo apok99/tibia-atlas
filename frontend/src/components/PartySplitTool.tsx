@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { parseAnalyzer } from '../lib/huntAnalyzer'
-import { bankCommands, byPayer, splitParty } from '../lib/partySplit'
+import { bankCommands, byPayer, splitParty, type Extra } from '../lib/partySplit'
 
 const gp = (n: number) => Math.round(n).toLocaleString()
 
@@ -84,8 +84,22 @@ export default function PartySplitTool({
   }, [open, onClose])
 
   const members = useMemo(() => parseAnalyzer(text).members, [text])
-  const split = useMemo(() => splitParty(members), [members])
+
+  // Costs the analyzer never saw, each with who fronted it and who bears it.
+  const [extras, setExtras] = useState<Extra[]>([])
+  const nextId = useRef(0)
+  const addExtra = () =>
+    setExtras((xs) => [
+      ...xs,
+      { id: `x${++nextId.current}`, concept: '', amount: 0, paidBy: members[0]?.name ?? '', chargedTo: '' },
+    ])
+  const patchExtra = (id: string, patch: Partial<Extra>) =>
+    setExtras((xs) => xs.map((x) => (x.id === id ? { ...x, ...patch } : x)))
+  const dropExtra = (id: string) => setExtras((xs) => xs.filter((x) => x.id !== id))
+
+  const split = useMemo(() => splitParty(members, extras), [members, extras])
   const payers = useMemo(() => byPayer(split.transfers), [split.transfers])
+  const anyExtras = split.rows.some((r) => r.paid > 0 || r.charged > 0)
 
   // You first: your own row and your own commands are what you came for.
   const rows = useMemo(() => {
@@ -148,15 +162,114 @@ export default function PartySplitTool({
               {/* Headline: what the party made and what each member walks with */}
               <div className="mt-2 grid grid-cols-3 gap-1.5">
                 {[
-                  { label: t('map.psTotal'), value: gp(split.total), tone: split.total >= 0 ? 'text-canon' : 'text-accent' },
-                  { label: t('map.hpPlayers'), value: String(split.players), tone: 'text-fg' },
-                  { label: t('map.psFair'), value: gp(split.fair), tone: split.fair >= 0 ? 'text-canon' : 'text-accent' },
+                  { label: t('map.psTotal'), value: gp(split.total), tone: split.total >= 0 ? 'text-canon' : 'text-accent', note: '' },
+                  { label: t('map.hpPlayers'), value: String(split.players), tone: 'text-fg', note: '' },
+                  {
+                    label: t('map.psFair'),
+                    value: gp(split.fair),
+                    tone: split.fair >= 0 ? 'text-canon' : 'text-accent',
+                    // Shared extras come off the pot before it is divided, so
+                    // say so rather than let the number look wrong.
+                    note: split.shared > 0 ? t('map.psFairNote', { gp: gp(split.shared) }) : '',
+                  },
                 ].map((tile) => (
                   <div key={tile.label} className="rounded-lg border border-line bg-bg-2 px-2 py-1.5 text-center">
                     <div className={`text-base font-bold leading-tight ${tile.tone}`}>{tile.value}</div>
                     <div className="text-[10px] font-bold uppercase tracking-wide text-fg-mute">{tile.label}</div>
+                    {tile.note && <div className="text-[9px] leading-tight text-fg-mute">{tile.note}</div>}
                   </div>
                 ))}
+              </div>
+
+              {/* Costs the analyzer never sees — someone fronts them, and they
+                  are either the party's or one player's. */}
+              <div className="mt-2 rounded-xl border border-line bg-bg-2 p-2.5">
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold uppercase tracking-widest text-fg-dim">
+                    {t('map.psExtras')}
+                    {split.shared > 0 && (
+                      <span className="ml-1.5 font-normal normal-case tracking-normal text-fg-mute">
+                        {t('map.psExtraShared', { gp: gp(split.shared) })}
+                      </span>
+                    )}
+                  </span>
+                  <button
+                    onClick={addExtra}
+                    className="flex shrink-0 items-center gap-1 rounded-lg border border-line-2 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-fg-mute transition hover:border-accent hover:text-accent"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                    {t('map.psExtraAdd')}
+                  </button>
+                </div>
+                {extras.length === 0 ? (
+                  <p className="text-xs text-fg-mute">{t('map.psExtraEmpty')}</p>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {extras.map((x) => (
+                      <div key={x.id} className="flex flex-wrap items-center gap-1.5">
+                        <input
+                          value={x.concept}
+                          onChange={(e) => patchExtra(x.id, { concept: e.target.value })}
+                          placeholder={t('map.psExtraConcept')}
+                          className="h-8 min-w-0 flex-1 basis-32 rounded-lg border border-line bg-bg-2 px-2 text-sm outline-none transition placeholder:text-fg-mute focus:border-accent"
+                        />
+                        <input
+                          type="number"
+                          value={x.amount === 0 ? '' : String(x.amount)}
+                          min={0}
+                          step={1000}
+                          onChange={(e) => patchExtra(x.id, { amount: Math.max(0, parseInt(e.target.value, 10) || 0) })}
+                          placeholder={t('map.psExtraAmount')}
+                          aria-label={t('map.psExtraAmount')}
+                          className="h-8 w-24 shrink-0 rounded-lg border border-line bg-bg-2 px-2 text-right text-sm font-semibold tabular-nums outline-none transition focus:border-accent"
+                        />
+                        {/* Who put the gold up front — they get made whole. */}
+                        <select
+                          value={x.paidBy}
+                          onChange={(e) => patchExtra(x.id, { paidBy: e.target.value })}
+                          aria-label={t('map.psExtraPaidBy')}
+                          title={t('map.psExtraPaidBy')}
+                          className="h-8 w-32 shrink-0 rounded-lg border border-line bg-bg-2 px-1.5 text-xs font-semibold outline-none transition focus:border-accent"
+                        >
+                          <option value="">{t('map.psExtraPaidBy')}…</option>
+                          {members.map((m) => (
+                            <option key={m.name} value={m.name}>
+                              {m.name}
+                            </option>
+                          ))}
+                        </select>
+                        {/* Who bears it: the party splits it, or one player eats it. */}
+                        <select
+                          value={x.chargedTo}
+                          onChange={(e) => patchExtra(x.id, { chargedTo: e.target.value })}
+                          aria-label={t('map.psExtraChargedTo')}
+                          title={t('map.psExtraChargedTo')}
+                          className="h-8 w-32 shrink-0 rounded-lg border border-line bg-bg-2 px-1.5 text-xs font-semibold outline-none transition focus:border-accent"
+                        >
+                          <option value="">{t('map.psExtraAll')}</option>
+                          {members.map((m) => (
+                            <option key={m.name} value={m.name}>
+                              {t('map.psExtraOnly', { name: m.name })}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => dropExtra(x.id)}
+                          aria-label={t('map.psExtraRemove')}
+                          title={t('map.psExtraRemove')}
+                          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-line-2 text-fg-mute transition hover:border-accent hover:text-accent"
+                        >
+                          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                            <path d="M18 6 6 18M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-1.5 text-xs text-fg-mute">{t('map.psExtraNote')}</p>
               </div>
 
               {/* Per-player: what they looted, what they burned, and the gap to
@@ -168,7 +281,8 @@ export default function PartySplitTool({
                       <th className="px-2 py-1 text-left">{t('map.psPlayer')}</th>
                       <th className="px-2 py-1 text-right">{t('map.hpLoot')}</th>
                       <th className="px-2 py-1 text-right">{t('map.psWaste')}</th>
-                      <th className="px-2 py-1 text-right">{t('map.hpBalance')}</th>
+                      {anyExtras && <th className="px-2 py-1 text-right">{t('map.psExtraCol')}</th>}
+                      <th className="px-2 py-1 text-right">{anyExtras ? t('map.psNet') : t('map.hpBalance')}</th>
                       <th className="px-2 py-1 text-right">{t('map.psAdjust')}</th>
                     </tr>
                   </thead>
@@ -181,7 +295,24 @@ export default function PartySplitTool({
                         </td>
                         <td className="px-2 py-1 text-right tabular-nums text-fg-dim">{gp(r.loot)}</td>
                         <td className="px-2 py-1 text-right tabular-nums text-fg-dim">{gp(r.supplies)}</td>
-                        <td className={`px-2 py-1 text-right font-semibold tabular-nums ${r.balance >= 0 ? 'text-fg' : 'text-accent'}`}>{gp(r.balance)}</td>
+                        {anyExtras && (
+                          <td className="whitespace-nowrap px-2 py-1 text-right tabular-nums text-fg-dim">
+                            {r.paid > 0 ? <span className="text-accent">-{gp(r.paid)}</span> : r.charged > 0 ? null : '—'}
+                            {/* Charged to them alone: it comes off their target,
+                                not off the party pot. */}
+                            {r.charged > 0 && (
+                              <span className="ml-1 text-[10px] text-fg-mute" title={t('map.psExtraOwnTitle')}>
+                                ({t('map.psExtraOwn', { gp: gp(r.charged) })})
+                              </span>
+                            )}
+                          </td>
+                        )}
+                        <td
+                          className={`px-2 py-1 text-right font-semibold tabular-nums ${r.net >= 0 ? 'text-fg' : 'text-accent'}`}
+                          title={anyExtras ? t('map.psNetTitle', { gp: gp(r.balance) }) : undefined}
+                        >
+                          {gp(r.net)}
+                        </td>
                         <td className="px-2 py-1 text-right">
                           {r.delta === 0 ? (
                             <span className="text-xs text-fg-mute">{t('map.psEven')}</span>

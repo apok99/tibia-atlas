@@ -6,6 +6,7 @@ import { ThemeToggle } from './ThemeToggle'
 import { PlayerBar } from './PlayerBar'
 import { SearchBox } from './SearchBox'
 import { CookieBanner } from './CookieBanner'
+import { SiteGuide } from './SiteGuide'
 
 type NavItem = { to: string; key: string; end?: boolean }
 
@@ -68,6 +69,8 @@ function CompassRose({ className = '' }: { className?: string }) {
 export function Layout() {
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
+  // The site manual — opened from the footer (the map has its own "?" slot).
+  const [guideOpen, setGuideOpen] = useState(false)
   const location = useLocation()
   const year = new Date().getFullYear()
   const headerRef = useRef<HTMLElement>(null)
@@ -267,6 +270,13 @@ export function Layout() {
               />
             </p>
             <div className="flex shrink-0 items-center gap-4">
+              <button
+                type="button"
+                onClick={() => setGuideOpen(true)}
+                className="cursor-pointer underline underline-offset-2 hover:text-fg"
+              >
+                {t('guide.open')}
+              </button>
               <Link to="/about" className="underline underline-offset-2 hover:text-fg">
                 {t('footer.about')}
               </Link>
@@ -276,6 +286,8 @@ export function Layout() {
         </div>
       </footer>
       )}
+
+      <SiteGuide open={guideOpen} onClose={() => setGuideOpen(false)} />
     </div>
   )
 }

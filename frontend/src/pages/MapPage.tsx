@@ -75,7 +75,7 @@ import { useHunts, type HuntZone } from '../hooks/useHunts'
 import { useZoneProtection, useZoneSummary, type ZoneBox, type ZoneSummary } from '../hooks/useZoneSummary'
 import { TypeIcon } from '../components/TypeIcon'
 import { Skeleton } from '../components/Skeleton'
-import { MapTutorial, mapTourSeen } from '../components/MapTutorial'
+import { SiteGuide, guideSeen } from '../components/SiteGuide'
 import HuntProfitTool from '../components/HuntProfitTool'
 import { hasSharedSummary } from '../lib/huntShare'
 import { MapKillPulse } from '../components/MapKillPulse'
@@ -3021,7 +3021,7 @@ export function MapPage() {
       initial.routeEnd ||
       initial.build
     )
-    if (!fromLink && !mapTourSeen()) setShowTour(true)
+    if (!fromLink && !guideSeen()) setShowTour(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -6840,14 +6840,14 @@ export function MapPage() {
               )}
             </button>
 
-            {/* How-to tour — last slot in the bar, where help conventionally sits. */}
+            {/* Site guide — last slot in the bar, where help conventionally sits. */}
             <button
               onClick={() => {
-                openPanel(null) // the tour covers the map — clear the cards first
+                openPanel(null) // the guide covers the map — clear the cards first
                 setShowTour(true)
               }}
-              title={t('map.tutorial.open')}
-              aria-label={t('map.tutorial.open')}
+              title={t('guide.open')}
+              aria-label={t('guide.open')}
               className={`${SLOT} ${SLOT_OFF}`}
             >
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -8783,7 +8783,8 @@ export function MapPage() {
       )}
 
       {/* Guided how-to — auto-opens on a first visit, reopenable from the "?" slot */}
-      <MapTutorial open={showTour} onClose={() => setShowTour(false)} />
+      {/* The site manual, opened on the map's own chapter. */}
+      <SiteGuide open={showTour} chapter="map" onClose={() => setShowTour(false)} />
     </div>
   )
 }

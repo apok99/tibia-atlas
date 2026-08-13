@@ -9,7 +9,26 @@
 // a player who burned potions all session gets paid back.
 import type { Member } from './huntAnalyzer'
 
+/**
+ * A cost the analyzer never saw — blessings, a boss entry fee, a rope bought
+ * mid-hunt. Someone fronted the gold (`paidBy`) and someone bears it: the whole
+ * party when `chargedTo` is empty, or that one player when it names them.
+ */
+export type Extra = {
+  id: string
+  concept: string
+  amount: number
+  paidBy: string
+  chargedTo: string
+}
+
 export type SplitRow = Member & {
+  /** Gold this player fronted for extras — out of their pocket already. */
+  paid: number
+  /** Extras that are this player's alone to bear. */
+  charged: number
+  /** Where they really stand: analyzer balance minus what they fronted. */
+  net: number
   /** Gold this player must still receive (+) or hand over (−) to end level. */
   delta: number
 }
@@ -18,23 +37,56 @@ export type Transfer = { from: string; to: string; amount: number }
 
 export type Split = {
   rows: SplitRow[]
-  /** Party balance ÷ players — what each member ends the session with. */
+  /**
+   * The shared pot ÷ players — what each member ends on, before anything
+   * charged to them personally.
+   */
   fair: number
+  /** Party balance from the analyzer, before extras. */
   total: number
+  /** Extras the whole party bears. */
+  shared: number
   players: number
   transfers: Transfer[]
 }
 
-export function splitParty(members: Member[]): Split {
+export function splitParty(members: Member[], extras: Extra[] = []): Split {
   const players = members.length
+  const names = new Set(members.map((m) => m.name))
+
+  // An extra only counts once it names a real payer — a half-filled row is
+  // still being typed, not a cost. A "charged to" pointing at someone who left
+  // the paste falls back to the party, which is the safe reading.
+  const paid = new Map<string, number>()
+  const charged = new Map<string, number>()
+  let shared = 0
+  for (const e of extras) {
+    const amount = Math.round(Number(e.amount) || 0)
+    if (amount <= 0 || !names.has(e.paidBy)) continue
+    paid.set(e.paidBy, (paid.get(e.paidBy) ?? 0) + amount)
+    if (e.chargedTo && names.has(e.chargedTo)) {
+      charged.set(e.chargedTo, (charged.get(e.chargedTo) ?? 0) + amount)
+    } else {
+      shared += amount
+    }
+  }
+
   const total = members.reduce((s, m) => s + m.balance, 0)
-  const fair = players > 0 ? total / players : 0
+  // What the party splits is its balance minus the costs the party agreed to
+  // carry. Anything charged to one player is NOT in this pot — it comes off
+  // that player's own target below, so the payer still gets made whole.
+  const fair = players > 0 ? (total - shared) / players : 0
 
   // Gold is an integer in game, so every adjustment is rounded — and rounding N
   // of them independently can leave the table not summing to zero. Push that
   // residue (a handful of gp at most) onto the biggest mover, so what everyone
   // pays always equals what everyone receives.
-  const rows: SplitRow[] = members.map((m) => ({ ...m, delta: Math.round(fair - m.balance) }))
+  const rows: SplitRow[] = members.map((m) => {
+    const p = paid.get(m.name) ?? 0
+    const c = charged.get(m.name) ?? 0
+    const net = m.balance - p
+    return { ...m, paid: p, charged: c, net, delta: Math.round(fair - c - net) }
+  })
   const residue = rows.reduce((s, r) => s + r.delta, 0)
   if (residue !== 0 && rows.length > 0) {
     let big = 0
@@ -61,7 +113,7 @@ export function splitParty(members: Member[]): Split {
     if (creditors[j].amt <= 0) j++
   }
 
-  return { rows, fair, total, players, transfers }
+  return { rows, fair, total, shared, players, transfers }
 }
 
 /**

@@ -859,7 +859,7 @@ html[data-theme='dark'] .ks-raid-badge {
   z-index: 500;
 }
 
-/* Map tutorial — a gentle fade+rise as each step swaps in. */
+/* Site guide — a gentle fade+rise as each chapter (or search) swaps in. */
 .tm-tour-step {
   animation: tm-tour-in 0.28s ease;
 }

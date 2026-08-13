@@ -21,8 +21,9 @@ use Illuminate\Support\Facades\DB;
  *   - `meta.ot.quest_area` (from tibia:etl-monster-combat) is the best signal but
  *     over-fires: it tags `killing_in_the_name_of`, which is a TASK list, not an
  *     instance — those 30 bosses live in the open world.
- * So the rule is: drop anything inside an instanced quest area, keep everything
- * else, and let raid/unique membership override the drop.
+ * So the rule is: drop anything the OT scripts gate behind a per-player cooldown
+ * ({@see INSTANCED}), drop anything inside an instanced quest area, and keep
+ * everything else.
  */
 class WorldBossRule
 {
@@ -74,10 +75,65 @@ class WorldBossRule
      *   killing_in_the_name_of  30  a task list — Kerberos, Leviathan, Shardhead,
      *                               Demodras, The Old Widow, Bretzecutioner…
      *   roshamuul                4  prison bosses on open respawn timers
-     *   the_curse_spreads        5  the Grimvale werebeast bosses
      *   dark_trails              3  tremor worm, Death Priest Shargon, The Ravager
+     *
+     * `the_curse_spreads` used to sit here too, on the assumption that the Grimvale
+     * werebeasts roam their lairs. They don't: `actions_portal_minis_grimvale.lua`
+     * teleports you into a sealed room, spawns the boss with `Game.createMonster`
+     * and sets a 10-hour PER-PLAYER cooldown. All five are in {@see INSTANCED}.
      */
-    public const OPEN_WORLD_QUESTS = ['killing_in_the_name_of', 'roshamuul', 'the_curse_spreads', 'dark_trails'];
+    public const OPEN_WORLD_QUESTS = ['killing_in_the_name_of', 'roshamuul', 'dark_trails'];
+
+    /**
+     * Bosses the OT server hands out through a lever or a portal with a PER-PLAYER
+     * cooldown (`setBossCooldown`) — generated from the script layer by
+     * `tools/gen-instanced-bosses.mjs`, matched on the killstats race name.
+     *
+     * This exists because {@see INSTANCED_QUESTS} reads `meta.ot.quest_area`, which
+     * is just the monster lua's folder under `monster/quests/` — and a lever boss
+     * whose lua sits in `monster/bosses/` reports no quest area at all. That is how
+     * the whole Rotten Blood set (Bakragore, Ichgahal, Murcion, Chagorz, Vemiath)
+     * plus Ahau, Kroazur, Mitmah Vanguard, The Brainstealer and The Monster stayed
+     * on the rail: nothing about the folder says "lever", the script does.
+     *
+     * Names, not slugs, deliberately: the roster is keyed by killstats race name,
+     * which the OT scripts give us verbatim, and it survives slug disambiguation
+     * (`pythius-the-rotten-creature`). Compared lowercased.
+     *
+     * Regenerate after pulling the OT clone:
+     *   node tools/gen-instanced-bosses.mjs
+     */
+    public const INSTANCED = [
+        'ahau', 'amenef the burning', 'anomaly',
+        'arbaziloth', 'ascending ferumbras', 'bakragore',
+        'black vixen', 'bloodback', 'brain head',
+        'brokul', 'chagorz', 'count vlarkorth',
+        'darkfang', 'duke krule', 'earl osam',
+        'eradicator', 'faceless bane', 'foreshock',
+        'gelidrazah the frozen', 'ghulosh', 'gorzindel',
+        'goshnar\'s cruelty', 'goshnar\'s greed', 'goshnar\'s hatred',
+        'goshnar\'s malice', 'goshnar\'s megalomania purple', 'goshnar\'s spite',
+        'grand master oberon', 'ichgahal', 'irgix the flimsy',
+        'kalyassa', 'katex blood tongue', 'king zelos',
+        'kroazur', 'lady tenebris', 'lloyd',
+        'lokathmor', 'lord azaram', 'magma bubble',
+        'mazoran', 'mazzinor', 'megasylvan yselda',
+        'mitmah vanguard', 'murcion', 'neferi the spy',
+        'outburst', 'plagirath', 'ragiaz',
+        'ratmiral blackwhiskers', 'razzagorn', 'rupture',
+        'scarlett etzel', 'shadowpelt', 'sharpclaw',
+        'shulgrax', 'sir nictros', 'sister hetai',
+        'soul of dragonking zyrtarch', 'spirit of fertility', 'srezz yellow eyes',
+        'tarbaz', 'tazhadur', 'tentugly\'s head',
+        'the brainstealer', 'the dread maiden', 'the enraged thorn knight',
+        'the fear feaster', 'the last lore keeper', 'the lord of the lice',
+        'the monster', 'the nightmare beast', 'the pale worm',
+        'the primal menace', 'the scourge of oblivion', 'the shatterer',
+        'the time guardian', 'the unwelcome', 'timira the many-headed',
+        'unaz the mean', 'urmahlullu the immaculate', 'utua stone sting',
+        'vemiath', 'vok the freakish', 'yirkas blue scales',
+        'zamulosh', 'zorvorax',
+    ];
 
     /**
      * Never on the rail regardless of any other signal: encounter phases, alternate
@@ -104,6 +160,10 @@ class WorldBossRule
         'fallen-moohtah-master-ghar',
         'ferumbras-soul-splinter',
         'ghulosh-deathgaze',
+        // The two halves Izcandar the Banished splits into in the Dream Scar; they
+        // share his encounter timer (`IzcandarTimer`) and have no spawn of their own.
+        'izcandar-champion-of-summer',
+        'izcandar-champion-of-winter',
         'melting-frozen-horror',
         'reflection-of-obujos',
         'shard-of-corruption',
@@ -140,15 +200,20 @@ class WorldBossRule
      *
      * A boss with no `meta.ot` at all passes (COALESCE → ''), which is what keeps
      * Ghazbaran and Gaz'haragoth on the rail; the instanced ones among those are
-     * caught by slug in {@see NEVER}.
+     * caught by name in {@see INSTANCED} or by slug in {@see NEVER}.
      */
     public static function sql(string $alias = 'e'): string
     {
         $quests = collect(self::INSTANCED_QUESTS)->map(fn ($q) => DB::getPdo()->quote($q))->implode(',');
         $never = collect(self::NEVER)->map(fn ($s) => DB::getPdo()->quote($s))->implode(',');
+        $instanced = collect(self::INSTANCED)->map(fn ($n) => DB::getPdo()->quote($n))->implode(',');
 
         return "COALESCE({$alias}.meta->'ot'->>'quest_area', '') NOT IN ({$quests})"
             ." AND {$alias}.slug NOT IN ({$never})"
+            // Lever/portal bosses on a per-player cooldown, keyed by race name
+            // because that is what the OT scripts hand us ({@see INSTANCED}).
+            ." AND NOT EXISTS (SELECT 1 FROM tibia_races tr2 WHERE tr2.entry_id = {$alias}.id"
+            ." AND lower(tr2.name) IN ({$instanced}))"
             // Must be trackable at all: an entry with no tibia_races link can never
             // receive a kill-stats reading, so on the rail it would say "no recent
             // spawn data" forever by construction. This is what keeps the long tail

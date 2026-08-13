@@ -572,7 +572,7 @@ const resources = {
         zoneAvoid: 'Avoid using',
         zoneImmune: '{{count}} immune',
         zoneImmune_other: '{{count}} immune',
-        zoneRangedLine: '{{ranged}} of {{total}} species attack from range',
+        zoneRangedLine: '{{ranged}} of {{total}} species keep their distance',
         zoneFleesLine: '{{fleeing}} of {{total}} species flee when wounded',
         zoneFlees: 'flees <{{hp}} hp',
         zoneFleesHint: 'Turns and runs when its health drops below this — expect chasing',
@@ -849,9 +849,27 @@ const resources = {
         psNeedParty: 'This needs a Party Hunt Analyzer — the one with a block per player. A solo analyzer has nothing to split.',
         psTotal: 'Party balance',
         psFair: 'Each player',
+        psFairNote: 'after {{gp}} of shared extras',
         psPlayer: 'Player',
         psWaste: 'Supplies',
         psAdjust: 'Settle-up',
+        psExtras: 'Extra costs',
+        psExtraShared: '{{gp}} on the party',
+        psExtraAdd: 'Add',
+        psExtraEmpty: 'Nothing yet. Add anything the analyzer never saw — blessings, a boss entry fee, a rope someone bought for the team.',
+        psExtraConcept: 'What for',
+        psExtraAmount: 'Amount',
+        psExtraPaidBy: 'Paid by',
+        psExtraChargedTo: 'Charged to',
+        psExtraAll: 'The whole party',
+        psExtraOnly: 'Only {{name}}',
+        psExtraRemove: 'Remove',
+        psExtraCol: 'Extras',
+        psExtraOwn: '{{gp}} theirs',
+        psExtraOwnTitle: 'Charged to this player alone — the party does not share it.',
+        psExtraNote: 'Whoever fronted the gold always gets it back. “The whole party” shares the cost between everyone; charge it to one player instead and they bear it alone, paying back whoever put it up.',
+        psNet: 'Net',
+        psNetTitle: 'Analyzer balance {{gp}}, before the extras they fronted.',
         psYou: 'you',
         psGets: 'gets',
         psPays: 'pays',
@@ -933,59 +951,6 @@ const resources = {
         hotHint: 'Tap to plot on the map',
         hotEmpty: 'No trending data yet.',
         hotOn: 'On the map',
-        tutorial: {
-          open: 'How to use',
-          title: 'How to use the map',
-          subtitle: 'A quick tour of everything you can do here.',
-          step: 'Step {{n}} of {{total}}',
-          back: 'Back',
-          next: 'Next',
-          done: 'Got it',
-          skip: 'Skip tour',
-          dontShow: 'Don’t show this again',
-          steps: {
-            nav: {
-              title: 'Move around the world',
-              body: 'Drag to pan and scroll to zoom. The column on the right switches floors: 0 is the surface, +N goes up, −N goes down. Your coordinates show in the bottom-left corner.',
-            },
-            creature: {
-              title: 'Find a creature',
-              body: 'Type a creature’s name to plot every spawn on the map. Use ◀ 1/4 ▶ to jump between respawn areas, and the ⭐ button to fly straight to the best (densest) one.',
-            },
-            item: {
-              title: 'Where does it drop?',
-              body: 'Flip the search to Item mode to plot every creature that drops a given item — perfect when you’re farming one specific loot.',
-            },
-            spawns: {
-              title: 'Spawns & profit heat',
-              body: 'The eye button paints every spawn on the map. Colours run cold → hot by profit (loot gold, averaged per spot with a light nudge for how packed the area is); the coin badge is the spot’s total loot.',
-            },
-            boss: {
-              title: 'Bosses & Boss Watch',
-              body: 'The skull button shows bosses only. The Boss Watch rail on the left ranks raid bosses by how likely they are up right now — 🔥 likely up, 🌡 maybe, ❄ just killed. Tap one to plot where it spawns.',
-            },
-            directions: {
-              title: 'How to get there',
-              body: 'Open Directions, pick a start and a destination (a city, or any point you click on the map), and get a step-by-step route — walking, boats and stairs, plus any rope or shovel you’ll need to bring.',
-            },
-            routes: {
-              title: 'Create, save & share',
-              body: 'Build your own route by dropping points, name it and publish it for others. Browse community routes, drop your own markers, and share any view with the link button.',
-            },
-            houses: {
-              title: 'Houses & guildhalls',
-              body: 'Turn on the Houses layer to see every house and guildhall on the map. Open “Available houses” to browse what’s free or up for auction right now, with live rent and owner from the server — and ring the bell on any house to get notified when it frees up.',
-            },
-            news: {
-              title: 'Live world news',
-              body: 'The ● LIVE ticker up top streams what’s happening on your world right now: houses freeing up, auctions, boss activity and the day’s most-hunted creature. It refreshes with each server save.',
-            },
-            character: {
-              title: 'Your character',
-              body: 'Open Your character and type your name to load your profile — level, vocation, guild, house and recent deaths — straight from the official server, so the map is centred on your own adventure.',
-            },
-          },
-        },
         disclaimer: 'Map data © CipSoft GmbH. Tiles from the in-game minimap — not affiliated with CipSoft.',
       },
       soundtrack: {
@@ -1240,6 +1205,245 @@ const resources = {
         event: 'Historical events',
         item: 'Items',
         concept: 'Concepts',
+      },
+      // "How to use Tibia Atlas" — the site's manual (components/SiteGuide).
+      // One chapter per area of the site; each topic describes a real control.
+      guide: {
+        open: 'How to use',
+        kicker: 'Site guide',
+        title: 'How to use Tibia Atlas',
+        subtitle: 'Everything you can do here, chapter by chapter.',
+        search: 'Search the guide…',
+        searchClear: 'Clear search',
+        chapters: 'Chapters',
+        results_one: '{{count}} result',
+        results_other: '{{count}} results',
+        noResults: 'Nothing matches “{{q}}”. Try “hunt”, “houses”, “route” or “loot”.',
+        go: 'Open',
+        nextChapter: 'Next chapter',
+        done: 'Got it',
+        close: 'Close',
+        hint: 'Reopen this guide any time: the “?” button on the map, or the footer link.',
+        ch: {
+          start: {
+            title: 'Getting started',
+            blurb: 'Just enough to find your way: how the site is laid out, how to search, and how to make it yours. No account needed for any of it.',
+            t: {
+              nav: {
+                title: 'How the site is laid out',
+                body: 'The map is the landing page and where most tools live. The top menu holds the Bestiary, Items, kill statistics, the soundtrack and the three daily games.',
+              },
+              search: {
+                title: 'The search box up top',
+                body: 'Type in the header search and it suggests creatures, items and articles at once — pick one to jump straight to its page, or hit Enter for the full result list.',
+              },
+              character: {
+                title: 'Link your character',
+                body: 'Type your name once under “Your character” (on the map) and we read your profile from the official server: level and vocation for the hunt finder, your house and recent deaths, and your name on the game leaderboards.',
+              },
+              prefs: {
+                title: 'Language, theme and your data',
+                body: 'Top right switches between English and Spanish and between light and dark. Your markers, your gear set, your saved hunts and your item collection stay in your browser.',
+              },
+            },
+          },
+          map: {
+            title: 'The map',
+            blurb: 'The site’s front page: the whole world floor by floor, with everything we know drawn on top. Each button in the bottom bar turns on a layer.',
+            t: {
+              move: {
+                title: 'Move around the world',
+                body: 'Drag to pan and scroll to zoom. The column on the right switches floors: 0 is the surface, +N goes up, −N goes down. Your coordinates show bottom-left.',
+              },
+              creature: {
+                title: 'Find a creature',
+                body: 'Type a name to plot every spawn. Use ◀ 1/4 ▶ to jump between respawn areas and ⭐ to fly to the best one (densest and most compact — ideal for tasks). From there open its page, route to it, or check how much it’s hunted.',
+              },
+              item: {
+                title: 'Where does an item drop?',
+                body: 'Flip the search to Item mode to plot every creature that drops it, with shortcuts to the NPC who sells it cheapest and the one who pays you most.',
+              },
+              npc: {
+                title: 'Find an NPC',
+                body: 'NPC mode locates traders and characters on the map and routes to them from the nearest city.',
+              },
+              spawns: {
+                title: 'Spawns & profit heat',
+                body: 'The eye button paints every spawn. Colours run cold to hot by profit (loot gold, averaged per spot with a nudge for how packed the area is); the coin badge is the spot’s total loot.',
+              },
+              boss: {
+                title: 'Bosses & Boss Watch',
+                body: 'The skull leaves bosses only, filtered by spawn type. The Boss Watch rail ranks them by how likely they are up right now — 🔥 likely up, 🌡 maybe, ❄ just killed — and you can follow the ones you care about.',
+              },
+              houses: {
+                title: 'Houses & guildhalls',
+                body: 'The Houses layer draws every house and guildhall with live rent status. “Available houses” filters what’s free or up for auction, and the bell notifies you when a house — or a whole town or world — frees up.',
+              },
+              lore: {
+                title: 'Lore & mysteries',
+                body: 'Story points scattered across the world: tap one and the atlas article about that place opens without leaving the map.',
+              },
+              raids: {
+                title: 'Invasions & raids',
+                body: 'Every invasion written into the server: which creatures it brings, in what waves, how often it’s rolled, and the exact announcements the world shouts before it starts.',
+              },
+              changes: {
+                title: 'Mini world changes',
+                body: 'Fury gates, the Nightmare Isles, Yasir, the full moon over Grimvale… The layer marks every spot each change can land on, with the town crier’s literal lines so you can recognise it.',
+              },
+              markers: {
+                title: 'Markers',
+                body: 'The markers layer brings in the minimap points: levitate spots, levers, depots and quest tiles. “+ Add marker” drops your own, and they travel inside the link you share.',
+              },
+              directions: {
+                title: 'How to get there',
+                body: 'Pick a start and a destination (a city, or any point you click) and get a step-by-step route: walking, boats and stairs, flagging the rope, shovel or levitate you need to bring.',
+              },
+              routes: {
+                title: 'Create, save & share routes',
+                body: 'Build a route by dropping points, name it and publish it. The community gallery loads other people’s routes, and the link button shares exactly the view you’re looking at.',
+              },
+              news: {
+                title: 'Live world news',
+                body: 'The ● LIVE ticker streams what’s happening on your world: houses freeing up, auctions and bids, bosses killed and the day’s most-hunted creature. It refreshes with each server save.',
+              },
+              char: {
+                title: 'Your character & gear',
+                body: 'Load your profile and build “Your gear” piece by piece: we work out your real stats — damage, resistances and how much your armour shaves off each hit — and the hunt finder scores zones with that exact set.',
+              },
+              world: {
+                title: 'World & sharing',
+                body: 'Pick your world up top so houses, news and kills are yours. The share button copies a link that reopens exactly the current view.',
+              },
+            },
+          },
+          tools: {
+            title: 'Hunting tools',
+            blurb: 'The map’s toolbox: what you open before heading out, and what you open when you come back with the analyzer in hand.',
+            t: {
+              hunt: {
+                title: 'Hunt finder',
+                body: 'Give it your vocation and level and we rank the game’s zones by damage affinity, experience, net profit and danger, using the real numbers from the server files. With a saved gear set, it scores using yours.',
+              },
+              zone: {
+                title: 'Analyse a zone',
+                body: 'Click two corners on the map and we summarise what lives inside: the damage coming at you, what element to hit them with, which are immune, which attack at range and which flee when hurt.',
+              },
+              profit: {
+                title: 'Real hunt profit',
+                body: 'Paste your Hunt Analyzer and we subtract what the session actually cost: imbuement wear, silver-token recharges, charm removals and prey rerolls. It also breaks down loot, kills, damage and healing per hour.',
+              },
+              split: {
+                title: 'Party split',
+                body: 'Paste the Party Hunt Analyzer and we work out who pays whom so everyone ends up even, including the extras the analyzer never saw. You get the lines ready to dictate to a banker NPC.',
+              },
+              log: {
+                title: 'Hunt log',
+                body: 'Save each session you calculate: the History tab totals them by day, month and year with hours, profit, waste and your best day. It stays in your browser, and you can share a summary by link.',
+              },
+              bless: {
+                title: 'Blessing pilgrimage',
+                body: 'Pick 5 or 7 blessings and we plot the whole round of shrines in the shortest order, starting from the city nearest your view and flagging the boats and levitates on the way.',
+              },
+              rashid: {
+                title: 'Rashid & Yasir',
+                body: 'Where Rashid is today, how long until he moves city, and his full weekly rotation. For Yasir we mark the three ports his boat can dock at.',
+              },
+            },
+          },
+          bestiary: {
+            title: 'Bestiary',
+            blurb: 'Every creature in the game with its real numbers, its loot and where to find it.',
+            t: {
+              browse: {
+                title: 'Browse the bestiary',
+                body: 'Filter by class, difficulty, element or hitpoints and sort however you like. Every card opens the creature’s full page.',
+              },
+              entry: {
+                title: 'A creature’s page',
+                body: 'Hitpoints, experience, speed, whether it counts for the bestiary and what it’s made of — plus the written lore and related atlas entries.',
+              },
+              combat: {
+                title: 'Combat & resistances',
+                body: 'Its attacks and abilities exactly as the server defines them, with what it resists and what hurts it most — the same data the hunt finder and zone analysis run on.',
+              },
+              loot: {
+                title: 'Loot & where it spawns',
+                body: 'Everything it drops with drop chances, and a button to see it on the map with all its spawns.',
+              },
+              kills: {
+                title: 'How much it’s hunted',
+                body: 'Each creature’s kill pulse: how many died yesterday, how many over the last 30 days, and how many players it killed back.',
+              },
+            },
+          },
+          items: {
+            title: 'Items & gear',
+            blurb: 'The full equipment catalogue — to collect, to compare, and to decide what you wear.',
+            t: {
+              album: {
+                title: 'The item album',
+                body: 'Every item as a sticker album: filter by category, tick off the ones you own and watch your collection fill up.',
+              },
+              detail: {
+                title: 'Item page & comparison',
+                body: 'Open an item for its stats, requirements and value, and put it side by side with another to decide which one you take.',
+              },
+              trade: {
+                title: 'Where to buy and sell it',
+                body: 'Which NPCs trade it and at what price, with the best deal highlighted and the route to them on the map — travelling traders like Rashid and Yasir included.',
+              },
+              config: {
+                title: 'Gear configurator',
+                body: 'Set your level and vocation and we suggest the best piece for each slot, with alternatives. It’s guidance: raw stats only, no imbuements or set bonuses.',
+              },
+            },
+          },
+          data: {
+            title: 'World data',
+            blurb: 'The server’s numbers, captured every day across all worlds.',
+            t: {
+              killstats: {
+                title: 'Kill statistics',
+                body: 'The official kill statistics per world: which creatures kill the most players, which are hunted most, and how the figures shift month to month.',
+              },
+              pulse: {
+                title: 'Most searched & world pulse',
+                body: 'On the map, “Most searched” shows the creatures people look up here, and the kill pulse sums up what fell on your world yesterday.',
+              },
+              prices: {
+                title: 'House prices',
+                body: 'Every auction that closes is recorded: the median paid per town and the bid history of each house.',
+              },
+              soundtrack: {
+                title: 'The music of Tibia',
+                body: 'The official soundtrack with its own player — press play and let it run while you explore the map.',
+              },
+            },
+          },
+          games: {
+            title: 'Daily games',
+            blurb: 'Three daily challenges, the same for everyone, rolling over at each server save.',
+            t: {
+              wordle: {
+                title: 'Bestiordle',
+                body: 'Guess the creature of the day in six tries. The length changes daily and every guess has to be a real Tibia creature.',
+              },
+              altar: {
+                title: 'The Bestiary Altar',
+                body: 'A creature veiled in shadow and a single guess. Stuck? Reveal hints from its stats before you commit.',
+              },
+              geo: {
+                title: 'The Cartographer',
+                body: 'A corner of the map under a spotlight: name the zone in one guess, and the reveal opens the map right where it was.',
+              },
+              board: {
+                title: 'Daily leaderboards',
+                body: 'All three games have a daily top 10 — fewest attempts first, time breaks ties. Link your character to appear under your own name.',
+              },
+            },
+          },
+        },
       },
       common: {
         loading: 'Loading…',
@@ -1811,7 +2015,7 @@ const resources = {
         zoneAvoid: 'Evita usar',
         zoneImmune: '{{count}} inmune',
         zoneImmune_other: '{{count}} inmunes',
-        zoneRangedLine: '{{ranged}} de {{total}} especies pegan a distancia',
+        zoneRangedLine: '{{ranged}} de {{total}} especies mantienen la distancia',
         zoneFleesLine: '{{fleeing}} de {{total}} especies huyen al herirlas',
         zoneFlees: 'huye <{{hp}} hp',
         zoneFleesHint: 'Se da la vuelta y corre cuando su vida baja de ese umbral — toca perseguir',
@@ -2088,9 +2292,27 @@ const resources = {
         psNeedParty: 'Esto necesita un Party Hunt Analyzer — el que trae un bloque por jugador. Un analyzer en solo no tiene nada que repartir.',
         psTotal: 'Balance del party',
         psFair: 'Por jugador',
+        psFairNote: 'tras {{gp}} de extras compartidos',
         psPlayer: 'Jugador',
         psWaste: 'Supplies',
         psAdjust: 'Ajuste',
+        psExtras: 'Gastos extra',
+        psExtraShared: '{{gp}} a cuenta del party',
+        psExtraAdd: 'Añadir',
+        psExtraEmpty: 'Nada por ahora. Añade lo que el analyzer nunca vio — blessings, la entrada a un boss, una cuerda que alguien compró para el grupo.',
+        psExtraConcept: 'Concepto',
+        psExtraAmount: 'Importe',
+        psExtraPaidBy: 'Lo pagó',
+        psExtraChargedTo: 'A cargo de',
+        psExtraAll: 'Todo el party',
+        psExtraOnly: 'Solo {{name}}',
+        psExtraRemove: 'Quitar',
+        psExtraCol: 'Extras',
+        psExtraOwn: '{{gp}} suyos',
+        psExtraOwnTitle: 'A cargo de este jugador — el party no lo comparte.',
+        psExtraNote: 'Quien puso el oro siempre lo recupera. «Todo el party» reparte el gasto entre todos; cárgaselo a un jugador y lo paga él solo, devolviéndoselo a quien lo adelantó.',
+        psNet: 'Neto',
+        psNetTitle: 'Balance del analyzer {{gp}}, antes de los extras que adelantó.',
         psYou: 'tú',
         psGets: 'recibe',
         psPays: 'paga',
@@ -2172,59 +2394,6 @@ const resources = {
         hotHint: 'Toca para ver en el mapa',
         hotEmpty: 'Aún no hay tendencias.',
         hotOn: 'En el mapa',
-        tutorial: {
-          open: 'Cómo se usa',
-          title: 'Cómo usar el mapa',
-          subtitle: 'Un recorrido rápido por todo lo que puedes hacer aquí.',
-          step: 'Paso {{n}} de {{total}}',
-          back: 'Atrás',
-          next: 'Siguiente',
-          done: 'Entendido',
-          skip: 'Saltar',
-          dontShow: 'No volver a mostrar',
-          steps: {
-            nav: {
-              title: 'Muévete por el mundo',
-              body: 'Arrastra para desplazarte y usa la rueda para acercar. La columna de la derecha cambia de piso: 0 es la superficie, +N sube, −N baja. Tus coordenadas se ven abajo a la izquierda.',
-            },
-            creature: {
-              title: 'Busca una criatura',
-              body: 'Escribe el nombre de una criatura para ver todos sus spawns en el mapa. Usa ◀ 1/4 ▶ para saltar entre zonas de respawn, y el botón ⭐ para ir directo a la mejor (la más densa).',
-            },
-            item: {
-              title: '¿Dónde dropea?',
-              body: 'Cambia la búsqueda al modo Objeto para ver todas las criaturas que sueltan un objeto — ideal cuando farmeas un loot concreto.',
-            },
-            spawns: {
-              title: 'Spawns y mapa de calor',
-              body: 'El botón del ojo pinta todos los spawns del mapa. Los colores van de frío → caliente según la ganancia (oro del loot, promediado por punto con un pequeño extra según lo apretada que esté la zona); la moneda muestra el loot total del punto.',
-            },
-            boss: {
-              title: 'Jefes y Boss Watch',
-              body: 'El botón de la calavera muestra solo jefes. La barra Boss Watch de la izquierda ordena los raid bosses por probabilidad de estar activos ahora — 🔥 probablemente activo, 🌡 quizá, ❄ recién matado. Toca uno para ver dónde aparece.',
-            },
-            directions: {
-              title: 'Cómo llegar',
-              body: 'Abre Cómo llegar, elige un origen y un destino (una ciudad, o cualquier punto que toques en el mapa) y obtén una ruta paso a paso — a pie, en barco y por escaleras, con la cuerda o pala que debas llevar.',
-            },
-            routes: {
-              title: 'Crea, guarda y comparte',
-              body: 'Crea tu propia ruta colocando puntos, ponle nombre y publícala para los demás. Explora rutas de la comunidad, coloca tus marcadores y comparte cualquier vista con el botón de enlace.',
-            },
-            houses: {
-              title: 'Casas y guildhalls',
-              body: 'Activa la capa Casas para ver todas las casas y guildhalls en el mapa. Abre «Casas disponibles» para explorar las que están libres o en subasta ahora mismo, con el alquiler y el dueño en vivo desde el servidor — y toca la campana de cualquier casa para avisarte cuando quede libre.',
-            },
-            news: {
-              title: 'Noticias en vivo',
-              body: 'El marcador ● EN VIVO de arriba transmite lo que pasa en tu mundo ahora mismo: casas que quedan libres, subastas, actividad de jefes y la criatura más cazada del día. Se actualiza con cada server save.',
-            },
-            character: {
-              title: 'Tu personaje',
-              body: 'Abre Tu personaje y escribe tu nombre para cargar tu perfil — nivel, vocación, guild, casa y muertes recientes — directo del servidor oficial, para centrar el mapa en tu propia aventura.',
-            },
-          },
-        },
         disclaimer: 'Datos del mapa © CipSoft GmbH. Tiles del minimapa del juego — sin afiliación con CipSoft.',
       },
       soundtrack: {
@@ -2479,6 +2648,245 @@ const resources = {
         event: 'Eventos históricos',
         item: 'Objetos',
         concept: 'Conceptos',
+      },
+      // «Cómo usar Tibia Atlas» — el manual completo de la web (components/SiteGuide).
+      // Un capítulo por zona de la web; cada apartado describe un control real.
+      guide: {
+        open: 'Cómo se usa',
+        kicker: 'Guía de la web',
+        title: 'Cómo usar Tibia Atlas',
+        subtitle: 'Todo lo que puedes hacer aquí, capítulo a capítulo.',
+        search: 'Buscar en la guía…',
+        searchClear: 'Limpiar búsqueda',
+        chapters: 'Capítulos',
+        results_one: '{{count}} resultado',
+        results_other: '{{count}} resultados',
+        noResults: 'Nada coincide con «{{q}}». Prueba con «hunt», «casas», «ruta» o «loot».',
+        go: 'Abrir',
+        nextChapter: 'Siguiente capítulo',
+        done: 'Entendido',
+        close: 'Cerrar',
+        hint: 'Vuelve a abrir esta guía cuando quieras: botón «?» del mapa o enlace del pie de página.',
+        ch: {
+          start: {
+            title: 'Primeros pasos',
+            blurb: 'Lo justo para orientarte: cómo está montada la web, cómo buscar y cómo dejarla a tu gusto. No hace falta cuenta para nada.',
+            t: {
+              nav: {
+                title: 'Cómo está organizada',
+                body: 'El mapa es la portada y donde vive la mayoría de las herramientas. En el menú de arriba tienes el Bestiario, los Items, las estadísticas de muertes, el soundtrack y los tres juegos diarios.',
+              },
+              search: {
+                title: 'El buscador de la cabecera',
+                body: 'Escribe en la caja de búsqueda y te sugiere criaturas, objetos y artículos a la vez; elige uno para ir directo a su ficha o pulsa Enter para ver todos los resultados.',
+              },
+              character: {
+                title: 'Vincula tu personaje',
+                body: 'Escribe tu nombre una vez en «Tu personaje» (en el mapa) y leemos tu perfil del servidor oficial: nivel y vocación para el buscador de hunt, tu casa y tus muertes recientes, y tu nombre en los rankings de los juegos.',
+              },
+              prefs: {
+                title: 'Idioma, tema y tus datos',
+                body: 'Arriba a la derecha cambias entre español e inglés y entre modo claro y oscuro. Tus marcadores, tu set, tus hunts guardadas y tu colección de items se quedan en tu navegador.',
+              },
+            },
+          },
+          map: {
+            title: 'El mapa',
+            blurb: 'La portada de la web: el mundo entero piso a piso, con todo lo que sabemos dibujado encima. Cada botón de la barra inferior enciende una capa.',
+            t: {
+              move: {
+                title: 'Muévete por el mundo',
+                body: 'Arrastra para desplazarte y usa la rueda para acercar. La columna de la derecha cambia de piso: 0 es la superficie, +N sube y −N baja. Tus coordenadas se ven abajo a la izquierda.',
+              },
+              creature: {
+                title: 'Busca una criatura',
+                body: 'Escribe un nombre para ver todos sus spawns. Con ◀ 1/4 ▶ saltas entre zonas de respawn y con ⭐ vuelas a la mejor (la más densa y compacta, ideal para tasks). Desde ahí abres su ficha, trazas la ruta o miras cuánto se caza.',
+              },
+              item: {
+                title: '¿Dónde cae un objeto?',
+                body: 'Cambia el buscador al modo Objeto y verás en el mapa todas las criaturas que lo sueltan, con atajos al NPC que te lo vende más barato y al que mejor te lo paga.',
+              },
+              npc: {
+                title: 'Busca un NPC',
+                body: 'El modo NPC localiza comerciantes y personajes sobre el mapa y traza la ruta hasta ellos desde la ciudad más cercana.',
+              },
+              spawns: {
+                title: 'Spawns y mapa de calor',
+                body: 'El botón del ojo pinta todos los spawns. Los colores van de frío a caliente según la ganancia (oro del loot, promediado por punto con un extra según lo apretada que esté la zona); la moneda muestra el loot total del punto.',
+              },
+              boss: {
+                title: 'Bosses y Boss Watch',
+                body: 'La calavera deja solo los bosses, filtrables por tipo de spawn. La barra Boss Watch los ordena por probabilidad de estar vivos ahora — 🔥 probablemente vivo, 🌡 puede estar, ❄ recién matado — y puedes seguir los que te interesen.',
+              },
+              houses: {
+                title: 'Casas y guildhalls',
+                body: 'La capa Casas dibuja todas las casas y guildhalls con su estado de alquiler en vivo. En «Casas disponibles» filtras las libres o en subasta, y la campana te avisa cuando se libere una casa, una ciudad o un mundo entero.',
+              },
+              lore: {
+                title: 'Lore y misterios',
+                body: 'Puntos de historia repartidos por el mundo: toca uno y se abre el artículo del atlas sobre ese lugar sin salir del mapa.',
+              },
+              raids: {
+                title: 'Invasiones y raids',
+                body: 'Cada invasión escrita en el servidor: qué criaturas trae, en qué oleadas, cada cuánto se sortea y los anuncios exactos que grita el mundo antes de empezar.',
+              },
+              changes: {
+                title: 'Mini world changes',
+                body: 'Las puertas de furia, las islas de pesadilla, Yasir, la luna llena de Grimvale… La capa marca todos los sitios donde puede caer cada cambio, con las frases literales del pregonero para reconocerlo.',
+              },
+              markers: {
+                title: 'Marcadores',
+                body: 'La capa de marcadores trae los puntos del minimapa: levitate spots, palancas, depots y casillas de quest. Con «+ Añadir marcador» pones los tuyos, y viajan dentro del enlace que compartes.',
+              },
+              directions: {
+                title: 'Cómo llegar',
+                body: 'Elige un origen y un destino (una ciudad o cualquier punto que toques) y te damos la ruta paso a paso: a pie, en barco y por escaleras, avisando de la cuerda, la pala o el levitate que necesitas.',
+              },
+              routes: {
+                title: 'Crea, guarda y comparte rutas',
+                body: 'Construye tu ruta colocando puntos, ponle nombre y publícala. En la galería de la comunidad cargas las de otros, y el botón de enlace comparte la vista que estés mirando.',
+              },
+              news: {
+                title: 'Noticias en vivo',
+                body: 'El marcador ● EN VIVO cuenta lo que pasa en tu mundo: casas que quedan libres, subastas y pujas, bosses abatidos y la criatura más cazada del día. Se actualiza con cada server save.',
+              },
+              char: {
+                title: 'Tu personaje y tu equipo',
+                body: 'Carga tu perfil y monta «Tu equipo» pieza a pieza: calculamos tus estadísticas reales — daño, resistencias y cuánto resta tu armadura por golpe — y el buscador de hunt puntúa las zonas con ese set exacto.',
+              },
+              world: {
+                title: 'Mundo y compartir',
+                body: 'Elige tu mundo arriba para que las casas, las noticias y las muertes sean las tuyas. El botón de compartir copia un enlace que reabre exactamente la vista actual.',
+              },
+            },
+          },
+          tools: {
+            title: 'Herramientas de caza',
+            blurb: 'La caja de herramientas del mapa: lo que abres antes de salir a cazar y lo que abres al volver con el analyzer en la mano.',
+            t: {
+              hunt: {
+                title: 'Buscador de hunt',
+                body: 'Dinos vocación y nivel y ordenamos las zonas del juego por afinidad de daño, experiencia, profit neto y peligro, con los números reales de los ficheros del servidor. Si tienes set guardado, puntúa con él.',
+              },
+              zone: {
+                title: 'Analizar zona',
+                body: 'Marca dos esquinas en el mapa y te resumimos lo que hay dentro: qué daño vas a recibir, con qué elemento conviene pegarles, cuáles son inmunes, cuáles atacan a distancia y cuáles huyen al herirlas.',
+              },
+              profit: {
+                title: 'Profit real de hunt',
+                body: 'Pega tu Hunt Analyzer y descontamos lo que la sesión costó de verdad: desgaste de imbuements, recargas con silver tokens, quitar charms y prey rerolls. Además desglosa botín, kills, daño y curación por hora.',
+              },
+              split: {
+                title: 'Reparto del party',
+                body: 'Pega el Party Hunt Analyzer y calculamos quién le paga a quién para que todos salgan iguales, incluidos los gastos extra que el analyzer nunca vio. Te damos las líneas listas para dictárselas al banquero.',
+              },
+              log: {
+                title: 'Historial de hunts',
+                body: 'Guarda cada sesión calculada: la pestaña Historial la suma por día, mes y año con horas, profit, waste y tu mejor día. Se queda en tu navegador y puedes compartir un resumen por enlace.',
+              },
+              bless: {
+                title: 'Peregrinaje de blessings',
+                body: 'Elige 5 o 7 blessings y trazamos la vuelta completa por los santuarios en el orden más corto, partiendo de la ciudad más cercana a tu vista y avisando de los barcos y levitates del camino.',
+              },
+              rashid: {
+                title: 'Rashid y Yasir',
+                body: 'Dónde está Rashid hoy, cuánto queda para que cambie de ciudad y su rotación semanal completa. De Yasir marcamos los tres puertos donde puede atracar.',
+              },
+            },
+          },
+          bestiary: {
+            title: 'Bestiario',
+            blurb: 'Cada criatura del juego con sus números reales, su loot y dónde encontrarla.',
+            t: {
+              browse: {
+                title: 'Explora el bestiario',
+                body: 'Filtra por clase, dificultad, elemento o vida y ordena como prefieras. Cada tarjeta lleva a la ficha completa de la criatura.',
+              },
+              entry: {
+                title: 'La ficha de una criatura',
+                body: 'Vida, experiencia, velocidad, si cuenta para el bestiario y de qué está hecha, más el lore escrito y las entradas relacionadas del atlas.',
+              },
+              combat: {
+                title: 'Combate y resistencias',
+                body: 'Sus ataques y habilidades tal como los define el servidor, con lo que resiste y lo que más daño le hace — los mismos datos que usan el buscador de hunt y el análisis de zona.',
+              },
+              loot: {
+                title: 'Loot y dónde aparece',
+                body: 'Todo lo que suelta con su probabilidad y un botón para verla en el mapa con todos sus spawns.',
+              },
+              kills: {
+                title: 'Cuánto se caza',
+                body: 'El pulso de muertes de cada criatura: cuántas cayeron ayer, cuántas en los últimos 30 días y a cuántos jugadores mató ella.',
+              },
+            },
+          },
+          items: {
+            title: 'Items y equipo',
+            blurb: 'El catálogo completo del equipo, para coleccionarlo, compararlo y decidir qué llevas puesto.',
+            t: {
+              album: {
+                title: 'El álbum de items',
+                body: 'Todos los items como un álbum de cromos: filtra por categoría, marca los que ya tienes y mira cómo sube tu colección.',
+              },
+              detail: {
+                title: 'Ficha y comparador',
+                body: 'Abre un item para ver sus stats, requisitos y valor, y ponlo lado a lado con otro para decidir cuál te conviene.',
+              },
+              trade: {
+                title: 'Dónde comprarlo y venderlo',
+                body: 'Qué NPCs lo comercian y a qué precio, con el mejor destacado y la ruta hasta él en el mapa — incluidos los viajeros como Rashid y Yasir.',
+              },
+              config: {
+                title: 'Configurador de equipo',
+                body: 'Pon nivel y vocación y te proponemos la mejor pieza para cada slot, con alternativas. Es orientativo: va sobre stats en bruto, sin imbuements ni bonus de set.',
+              },
+            },
+          },
+          data: {
+            title: 'Datos del mundo',
+            blurb: 'Los números del servidor, capturados cada día en todos los mundos.',
+            t: {
+              killstats: {
+                title: 'Estadísticas de muertes',
+                body: 'Las kill statistics oficiales por mundo: qué criaturas matan a más jugadores, cuáles se cazan más y cómo cambian las cifras mes a mes.',
+              },
+              pulse: {
+                title: 'Más buscados y pulso del mundo',
+                body: 'En el mapa, «Más buscados» enseña las criaturas que más se buscan aquí, y el pulso de muertes resume lo que cayó ayer en tu mundo.',
+              },
+              prices: {
+                title: 'Precios de las casas',
+                body: 'Cada subasta que se cierra queda registrada: la mediana pagada por ciudad y el historial de pujas de cada casa.',
+              },
+              soundtrack: {
+                title: 'La música de Tibia',
+                body: 'La banda sonora oficial con su reproductor: dale al play y déjala sonar mientras exploras el mapa.',
+              },
+            },
+          },
+          games: {
+            title: 'Juegos diarios',
+            blurb: 'Tres retos diarios, los mismos para todo el mundo, que cambian en cada server save.',
+            t: {
+              wordle: {
+                title: 'Bestiordle',
+                body: 'Adivina la criatura del día en seis intentos. La longitud cambia cada día y cada intento tiene que ser una criatura real de Tibia.',
+              },
+              altar: {
+                title: 'El Altar del Bestiario',
+                body: 'Una criatura velada en sombra y un único intento. Si te atascas, destapa pistas de sus stats antes de arriesgarte.',
+              },
+              geo: {
+                title: 'El Cartógrafo',
+                body: 'Un rincón del mapa bajo el foco: adivina la zona en un intento y al revelar se abre el mapa justo donde estaba.',
+              },
+              board: {
+                title: 'Rankings diarios',
+                body: 'Los tres juegos tienen top 10 del día: menos intentos primero y el tiempo desempata. Vincula tu personaje para aparecer con tu nombre.',
+              },
+            },
+          },
+        },
       },
       common: {
         loading: 'Cargando…',
