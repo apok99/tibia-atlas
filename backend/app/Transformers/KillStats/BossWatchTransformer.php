@@ -53,7 +53,12 @@ class BossWatchTransformer
             // ordered by how many were defeated today.
             return $mapped
                 ->filter(fn ($b) => $b['worlds_active'] >= 10 && $b['cooldown'] / max(1, $b['worlds_active']) >= 0.6)
-                ->sortByDesc('day_killed')
+                // Scoped to one world: the "is it a daily boss" test above stays
+                // cross-world (that's what makes it a daily boss at all), but the
+                // roster only keeps the ones that world actually reports, ordered
+                // by kills THERE.
+                ->when($world !== null, fn ($c) => $c->filter(fn ($b) => $b['world_present'] || $b['heat'] !== null))
+                ->sortByDesc($world === null ? 'day_killed' : 'world_day_killed')
                 ->take($limit)
                 ->values();
         }
@@ -177,6 +182,14 @@ class BossWatchTransformer
             'week_killed' => (int) $r->week_killed,
             'heat' => $heat,
             'heat_global' => $globalHeat,
+            // World-scoped reading, null when the request wasn't scoped. Additive on
+            // purpose: the fields above stay cross-world so the map rail (which
+            // deliberately falls back to the network-wide reading) is unchanged,
+            // while the dashboard can filter and count by the selected world.
+            'world' => $world,
+            'world_present' => $world === null ? null : (bool) ($r->world_present ?? false),
+            'world_day_killed' => $world === null ? null : (int) ($r->world_day_killed ?? 0),
+            'world_week_killed' => $world === null ? null : (int) ($r->world_week_killed ?? 0),
             'worlds' => array_values($list),
             'iconic' => $rank !== false,
             'rank' => $rank === false ? 999 : $rank,

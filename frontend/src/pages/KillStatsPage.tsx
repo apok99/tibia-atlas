@@ -106,12 +106,18 @@ function KpiCard({
   )
 }
 
-/** KPI card that auto-rotates through bosses slain today, with the server. */
-function RotatingBossKpi({ bosses, label, color = VIOLET }: { bosses: BossRow[]; label: string; color?: string }) {
+/**
+ * KPI card that auto-rotates through bosses slain today, with the server.
+ * `scope` is the selected world ('all' = network-wide): when a world is picked,
+ * both the count and the caption come from that world's kills only.
+ */
+function RotatingBossKpi({ bosses, label, color = VIOLET, scope = 'all' }: { bosses: BossRow[]; label: string; color?: string; scope?: string }) {
   const { t } = useTranslation()
+  const scoped = scope !== 'all'
+  const killedToday = (b: BossRow) => (scoped ? (b.world_day_killed ?? 0) : b.day_killed)
   const list = bosses
-    .filter((b) => b.day_killed > 0)
-    .sort((a, b) => b.day_killed - a.day_killed)
+    .filter((b) => killedToday(b) > 0)
+    .sort((a, b) => killedToday(b) - killedToday(a))
     .slice(0, 12)
   const [i, setI] = useState(0)
 
@@ -122,7 +128,8 @@ function RotatingBossKpi({ bosses, label, color = VIOLET }: { bosses: BossRow[];
   }, [list.length])
 
   const b = list.length ? list[Math.min(i, list.length - 1)] : null
-  const world = b?.worlds[0]
+  // Under a world filter the caption names that world, never a sample of others.
+  const world = scoped ? scope : b?.worlds[0]
 
   return (
     <div className="ks-kpi relative overflow-hidden rounded-xl border border-line bg-surface p-4" style={{ ['--glow' as string]: color }}>
@@ -139,7 +146,7 @@ function RotatingBossKpi({ bosses, label, color = VIOLET }: { bosses: BossRow[];
           <div className="min-w-0">
             <div className="flex items-baseline gap-1.5">
               <span className="text-2xl font-black leading-none" style={{ color }}>
-                <CountUp value={b.day_killed} duration={800} />
+                <CountUp value={killedToday(b)} duration={800} />
               </span>
               <span className="text-[10px] uppercase tracking-wider text-fg-mute">{t('ks.kpiBossKilledUnit')}</span>
             </div>
@@ -275,6 +282,7 @@ function KillWall({
   globalSeries,
   dailyBosses,
   raidBosses,
+  world = 'all',
 }: {
   overview: KillOverview | undefined
   orbit: RankingRow[]
@@ -282,6 +290,7 @@ function KillWall({
   globalSeries: SeriesPoint[]
   dailyBosses: BossRow[]
   raidBosses: BossRow[]
+  world?: string
 }) {
   const { t } = useTranslation()
   const totals = overview?.totals
@@ -314,8 +323,8 @@ function KillWall({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard label={t('ks.kpiPlayersKilled')} value={totals?.players_killed_24h ?? 0} sub={totals ? t('ks.kpi7d', { n: compact(totals.players_killed_7d) }) : undefined} color={RED} spark={{ data: globalSeries, dataKey: 'players_killed' }} />
         <KpiCard label={t('ks.kpiHunted')} value={totals?.killed_24h ?? 0} sub={totals ? t('ks.kpi7d', { n: compact(totals.killed_7d) }) : undefined} color={CORAL} spark={{ data: globalSeries, dataKey: 'killed' }} />
-        <RotatingBossKpi bosses={dailyBosses} label={t('ks.kpiBossKilled')} color={GREEN} />
-        <RotatingBossKpi bosses={raidBosses} label={t('ks.kpiRaidKilled')} color={VIOLET} />
+        <RotatingBossKpi bosses={dailyBosses} label={t('ks.kpiBossKilled')} color={GREEN} scope={world} />
+        <RotatingBossKpi bosses={raidBosses} label={t('ks.kpiRaidKilled')} color={VIOLET} scope={world} />
       </div>
     </div>
   )
@@ -332,8 +341,10 @@ export function KillStatsPage() {
 
   const { data: deadliest } = useKillRanking({ world, metric: 'players_killed', window: 'day', limit: 10 })
   const { data: hunted } = useKillRanking({ world, metric: 'killed', window: 'day', limit: 20 })
-  const { data: bosses } = useBosses('raid', 40)
-  const { data: dailyBosses } = useBosses('daily', 12)
+  // Boss rosters follow the world picker: 'all' aggregates, a world name scopes
+  // every reading (heat, kills, the world chip) to that world alone.
+  const { data: bosses } = useBosses('raid', 40, true, world)
+  const { data: dailyBosses } = useBosses('daily', 12, true, world)
   const { data: topSearched } = useTopSearches(10)
 
   // Sync kiosk state with the browser Fullscreen API (Esc exits).
@@ -393,11 +404,11 @@ export function KillStatsPage() {
           <KillTicker items={hunted ?? []} />
         </div>
 
-        <KillWall overview={overview} orbit={orbit} deadliest={deadliest ?? []} globalSeries={globalSeries} dailyBosses={dailyBosses ?? []} raidBosses={bosses ?? []} />
+        <KillWall overview={overview} orbit={orbit} deadliest={deadliest ?? []} globalSeries={globalSeries} dailyBosses={dailyBosses ?? []} raidBosses={bosses ?? []} world={world} />
 
         {/* Raid Boss Watch (left) + most searched/viewed (right) */}
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <BossWatch bosses={bosses ?? []} />
+          <BossWatch bosses={bosses ?? []} world={world} />
           <TopSearched source={topSearched?.source ?? 'views'} items={topSearched?.data ?? []} />
         </div>
 
@@ -420,9 +431,9 @@ export function KillStatsPage() {
           <div className="mb-4">
             <KillTicker items={hunted ?? []} />
           </div>
-          <KillWall overview={overview} orbit={orbit} deadliest={deadliest ?? []} globalSeries={globalSeries} dailyBosses={dailyBosses ?? []} raidBosses={bosses ?? []} />
+          <KillWall overview={overview} orbit={orbit} deadliest={deadliest ?? []} globalSeries={globalSeries} dailyBosses={dailyBosses ?? []} raidBosses={bosses ?? []} world={world} />
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <BossWatch bosses={bosses ?? []} />
+            <BossWatch bosses={bosses ?? []} world={world} />
             <TopSearched source={topSearched?.source ?? 'views'} items={topSearched?.data ?? []} />
           </div>
           {!!worlds?.length && (

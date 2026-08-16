@@ -86,6 +86,13 @@ export interface BossRow {
   heat: number | null
   /** Cross-world reading (never null) — the fallback when `heat` is null. */
   heat_global: number
+  /** The world the request was scoped to; null when aggregated across all. */
+  world: string | null
+  /** Does the selected world report this boss at all? null when not scoped. */
+  world_present: boolean | null
+  /** Kills on the selected world only (day/week). null when not scoped. */
+  world_day_killed: number | null
+  world_week_killed: number | null
   worlds: string[]
   iconic: boolean
   rank: number

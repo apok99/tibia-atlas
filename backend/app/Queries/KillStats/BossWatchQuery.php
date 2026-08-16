@@ -110,6 +110,11 @@ class BossWatchQuery
             $query
                 ->selectRaw('BOOL_OR(w.name = ? AND kd.day_killed > 0) AS world_killed_today', [$world])
                 ->selectRaw('BOOL_OR(w.name = ?) AS world_present', [$world])
+                // Kill counts on THIS world alone. day_killed/week_killed above are
+                // network-wide sums, so any consumer that shows "killed today" under
+                // a world filter has to read these instead.
+                ->selectRaw('COALESCE(SUM(kd.day_killed) FILTER (WHERE w.name = ?), 0) AS world_day_killed', [$world])
+                ->selectRaw('COALESCE(SUM(kd.week_killed) FILTER (WHERE w.name = ?), 0) AS world_week_killed', [$world])
                 ->selectRaw(
                     '(?::date - (SELECT MAX(kd2.snapshot_date) FROM kill_daily kd2'
                     .' JOIN tibia_worlds w2 ON w2.id = kd2.world_id'
