@@ -120,7 +120,13 @@ class BossWatchQuery
                     .' JOIN tibia_worlds w2 ON w2.id = kd2.world_id'
                     .' WHERE kd2.race_id = MIN(kd.race_id) AND w2.name = ? AND kd2.day_killed > 0)) AS world_days_since',
                     [$latest, $world]
-                );
+                )
+                // How much history we hold at all. A boss with no kill on the chosen
+                // world hasn't got "no data" — it has "not killed here in the whole
+                // window", which is a LOWER BOUND on its days-since, and that is a
+                // reading for this world. The transformer uses it instead of falling
+                // back to the network-wide number.
+                ->selectRaw('(?::date - (SELECT MIN(kd3.snapshot_date) FROM kill_daily kd3)) AS window_days', [$latest]);
         }
 
         return $query->get();

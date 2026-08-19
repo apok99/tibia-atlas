@@ -5646,7 +5646,10 @@ export function MapPage() {
   // recorded kill to anchor a per-world estimate (Orshabaal & co. have never been
   // killed on Antica in our window). Shown as a cross-world read, not as if it
   // were a reading for this world. null only for glossary-only bosses.
-  type RailBoss = { race: string; slug: string; image: string | null; heat: number | null; heatGlobal: number | null; worlds: string[]; spawn_type: string[] | null }
+  // anchored = the selected world has a recorded kill behind the heat. false means
+  // the reading comes from "never killed here in our 30-day window" — a floor, so
+  // it's still this world's reading, just a conservative one; the tooltip says so.
+  type RailBoss = { race: string; slug: string; image: string | null; heat: number | null; heatGlobal: number | null; anchored: boolean | null; worlds: string[]; spawn_type: string[] | null }
   // slug → spawntypes, so the heat-tracked list (which the kill-stats API doesn't
   // tag) can be classified for the tabs by borrowing the glossary's spawn_type.
   const spawnTypeBySlug = useMemo(() => {
@@ -5663,6 +5666,7 @@ export function MapPage() {
       image: b.image,
       heat: b.heat,
       heatGlobal: b.heat_global ?? null,
+      anchored: b.world_anchored,
       worlds: b.worlds,
       spawn_type: spawnTypeBySlug.get(b.slug) ?? null,
     }))
@@ -5674,7 +5678,7 @@ export function MapPage() {
     // "sin datos de spawn recientes" — the exact bug the roster cut just fixed.
     const glossaryBosses: RailBoss[] = (glossary ?? [])
       .filter((g) => g.world_boss && g.type === 'creature' && !heatSlugs.has(g.slug))
-      .map((g) => ({ race: g.name, slug: g.slug, image: g.image, heat: null, heatGlobal: null, worlds: [], spawn_type: g.spawn_type ?? null }))
+      .map((g) => ({ race: g.name, slug: g.slug, image: g.image, heat: null, heatGlobal: null, anchored: null, worlds: [], spawn_type: g.spawn_type ?? null }))
     return [...heatList, ...glossaryBosses]
   }, [bosses, glossary, spawnTypeBySlug])
   // Count per tab, for the little badges. A boss counts toward every spawntype it
@@ -5969,12 +5973,14 @@ export function MapPage() {
           {bosses.length > 0
             ? shownBosses.length > 0
               ? shownBosses.map((b) => {
-                // Per-world read when this world has a kill to anchor it; else the
-                // cross-world one, flagged so the row never claims to know THIS
-                // world. Only glossary-only bosses (no kill-stats at all) end up
-                // with neither and render as a plain "follow/plot" row.
+                // The reading is always the selected world's. `heatGlobal` only
+                // stands in for an unscoped view; glossary-only bosses (no
+                // kill-stats at all) have neither and render as a plain
+                // "follow/plot" row. unanchored = no kill recorded on this world,
+                // so the heat is a conservative floor — the tooltip spells it out.
                 const shownHeat = b.heat ?? b.heatGlobal
                 const crossWorld = b.heat === null && b.heatGlobal !== null
+                const unanchored = world !== 'all' && b.heat !== null && b.anchored === false
                 const hs = shownHeat !== null ? HEAT_STYLE[heatBucket(shownHeat)] : null
                 const on = activeSlugs.has(b.slug)
                 const pinned = pinnedBosses.has(b.slug)
@@ -6006,7 +6012,7 @@ export function MapPage() {
                       }
                       title={
                         hs
-                          ? `${b.race} · ${t(hs.label)}${crossWorld ? ` (${t('map.bossCrossWorld')})` : ''}${worldList.length ? ` · ${worldList.join(', ')}` : ''}`
+                          ? `${b.race} · ${t(hs.label)}${crossWorld ? ` (${t('map.bossCrossWorld')})` : ''}${unanchored ? ` (${t('map.bossNoKillsHere', { w: world })})` : ''}${worldList.length ? ` · ${worldList.join(', ')}` : ''}`
                           : `${b.race} · ${t('map.bossNoHeat')}`
                       }
                       className={`flex min-w-0 flex-1 items-center gap-2 text-left ${bossRailOpen ? '' : 'justify-center'}`}

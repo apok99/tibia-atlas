@@ -27,6 +27,14 @@ class BossWatchTransformer
     private const MAX_CYCLE_DAYS = 365.0;
 
     /**
+     * Floor for a world-scoped reading with no recorded kill on that world. All we
+     * know is "not killed here in the whole window" — a lower bound on days-since —
+     * so the reading may be under-stated but can never mean "just killed". Sits on
+     * the frontend's "maybe up" threshold (33).
+     */
+    private const UNANCHORED_MIN_HEAT = 33;
+
+    /**
      * @param  Collection<int, \stdClass>  $rows
      * @param  list<string>  $iconic  lowercased iconic boss names (order = fame rank)
      * @param  string|null  $world  when given, heat/status is scoped to this single
@@ -57,7 +65,7 @@ class BossWatchTransformer
                 // cross-world (that's what makes it a daily boss at all), but the
                 // roster only keeps the ones that world actually reports, ordered
                 // by kills THERE.
-                ->when($world !== null, fn ($c) => $c->filter(fn ($b) => $b['world_present'] || $b['heat'] !== null))
+                ->when($world !== null, fn ($c) => $c->filter(fn ($b) => $b['world_present'] || $b['world_anchored']))
                 ->sortByDesc($world === null ? 'day_killed' : 'world_day_killed')
                 ->take($limit)
                 ->values();
@@ -116,11 +124,9 @@ class BossWatchTransformer
         $weekWorlds = (int) $r->week_worlds;     // killed in last 7d
         // Spawn "temperature": worlds where it wasn't killed in 24h.
         $heat = (int) round(100 * ($worlds - $cooldown) / $worlds);
-        // Kept aside: the cross-world reading never goes null, so the UI can fall
-        // back to it (labelled as cross-world) for a boss that has simply never
-        // been killed on the selected world — Orshabaal, Ferumbras and ~35 others
-        // have no Antica anchor, and "no data" is a worse answer than "quiet on
-        // 91 of 93 worlds".
+        // Kept aside as the network-wide reading. It is no longer a fallback for
+        // world-scoped rows (those now always answer for their own world, see
+        // below) — it stays in the payload for unscoped views and comparisons.
         $globalHeat = $heat;
 
         // Worlds shown under the boss: where it just died (cold) or where it's
@@ -135,8 +141,8 @@ class BossWatchTransformer
         // boss killed 9×/week network-wide, on 93 worlds, comes round every ~72
         // days on any one of them. A rare boss killed 2 days ago reads ~3 ("just
         // killed"), NOT "likely up"; a daily boss is back to 100 the next day.
-        // Never killed there → null: no anchor, no fabricated probability (the UI
-        // says "no data").
+        // Never killed there → the window length is used as a lower bound on
+        // days-since (see below), so the row still reads for the selected world.
         //
         // The denominator is the WORLD COUNT, never the boss's own worlds_active
         // ({@see BossWatchQuery::worldCount()}) — that field only counts worlds
@@ -144,25 +150,35 @@ class BossWatchTransformer
         // the rarer the boss, the fewer worlds report it, the shorter its cycle
         // came out. Ferumbras read 7 days (really ~72) and Orshabaal 7 (really
         // ~325), so every rare boss pinned to heat 100 the week after it died.
+        $anchored = false;
         if ($world !== null) {
             $days = $r->world_days_since ?? null;
-            if ($days === null) {
-                $heat = null;
-            } else {
-                // Anchored here → the world chip should name THIS world. (When it
-                // isn't, the cross-world sample built above stays, so the row's
-                // "all worlds" fallback reading and its world list agree.)
-                $list = [$world];
-                $cycle = max(1.0, min(self::MAX_CYCLE_DAYS, 7.0 * max(1, $worldCount) / max(1, (int) $r->week_killed)));
-                $heat = (int) min(100, round(100 * max(0, (int) $days) / $cycle));
-                // Raid bosses (TibiaWiki spawntype "Raid", plus the famous iconic
-                // ones whose spawntype may be untagged) don't follow a per-world
-                // respawn timer — a week without a recorded kill can't mean "up".
-                // Cap their confidence at "maybe" so the strip never fabricates a
-                // flat "likely up" from one stale data point.
-                if ($this->isRaidBoss($r, $iconic)) {
-                    $heat = min($heat, self::RAID_WORLD_HEAT_CAP);
-                }
+            // Never killed on this world inside our window? That is still a reading
+            // FOR THIS WORLD, not a blank: days-since is at least the whole window.
+            // We use that lower bound rather than borrowing the network-wide number,
+            // so a world-scoped row always speaks about the world the user picked.
+            $anchored = $days !== null;
+            if (! $anchored) {
+                $days = (int) ($r->window_days ?? 0);
+            }
+            // The chip names THIS world — the reading is about it, anchored or not.
+            $list = [$world];
+            $cycle = max(1.0, min(self::MAX_CYCLE_DAYS, 7.0 * max(1, $worldCount) / max(1, (int) $r->week_killed)));
+            $heat = (int) min(100, round(100 * max(0, (int) $days) / $cycle));
+            // A lower bound can only ever push the reading UP. Without a kill here
+            // the true days-since is ≥ the window, so the honest floor is "maybe
+            // up" — reporting a rare boss as just-killed on a world where we have
+            // no kill at all would be the one thing the data rules out.
+            if (! $anchored) {
+                $heat = max($heat, self::UNANCHORED_MIN_HEAT);
+            }
+            // Raid bosses (TibiaWiki spawntype "Raid", plus the famous iconic
+            // ones whose spawntype may be untagged) don't follow a per-world
+            // respawn timer — a week without a recorded kill can't mean "up".
+            // Cap their confidence at "maybe" so the strip never fabricates a
+            // flat "likely up" from one stale data point.
+            if ($this->isRaidBoss($r, $iconic)) {
+                $heat = min($heat, self::RAID_WORLD_HEAT_CAP);
             }
         }
 
@@ -188,6 +204,11 @@ class BossWatchTransformer
             // while the dashboard can filter and count by the selected world.
             'world' => $world,
             'world_present' => $world === null ? null : (bool) ($r->world_present ?? false),
+            // Is the reading backed by a kill recorded on that world, or only by
+            // "never killed here in our window"? Consumers that need a strict
+            // "this world tracks this boss" test use it — `heat` no longer goes
+            // null under a world scope, so it can't answer that question.
+            'world_anchored' => $world === null ? null : $anchored,
             'world_day_killed' => $world === null ? null : (int) ($r->world_day_killed ?? 0),
             'world_week_killed' => $world === null ? null : (int) ($r->world_week_killed ?? 0),
             'worlds' => array_values($list),

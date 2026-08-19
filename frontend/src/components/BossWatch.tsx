@@ -76,11 +76,12 @@ export function BossWatch({ bosses, world = 'all' }: { bosses: BossRow[]; world?
   const scopedWorld = scoped ? world : undefined
 
   // Belongs to the selected world = that world reports it in the latest snapshot,
-  // OR we have a recorded kill there to anchor a respawn estimate (heat non-null).
-  // The second half matters: a rare boss killed on Antica last week drops out of
-  // Antica's snapshot once the week rolls over, but its Antica reading is real.
+  // OR we have a kill recorded there to anchor a respawn estimate. The second half
+  // matters: a rare boss killed on Antica last week drops out of Antica's snapshot
+  // once the week rolls over, but its Antica reading is real. (`heat` can't be the
+  // test — world-scoped rows always carry one now, anchored or not.)
   const rows = useMemo(
-    () => (scoped ? bosses.filter((b) => b.world_present || b.heat !== null) : bosses),
+    () => (scoped ? bosses.filter((b) => b.world_present || b.world_anchored) : bosses),
     [bosses, scoped],
   )
 

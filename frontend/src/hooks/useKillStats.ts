@@ -90,6 +90,12 @@ export interface BossRow {
   world: string | null
   /** Does the selected world report this boss at all? null when not scoped. */
   world_present: boolean | null
+  /**
+   * Is the world-scoped reading backed by a kill recorded on that world? false =
+   * derived from "never killed here in our window" (a lower bound, so the heat is
+   * a floor, never a "just killed"). null when not scoped.
+   */
+  world_anchored: boolean | null
   /** Kills on the selected world only (day/week). null when not scoped. */
   world_day_killed: number | null
   world_week_killed: number | null
