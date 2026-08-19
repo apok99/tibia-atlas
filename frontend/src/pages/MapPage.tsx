@@ -5700,8 +5700,12 @@ export function MapPage() {
     const resolve = (slug: string): RailBoss | undefined => allRailBosses.find((b) => b.slug === slug)
 
     if (q) {
+      // Search the name plus the worlds the row actually SHOWS — under a world
+      // filter a cross-world row displays none, so matching its borrowed world
+      // names would surface it for a world the rail isn't even looking at.
       const match = (b: RailBoss) =>
-        b.race.toLowerCase().includes(q) || b.worlds.some((w) => w.toLowerCase().includes(q))
+        b.race.toLowerCase().includes(q) ||
+        (world === 'all' || b.heat !== null) && b.worlds.some((w) => w.toLowerCase().includes(q))
       const matched = pool.filter(match).sort(byHeatThenName)
       const pinned = matched.filter((b) => pinnedBosses.has(b.slug))
       const rest = matched.filter((b) => !pinnedBosses.has(b.slug))
@@ -5725,7 +5729,7 @@ export function MapPage() {
     const pinned = sorted.filter((b) => pinnedBosses.has(b.slug))
     const rest = sorted.filter((b) => !pinnedBosses.has(b.slug))
     return [...pinned, ...rest]
-  }, [allRailBosses, bossQuery, bossType, pinnedBosses])
+  }, [allRailBosses, bossQuery, bossType, pinnedBosses, world])
 
   // Published community routes, most popular first, one page at a time. Only
   // fetched once the gallery is opened; keepPreviousData keeps the current page
@@ -5974,8 +5978,14 @@ export function MapPage() {
                 const hs = shownHeat !== null ? HEAT_STYLE[heatBucket(shownHeat)] : null
                 const on = activeSlugs.has(b.slug)
                 const pinned = pinnedBosses.has(b.slug)
-                const worlds = b.worlds.slice(0, 3).join(', ')
-                const moreWorlds = b.worlds.length > 3 ? ` +${b.worlds.length - 3}` : ''
+                // Under a world filter the rail must never name OTHER worlds. An
+                // anchored row already carries just the selected world; a
+                // cross-world fallback row is labelled "todos los mundos", and
+                // listing the worlds it borrowed the reading from is exactly the
+                // leak — drop the chip there and let the label speak.
+                const worldList = world === 'all' ? b.worlds : crossWorld ? [] : b.worlds
+                const worlds = worldList.slice(0, 3).join(', ')
+                const moreWorlds = worldList.length > 3 ? ` +${worldList.length - 3}` : ''
                 return (
                   <div
                     key={b.slug}
@@ -5996,7 +6006,7 @@ export function MapPage() {
                       }
                       title={
                         hs
-                          ? `${b.race} · ${t(hs.label)}${crossWorld ? ` (${t('map.bossCrossWorld')})` : ''}${b.worlds.length ? ` · ${b.worlds.join(', ')}` : ''}`
+                          ? `${b.race} · ${t(hs.label)}${crossWorld ? ` (${t('map.bossCrossWorld')})` : ''}${worldList.length ? ` · ${worldList.join(', ')}` : ''}`
                           : `${b.race} · ${t('map.bossNoHeat')}`
                       }
                       className={`flex min-w-0 flex-1 items-center gap-2 text-left ${bossRailOpen ? '' : 'justify-center'}`}
@@ -6033,7 +6043,7 @@ export function MapPage() {
                           ) : (
                             <span className="block truncate text-xs italic text-fg-mute">{t('map.bossNoHeat')}</span>
                           )}
-                          {b.worlds.length > 0 && (
+                          {worldList.length > 0 && (
                             <span className="flex items-center gap-1 text-xs text-fg-mute">
                               <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <circle cx="12" cy="12" r="9" />
